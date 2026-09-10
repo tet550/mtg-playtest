@@ -16,6 +16,8 @@
 
 ## 呼び出し例（PowerShell、プロジェクト直下）
 
+**必ずプロジェクト直下から実行する。** カードキャッシュの既定は相対パスの `cards`（環境変数 `MTG_CARDS_DIR` / `--cards-dir` で変更可）なので、対局フォルダへ`cd`して実行するとそこに `cards/` が新規作成され、Scryfallへの再取得とキャッシュの分裂が黙って起きる。
+
 `run` は実行前にバッチ全体の構文を検査し、エラーを元ファイルの行番号付きでまとめて返す（状態変更なし）。対象・マナ・応答など、進行中の状態に依存する適法性は事前検査では保証しない。
 
 席制限なしのバッチでは、双方の応答なしを判断済みの場合だけ `pass-both P1`（P1から）または `pass-both P2` を使える。通常のpass 2行へ展開し、それぞれ保存・undo・証跡を維持する。スタックが空なら従来どおりステップが進むため、直後に重ねてphase nextしない。未知の誘発や選択をまたぐ用途には使わない。
@@ -94,6 +96,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 目的 | コマンド |
 |---|---|
 | 登録デッキのメイン確認 | `deck show boros-tokens --brief` |
+| カード全文の確認 | `card show <名前>`。**未キャッシュの名前は `[missing]` と出して終了コード0で終わる**（取得しない）ので、その場合は `card fetch <名前>` で取り直す。`cards/` は.gitignore対象なのでクローン直後は全カードが未キャッシュ |
 | 残りライブラリーの確認 | `zone P1:library`（P2なら `zone P2:library`。投了判断でのアウト確認用） |
 | ライブラリーの上からN枚を見る | `look P1 4`（上から4枚。移動しない。効果などで見る必要があるときだけ） |
 | 呪文をスタックへ | `stack push <oid> --cast --controller P1`（詠唱を明示して回数記録・castメモ表示。`--cast`省略は詠唱扱いしない） |
@@ -105,6 +108,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
 | 装備先の指定 | `attach <装備品oid> --to <クリーチャーoid>` |
 | 装備ごとの修整 | `mod <対象oid> +1/+0 --until attached --src <装備品oid>`（別装備は別行） |
+| 静的な全体修整（アンセム） | `fx` の `--scope` では「自軍の該当タイプ全部」を表現できない。対象1体ずつ `mod <oid> +N/+0 --until permanent` を入れ、係数の根拠を `note` に残す。**発生源の数が変わっても自動再計算されない**ので、増減したら`mod`を引き直す |
 | 装備効果を自動計算へ登録 | `fx add --src <装備品oid> --ability bonus --pt +1/+0 --grant トランプル`（以後の付け替えはattachだけ。旧mod/grantがあれば定義確認後 `--replace-legacy`） |
 | 複数キーワードの付与 | `fx add --src <oid> --ability bonus --pt +1/+0 --grant 速攻 "護法{1}"`（`--grant`は1回にまとめる。2回書くと後勝ちで上書きされ、消えた付与は`fx list`か攻撃時の召喚酔い警告まで気付けない） |
 | 発生源のカウンターに連動 | `fx add --src <装備品oid> --ability bonus --counter charge --per-counter +1/+0`（カードの実際の条件・係数を確認）。`fx add` の確認出力にはカウンター指定が出ないため、登録確認は `fx list` の `counter=<名前>*[P, T]` で行う |
