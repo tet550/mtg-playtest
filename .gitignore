@@ -1,0 +1,22 @@
+# 対局データ（実行のたびに生成される。サイズが大きく履歴に不要）
+playtest/
+*.shuffled.json
+
+# カードキャッシュ（Scryfall から再取得できる。第三者の著作物なので配布しない）
+cards/
+
+# ローカル用のシンボリックリンク（絶対パスのため他環境で壊れる）
+.agents/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

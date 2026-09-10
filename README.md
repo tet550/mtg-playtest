@@ -1,0 +1,101 @@
+# MTG Playtest
+
+Magic: The Gathering の対戦をテキスト上で進行・検証するための、Claude Code 用スキルと盤面管理 CLI。
+
+自作カードやデッキ案を「実際に回してみる」ための道具立てです。盤面・ライブラリー順・
+ライフ・カウンター・スタック・ターン進行といった**取り違えやすい情報を Python が記帳し**、
+カードテキストの解釈・誘発・対象の適正・レイヤーの判断は **AI（またはユーザー）が行います**。
+スクリプトは記帳係であって、完全なルールエンジンではありません。
+
+## 何ができるか
+
+- Claude に「このデッキを回してみて」と頼むと、ルールに沿ってターンを進め、対戦ログとレポートを残す
+- AI 同士の自動対戦（軽量モード／席分離モードの2種）と、人間 vs AI の対人モード
+- デッキリスト（Arena 形式のテキスト）の登録・リーガリティ確認
+- カード情報の Scryfall からの取得とローカルキャッシュ
+- 装備・オーラ・期限付き効果・誘発の待ち行列など、忘れやすい状態の永続化
+- undo、seed 付き乱数による再現可能なシャッフル、対戦結果の集計
+
+## 必要なもの
+
+- Python 3.12 以降（標準ライブラリのみ。追加パッケージ不要）
+- カード情報の取得時のみインターネット接続（Scryfall API）
+- スキルとして使う場合は [Claude Code](https://claude.com/claude-code)
+
+## 使い方
+
+### Claude Code から（想定している主な使い方）
+
+このリポジトリをそのまま作業ディレクトリとして Claude Code を起動すると、
+`.claude/skills/mtg-playtest/` がスキルとして読み込まれます。
+
+```
+decklists/piza.txt と decklists/boros-dwarves.txt を BO1 で1ゲーム回して
+```
+
+進行の作法・保存先の規約・ログ書式はすべて
+[`.claude/skills/mtg-playtest/SKILL.md`](.claude/skills/mtg-playtest/SKILL.md) と
+`references/` に書かれており、Claude が必要な部分だけ読みます。
+
+### CLI を直接叩く
+
+```bash
+python .claude/skills/mtg-playtest/scripts/mtg.py --help
+```
+
+```bash
+python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --name piza
+```
+
+```bash
+python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json init --deck1 piza --deck2 decklists/boros-dwarves.txt --seed 1
+```
+
+```bash
+python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json show
+```
+
+`--deck1` / `--deck2` には登録名とデッキリストのファイルパスのどちらも渡せます。
+初手は `draw P1 7` / `draw P2 7` で引きます。
+
+各サブコマンドの詳細は `mtg.py <コマンド> -h` で読めます。Windows で Python が PATH に
+無い場合は `scripts/mtg.ps1` が同じ引数を受け取ります。
+
+## リポジトリの構成
+
+```text
+.claude/
+  agents/                       サブエージェント定義（プレイヤー役・ルール検証役）
+  skills/mtg-playtest/
+    SKILL.md                    エントリポイント。ここから必要な資料だけ辿る
+    references/                 進行手順・スキーマ・保存先規約・ログ書式
+    scripts/                    盤面管理 CLI（mtg.py とモジュール群）
+    tests/                      unittest によるリグレッションテスト
+decklists/                      デッキリスト（Arena 形式のテキスト）
+decks/                          登録済みデッキ（JSON。カード名と oracle_id のみ）
+design/                         設計メモ（永続状態・誘発処理・効果の関連付けなど）
+cards/                          カードキャッシュ（Git 管理外。実行時に自動生成）
+playtest/                       対局データ（Git 管理外。実行のたびに生成）
+```
+
+`cards/` と `playtest/` は `.gitignore` で除外しています。クローン直後には存在せず、
+初回の実行時に作られます。理由は [NOTICE.md](NOTICE.md) を参照してください。
+
+## テスト
+
+```bash
+python -m pytest .claude/skills/mtg-playtest/tests -q
+```
+
+pytest を入れたくない場合は、各テストファイルを直接実行しても動きます。
+
+```bash
+python .claude/skills/mtg-playtest/tests/test_relations.py
+```
+
+## ライセンスと権利表示
+
+コードと文書は [MIT License](LICENSE)。ただし Magic: The Gathering のカード名・カードテキスト
+その他のゲーム素材は Wizards of the Coast LLC に帰属し、MIT の対象外です。本リポジトリは
+同社とは無関係の非公式・非商用のファンプロジェクトです。詳細は [NOTICE.md](NOTICE.md) を
+参照してください。

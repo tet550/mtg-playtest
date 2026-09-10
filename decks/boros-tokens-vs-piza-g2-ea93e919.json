@@ -1,0 +1,421 @@
+{
+ "created_at": "2026-09-07T08:09:57Z",
+ "description": "ボロストークン vs ピザ ゲーム2 サイド後",
+ "format": "standard",
+ "key": "boros-tokens-vs-piza-g2",
+ "legal": true,
+ "main": [
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Plains",
+   "oracle_id": "bc71ebf6-2056-41f7-be35-b2e5c34afa99",
+   "printed": null,
+   "source_name": "Plains",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 3,
+   "mana_value": 0,
+   "name": "Mountain",
+   "oracle_id": "a3fb7228-e76b-4e96-a40e-20b5fed75685",
+   "printed": "山",
+   "source_name": "Mountain",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Sacred Foundry",
+   "oracle_id": "45181cb8-2090-4471-ba90-e5a8f04d525f",
+   "printed": "聖なる鋳造所",
+   "source_name": "Sacred Foundry",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Inspiring Vantage",
+   "oracle_id": "3f17c60e-923a-4392-9da8-87d9ded009b7",
+   "printed": "感動的な眺望所",
+   "source_name": "Inspiring Vantage",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Song of Totentanz",
+   "oracle_id": "5f4d0c87-7d59-41d5-9910-86765a0c144b",
+   "printed": null,
+   "source_name": "Song of Totentanz",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "R",
+    "W"
+   ],
+   "count": 4,
+   "mana_value": 3,
+   "name": "Warleader's Call",
+   "oracle_id": "a751c07b-fc21-4854-96e7-f71abf4e86c9",
+   "printed": null,
+   "source_name": "Warleader's Call",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Hired Claw",
+   "oracle_id": "031cfc7d-8bda-454b-b88a-15d3f5fe47e2",
+   "printed": null,
+   "source_name": "Hired Claw",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Sunbillow Verge",
+   "oracle_id": "a202276b-1f1b-4277-95ee-26877a204f5e",
+   "printed": "サンビロウの境界",
+   "source_name": "Sunbillow Verge",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Voice of Victory",
+   "oracle_id": "b12cbda1-ac09-49eb-96b3-a4df27bc37ea",
+   "printed": null,
+   "source_name": "Voice of Victory",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Stadium Headliner",
+   "oracle_id": "d8cfa20a-343e-4661-9f5a-a8265f6917a8",
+   "printed": null,
+   "source_name": "Stadium Headliner",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "R",
+    "W"
+   ],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Frontline Rush",
+   "oracle_id": "b80d21de-2ace-4e0d-92b2-6f0273512621",
+   "printed": null,
+   "source_name": "Frontline Rush",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 2,
+   "mana_value": 0,
+   "name": "Dalkovan Encampment",
+   "oracle_id": "33a90122-7280-4481-9b97-5879194cae40",
+   "printed": null,
+   "source_name": "Dalkovan Encampment",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 2,
+   "mana_value": 0,
+   "name": "Multiversal Passage",
+   "oracle_id": "17770eeb-ecbf-4510-af2d-acececfbe146",
+   "printed": "マルチバースへの通り道",
+   "source_name": "Multiversal Passage",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 4,
+   "name": "The Last Ronin's Technique",
+   "oracle_id": "6a51bb21-0c01-4ad8-99d7-17685db90b69",
+   "printed": null,
+   "source_name": "The Last Ronin's Technique",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Erode",
+   "oracle_id": "2e467fab-e808-44d3-99bf-e3621baeb7cb",
+   "printed": null,
+   "source_name": "Erode",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Belladonna Took",
+   "oracle_id": "011da9c5-aa8a-4fa0-b1f2-62b9f3760476",
+   "printed": null,
+   "source_name": "Belladonna Took",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Political Triumph",
+   "oracle_id": "0bbceb51-1fb8-44d7-8afc-b4746d292262",
+   "printed": null,
+   "source_name": "Political Triumph",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Rest in Peace",
+   "oracle_id": "087f9ad7-e74f-40e2-8102-1ed2925d0418",
+   "printed": "安らかなる眠り",
+   "source_name": "Rest in Peace",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Requisition Raid",
+   "oracle_id": "09669283-eb14-46a2-b37a-51d7a52da891",
+   "printed": null,
+   "source_name": "Requisition Raid",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  }
+ ],
+ "main_total": 60,
+ "name": "boros-tokens-vs-piza-g2",
+ "problems": [],
+ "schema": "mtg-playtest/deck@2",
+ "sideboard": [
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 5,
+   "name": "Elspeth, Storm Slayer",
+   "oracle_id": "f78af825-023a-42e9-8374-5c52303a1417",
+   "printed": null,
+   "source_name": "Elspeth, Storm Slayer",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Planeswalker"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Erode",
+   "oracle_id": "2e467fab-e808-44d3-99bf-e3621baeb7cb",
+   "printed": null,
+   "source_name": "Erode",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Dawn's Truce",
+   "oracle_id": "37c06f89-db36-4937-9404-2b07cd22e1a6",
+   "printed": "薄暮の休戦",
+   "source_name": "Dawn's Truce",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "The Queen of Dale",
+   "oracle_id": "a2ec1dd0-86c7-423d-b562-ed95b79bf8f7",
+   "printed": null,
+   "source_name": "The Queen of Dale",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "R",
+    "W"
+   ],
+   "count": 3,
+   "mana_value": 3,
+   "name": "Anim Pakal, Thousandth Moon",
+   "oracle_id": "05551d91-50c6-46d1-86a4-cd3d177d0923",
+   "printed": null,
+   "source_name": "Anim Pakal, Thousandth Moon",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 4,
+   "name": "The Last Ronin's Technique",
+   "oracle_id": "6a51bb21-0c01-4ad8-99d7-17685db90b69",
+   "printed": null,
+   "source_name": "The Last Ronin's Technique",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  }
+ ],
+ "sideboard_total": 15,
+ "source_file": "decklists\\boros-tokens-vs-piza-g2.txt",
+ "source_text": "# Name boros-tokens-vs-piza-g2\n# Name Boros Tokens\nDeck\n1 Plains\n3 Mountain\n4 Sacred Foundry\n4 Inspiring Vantage\n3 Song of Totentanz\n4 Warleader's Call\n4 Hired Claw\n4 Sunbillow Verge\n4 Voice of Victory\n4 Stadium Headliner\n4 Frontline Rush\n2 Dalkovan Encampment\n2 Multiversal Passage\n2 The Last Ronin's Technique\n2 Erode\n4 Belladonna Took\n4 Political Triumph\n3 Rest in Peace\n2 Requisition Raid\n\nSideboard\n2 Elspeth, Storm Slayer\n2 Erode\n3 Dawn's Truce\n3 The Queen of Dale\n3 Anim Pakal, Thousandth Moon\n2 The Last Ronin's Technique\n",
+ "updated_at": "2026-09-07T08:52:46Z",
+ "warnings": []
+}

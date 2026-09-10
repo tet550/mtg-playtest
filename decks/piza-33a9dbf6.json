@@ -1,0 +1,520 @@
+{
+ "created_at": "2026-09-07T08:07:27Z",
+ "description": "ワカモレとマシュマロのピザ／アガサの魂の大釜（サイド調整版）",
+ "format": "standard",
+ "key": "piza",
+ "legal": true,
+ "main": [
+  {
+   "colors": [
+    "G",
+    "R"
+   ],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Redshift, Rocketeer Chief",
+   "oracle_id": "582c7e54-d64c-4ffb-ae5f-d2752b3ed10b",
+   "printed": "ロケッティアの隊長、レッドシフト",
+   "source_name": "ロケッティアの隊長、レッドシフト",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Guac & Marshmallow Pizza",
+   "oracle_id": "d6d83a51-9d57-44a7-aae3-a96d43ec5ac8",
+   "printed": "ワカモレとマシュマロのピザ",
+   "source_name": "ワカモレとマシュマロのピザ",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Courier of Comestibles",
+   "oracle_id": "049d8b06-db90-4b9c-8195-d987b3ef1005",
+   "printed": "食料配達人",
+   "source_name": "食料配達人",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Chrome Dome",
+   "oracle_id": "3dc71e16-b935-4ad7-b3f7-945ac2c179a7",
+   "printed": "クロームドーム",
+   "source_name": "クロームドーム",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact",
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Sewer-veillance Cam",
+   "oracle_id": "25c83d45-581f-48ba-b6bb-feb66e8a65c7",
+   "printed": "監視亀ラ",
+   "source_name": "監視亀ラ",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 3,
+   "name": "Mona Lisa, Science Geek",
+   "oracle_id": "e6490e98-37a9-4a8b-a04c-cceeb22b0c35",
+   "printed": "科学オタク、モナリザ",
+   "source_name": "科学オタク、モナリザ",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Starting Town",
+   "oracle_id": "d04e0975-f401-41b8-a9db-9bcf9cbbce66",
+   "printed": "始まりの町",
+   "source_name": "始まりの町",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Does Machines",
+   "oracle_id": "df54b79d-f31d-4582-86c0-1d34ec77be0f",
+   "printed": "メカの天才",
+   "source_name": "メカの天才",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 3,
+   "mana_value": 0,
+   "name": "Breeding Pool",
+   "oracle_id": "20283c4a-f1f0-42f0-bc08-6da87474426b",
+   "printed": "繁殖池",
+   "source_name": "繁殖池",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Nature's Rhythm",
+   "oracle_id": "0259f063-3e3f-4e07-9066-f748d4819829",
+   "printed": "自然の律動",
+   "source_name": "自然の律動",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Patchwork Beastie",
+   "oracle_id": "6cf995e9-115a-4659-bace-9fbe75898b48",
+   "printed": "継ぎ接ぎのけだもの",
+   "source_name": "継ぎ接ぎのけだもの",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact",
+    "Creature"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Agatha's Soul Cauldron",
+   "oracle_id": "c259e16f-2a44-4552-8678-815f757a02e8",
+   "printed": "アガサの魂の大釜",
+   "source_name": "アガサの魂の大釜",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Spectral Sailor",
+   "oracle_id": "a8fdbcdf-479d-4582-9ad5-9fbd4c740c29",
+   "printed": "幽体の船乗り",
+   "source_name": "幽体の船乗り",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Ba Sing Se",
+   "oracle_id": "de1ae205-ca5b-4d26-8194-ca85f1406e53",
+   "printed": "バーシンセー",
+   "source_name": "バーシンセー",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Multiversal Passage",
+   "oracle_id": "17770eeb-ecbf-4510-af2d-acececfbe146",
+   "printed": "マルチバースへの通り道",
+   "source_name": "マルチバースへの通り道",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Training Compound",
+   "oracle_id": "99c70f4e-de8a-426d-99aa-17b2f87625ba",
+   "printed": "複合訓練施設",
+   "source_name": "複合訓練施設",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Botanical Sanctum",
+   "oracle_id": "88f8f683-738e-48f3-afff-c8f73f1033a2",
+   "printed": "植物の聖域",
+   "source_name": "植物の聖域",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "G",
+    "U"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Oblivious Bookworm",
+   "oracle_id": "300fd0a2-23e6-4da9-bfaa-ad626097d5b5",
+   "printed": "不注意な読書家",
+   "source_name": "不注意な読書家",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 2,
+   "mana_value": 0,
+   "name": "Spirebluff Canal",
+   "oracle_id": "eb0d8093-5f93-4b25-9384-08f9731bfb28",
+   "printed": "尖塔断の運河",
+   "source_name": "尖塔断の運河",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Stomping Ground",
+   "oracle_id": "16052b52-ade1-406f-a06b-ce7ea607fb63",
+   "printed": "踏み鳴らされる地",
+   "source_name": "踏み鳴らされる地",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Rapid Rescue",
+   "oracle_id": "de1ad369-5aa3-4c54-8fb1-30b7f1d4d542",
+   "printed": "迅速な救助",
+   "source_name": "迅速な救助",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Steam Vents",
+   "oracle_id": "17039058-822d-409f-938c-b727a366ba63",
+   "printed": "蒸気孔",
+   "source_name": "蒸気孔",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 3,
+   "mana_value": 0,
+   "name": "Forest",
+   "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+   "printed": "森",
+   "source_name": "森",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Island",
+   "oracle_id": "b2c6aa39-2d2a-459c-a555-fb48ba993373",
+   "printed": "島",
+   "source_name": "島",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  }
+ ],
+ "main_total": 60,
+ "name": "piza",
+ "problems": [],
+ "schema": "mtg-playtest/deck@2",
+ "sideboard": [
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Spell Pierce",
+   "oracle_id": "d64b0848-0193-4025-ba62-63ecd8fb9f50",
+   "printed": "呪文貫き",
+   "source_name": "呪文貫き",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Annul",
+   "oracle_id": "d08e9784-75f7-4164-ac48-d06160f8c56b",
+   "printed": "無効",
+   "source_name": "無効",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Into the Flood Maw",
+   "oracle_id": "8cb36a67-9206-4665-a03f-64f52ba559c4",
+   "printed": "洪水の大口へ",
+   "source_name": "洪水の大口へ",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Pawpatch Formation",
+   "oracle_id": "fa99cf82-ebf1-4526-ab9c-b24eb2970f2a",
+   "printed": "脚当ての陣形",
+   "source_name": "脚当ての陣形",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Snakeskin Veil",
+   "oracle_id": "1e6a24be-8281-41c1-a5ba-b68f0ef1d7b8",
+   "printed": "蛇皮のヴェール",
+   "source_name": "蛇皮のヴェール",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Wild Ride",
+   "oracle_id": "61978202-538b-4f92-acfc-e95f4a6ce466",
+   "printed": "激しき乗りこなし",
+   "source_name": "激しき乗りこなし",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Flashfreeze",
+   "oracle_id": "eaf98e03-729b-4145-b2af-c910c415c15d",
+   "printed": "瞬間凍結",
+   "source_name": "瞬間凍結",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Fire Magic",
+   "oracle_id": "c87db803-3490-41bc-af7a-78f99bcd77c8",
+   "printed": "炎魔法",
+   "source_name": "炎魔法",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  }
+ ],
+ "sideboard_total": 15,
+ "source_file": "decklists\\piza.txt",
+ "source_text": "デッキ\n4 ロケッティアの隊長、レッドシフト (DFT) 218\n4 ワカモレとマシュマロのピザ (TMT) 116\n1 食料配達人 (TMT) 112\n4 クロームドーム (TMT) 172\n4 監視亀ラ (TMT) 53\n4 科学オタク、モナリザ (TMT) 123\n4 始まりの町 (FIN) 289\n3 メカの天才 (TMT) 34\n3 繁殖池 (RNA) 246\n1 自然の律動 (TDM) 150\n1 継ぎ接ぎのけだもの (DSK) 195\n4 アガサの魂の大釜 (WOE) 242\n1 幽体の船乗り (FDN) 164\n1 バーシンセー (TLA) 266\n1 マルチバースへの通り道 (SPM) 180\n1 複合訓練施設 (MSH) 275\n4 植物の聖域 (OTJ) 267\n3 不注意な読書家 (DSK) 225\n2 尖塔断の運河 (OTJ) 270\n1 踏み鳴らされる地 (RNA) 259\n4 迅速な救助 (MSH) 181\n1 蒸気孔 (GRN) 257\n3 森\n1 島\n\nサイドボード\n2 呪文貫き (SOA) 23\n1 無効 (EOE) 46\n3 洪水の大口へ (BLB) 52\n2 脚当ての陣形 (BLB) 186\n2 蛇皮のヴェール (TDM) 159\n1 激しき乗りこなし (TDM) 132\n2 瞬間凍結 (FDN) 590\n2 炎魔法 (FIN) 136\n",
+ "updated_at": "2026-09-07T08:52:46Z",
+ "warnings": []
+}

@@ -1,0 +1,442 @@
+{
+ "created_at": "2026-09-07T01:32:12Z",
+ "description": "緑単上陸 vs ピザ サイド後",
+ "format": "standard",
+ "key": "mono-green-g2",
+ "legal": true,
+ "main": [
+  {
+   "colors": [],
+   "count": 13,
+   "mana_value": 0,
+   "name": "Forest",
+   "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+   "printed": "森",
+   "source_name": "Forest",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Fabled Passage",
+   "oracle_id": "0c85b8f7-0bd0-4680-9ec5-d4b110460a54",
+   "printed": "寓話の小道",
+   "source_name": "Fabled Passage",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 3,
+   "mana_value": 0,
+   "name": "Ba Sing Se",
+   "oracle_id": "de1ae205-ca5b-4d26-8194-ca85f1406e53",
+   "printed": "バーシンセー",
+   "source_name": "Ba Sing Se",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 2,
+   "mana_value": 0,
+   "name": "Elven Passage",
+   "oracle_id": "97a2cd39-6b54-496b-b3ac-dab9dfed7edc",
+   "printed": null,
+   "source_name": "Elven Passage",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 2,
+   "mana_value": 0,
+   "name": "Escape Tunnel",
+   "oracle_id": "0056fc91-4398-471c-b561-7ff99750ac8a",
+   "printed": "脱出トンネル",
+   "source_name": "Escape Tunnel",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Demolition Field",
+   "oracle_id": "93953926-a644-49bb-9b5a-4c8f19114c7e",
+   "printed": null,
+   "source_name": "Demolition Field",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Promising Vein",
+   "oracle_id": "861eb7d7-7616-4620-a4fd-4b8c3bf00dd1",
+   "printed": null,
+   "source_name": "Promising Vein",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Llanowar Elves",
+   "oracle_id": "68954295-54e3-4303-a6bc-fc4547a4e3a3",
+   "printed": "ラノワールのエルフ",
+   "source_name": "Llanowar Elves",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Sazh's Chocobo",
+   "oracle_id": "c2b082b4-5d9c-4125-b353-d1cf4f334720",
+   "printed": "サッズのヒナチョコボ",
+   "source_name": "Sazh's Chocobo",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 3,
+   "name": "Mossborn Hydra",
+   "oracle_id": "84122d81-9634-4d3f-85a5-f6cf4303691a",
+   "printed": "苔生まれのハイドラ",
+   "source_name": "Mossborn Hydra",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 4,
+   "name": "Icetill Explorer",
+   "oracle_id": "109cdefd-e8cc-4ac7-b6ba-2cfdef8d780f",
+   "printed": null,
+   "source_name": "Icetill Explorer",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 4,
+   "name": "Mightform Harmonizer",
+   "oracle_id": "8e025cda-71c5-4d06-8436-decd408667af",
+   "printed": null,
+   "source_name": "Mightform Harmonizer",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 3,
+   "name": "Surrak, Elusive Hunter",
+   "oracle_id": "7a0fe73f-6e08-4c9a-80e1-c2ead6cebe06",
+   "printed": "神出鬼没の狩人、スーラク",
+   "source_name": "Surrak, Elusive Hunter",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 4,
+   "name": "Leatherhead, Swamp Stalker",
+   "oracle_id": "ee9b606a-a1fe-43c8-84d0-9bf7b012cc75",
+   "printed": null,
+   "source_name": "Leatherhead, Swamp Stalker",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Meltstrider's Resolve",
+   "oracle_id": "6f9bc0c6-1792-4771-a839-95a22d9c699a",
+   "printed": null,
+   "source_name": "Meltstrider's Resolve",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 4,
+   "mana_value": 3,
+   "name": "Earthbender Ascension",
+   "oracle_id": "f8966fd5-2926-4ba0-b7d6-cfea40cd4e05",
+   "printed": "土のベンダーの位に至る",
+   "source_name": "Earthbender Ascension",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 8,
+   "name": "Sapling Nursery",
+   "oracle_id": "8bcbae66-1854-480e-a449-33e5389610ab",
+   "printed": "若木の生育場",
+   "source_name": "Sapling Nursery",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Glimpse the Core",
+   "oracle_id": "fa44fa48-d270-4f0f-b672-d63e1c1942ce",
+   "printed": null,
+   "source_name": "Glimpse the Core",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  }
+ ],
+ "main_total": 60,
+ "name": "mono-green-g2",
+ "problems": [],
+ "schema": "mtg-playtest/deck@2",
+ "sideboard": [
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Esper Origins // Summon: Esper Maduin",
+   "oracle_id": "947b40a2-e272-4ef6-85fb-3d767a21bc7a",
+   "printed": "幻獣との交わり",
+   "source_name": "Esper Origins",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 8,
+   "name": "Sapling Nursery",
+   "oracle_id": "8bcbae66-1854-480e-a449-33e5389610ab",
+   "printed": "若木の生育場",
+   "source_name": "Sapling Nursery",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Glimpse the Core",
+   "oracle_id": "fa44fa48-d270-4f0f-b672-d63e1c1942ce",
+   "printed": null,
+   "source_name": "Glimpse the Core",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 3,
+   "name": "Lumbering Worldwagon",
+   "oracle_id": "7e60a641-1f2d-45ff-b3f2-d389be938b22",
+   "printed": null,
+   "source_name": "Lumbering Worldwagon",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Forest",
+   "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+   "printed": "森",
+   "source_name": "Forest",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Keen-Eyed Curator",
+   "oracle_id": "46ce3698-e4e6-44e9-8b99-2b12a703e91e",
+   "printed": "鋭い目の管理者",
+   "source_name": "Keen-Eyed Curator",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Torpor Orb",
+   "oracle_id": "97326cad-b13c-4e52-82ce-850a39e5ff08",
+   "printed": "倦怠の宝珠",
+   "source_name": "Torpor Orb",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Warg Tactics",
+   "oracle_id": "d1663b51-37a1-45a0-b477-2d3e7dd0828e",
+   "printed": null,
+   "source_name": "Warg Tactics",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 7,
+   "name": "Gigantic Big Bear",
+   "oracle_id": "88d7bd11-7b1d-426c-8552-01448531c6ad",
+   "printed": null,
+   "source_name": "Gigantic Big Bear",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  }
+ ],
+ "sideboard_total": 15,
+ "source_file": "decklists\\mono-green-landfall-g2.txt",
+ "source_text": "# 緑単上陸 — ゲーム2以降（vs ピザ）構成\n# 元: decklists/mono-green-landfall.txt\n# 方針: ピザ側は6〜7ターンに無限マナで詰めてくる純コンボ。\n#       こちらに干渉手段がほぼ無いのがゲーム1の敗因なので、\n#       「盤面に触れる呪文」と「1〜2ターン速いクロック」に寄せる。\n#\n# IN  (9): 4 Mossborn Hydra / 3 Meltstrider's Resolve / 1 Surrak / 1 Leatherhead\n# OUT (9): 3 Esper Origins / 2 Sapling Nursery / 2 Glimpse the Core\n#          1 Lumbering Worldwagon / 1 Forest\nデッキ\n13 Forest\n4 Fabled Passage\n3 Ba Sing Se\n2 Elven Passage\n2 Escape Tunnel\n1 Demolition Field\n1 Promising Vein\n4 Llanowar Elves\n4 Sazh's Chocobo\n4 Mossborn Hydra\n4 Icetill Explorer\n4 Mightform Harmonizer\n2 Surrak, Elusive Hunter\n1 Leatherhead, Swamp Stalker\n4 Meltstrider's Resolve\n4 Earthbender Ascension\n2 Sapling Nursery\n1 Glimpse the Core\n\nサイドボード\n3 Esper Origins\n2 Sapling Nursery\n2 Glimpse the Core\n1 Lumbering Worldwagon\n1 Forest\n1 Keen-Eyed Curator\n2 Torpor Orb\n2 Warg Tactics\n1 Gigantic Big Bear\n",
+ "updated_at": "2026-09-07T08:52:46Z",
+ "warnings": []
+}
