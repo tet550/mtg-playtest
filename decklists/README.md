@@ -73,23 +73,3 @@ Sideboard
 
 中身の書式は自由。デッキの狙い・始動手順・キープ基準・不利マッチでの方針など、
 プレイ中に迷う判断を書く。
-
-**マッチアップごとのサイドボード計画も同じ文書に「サイドボード」節として立てる。**
-IN/OUT のカード名はデッキリストと同じ英語名で書き、そのまま `g02-<略称>.txt` に写せる形にする
-（例: [`strategy/piza.md`](strategy/piza.md) の「サイドボード」）。
-サイド後の75枚は素の構築 ± IN/OUT で一意に決まるので、75枚を並べ直さない。
-
-## 旧名との対応
-
-2026-09-10 に命名を揃えた。playtest 配下の過去のレポートは旧名で書かれているため、
-遡って改名せずこの表で読み替える。
-
-| 旧名 | 新名 |
-|---|---|
-| 登録名 `ボロスドワーフ` | `boros-dwarves` |
-| 登録名 `Boros Tokens` | `boros-tokens` |
-| `piza-g2` / `piza-vs-dwarves-g2` / `piza-vs-tokens-g2` | 登録をやめ、[`strategy/piza.md`](strategy/piza.md) の「サイドボード」節へ |
-| `boros-dwarves-vs-piza-g2` / `boros-tokens-vs-piza-g2` / `mono-green-landfall-g2`（登録名 `mono-green-g2`） | 登録をやめ、計画も削除（方針文書がまだ無いデッキ）。必要になったら `strategy/<登録名>.md` を立てて書き直す。過去の内容は git 履歴（`9d1cea2`）にある |
-
-素の構築の中身（メイン60・サイド15の内訳）はこの整理で一切変えていない。
-サイド後の75枚は素の構築 ± IN/OUT で復元できる。
