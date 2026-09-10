@@ -1,5 +1,5 @@
 {
- "created_at": "2026-09-10T06:40:48Z",
+ "created_at": "2026-09-10T07:30:38Z",
  "description": "ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ",
  "format": "standard",
  "key": "piza",
@@ -401,22 +401,6 @@
   },
   {
    "colors": [
-    "R"
-   ],
-   "count": 2,
-   "mana_value": 1,
-   "name": "Fire Magic",
-   "oracle_id": "c87db803-3490-41bc-af7a-78f99bcd77c8",
-   "printed": "炎魔法",
-   "source_name": "Fire Magic",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Instant"
-   ]
-  },
-  {
-   "colors": [
     "U"
    ],
    "count": 3,
@@ -435,7 +419,7 @@
    "colors": [
     "G"
    ],
-   "count": 2,
+   "count": 3,
    "mana_value": 1,
    "name": "Snakeskin Veil",
    "oracle_id": "1e6a24be-8281-41c1-a5ba-b68f0ef1d7b8",
@@ -465,22 +449,6 @@
   },
   {
    "colors": [
-    "R"
-   ],
-   "count": 1,
-   "mana_value": 1,
-   "name": "Wild Ride",
-   "oracle_id": "61978202-538b-4f92-acfc-e95f4a6ce466",
-   "printed": "激しき乗りこなし",
-   "source_name": "Wild Ride",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Sorcery"
-   ]
-  },
-  {
-   "colors": [
     "U"
    ],
    "count": 2,
@@ -501,20 +469,36 @@
    ],
    "count": 2,
    "mana_value": 2,
-   "name": "Pawpatch Formation",
-   "oracle_id": "fa99cf82-ebf1-4526-ab9c-b24eb2970f2a",
-   "printed": "脚当ての陣形",
-   "source_name": "Pawpatch Formation",
+   "name": "Heritage Reclamation",
+   "oracle_id": "09955b4b-6052-4c27-8b63-9548482b3c5c",
+   "printed": "受け継ぎし地の開墾",
+   "source_name": "Heritage Reclamation",
    "status": "ok",
    "supertypes": [],
    "types": [
     "Instant"
    ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Pyroclasm",
+   "oracle_id": "e4bcd4ea-e7cd-4471-8f3b-18bb51d3d70c",
+   "printed": "紅蓮地獄",
+   "source_name": "Pyroclasm",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
   }
  ],
  "sideboard_total": 15,
  "source_file": "decklists/piza.txt",
- "source_text": "# piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）\n# 方針: decklists/strategy/piza.md\n\nDeck\n1 Patchwork Beastie\n1 Spectral Sailor\n4 Chrome Dome\n1 Courier of Comestibles\n3 Oblivious Bookworm\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n\n4 Guac & Marshmallow Pizza\n4 Rapid Rescue\n4 Sewer-veillance Cam\n4 Agatha's Soul Cauldron\n3 Does Machines\n1 Nature's Rhythm\n\n1 Ba Sing Se\n4 Botanical Sanctum\n3 Breeding Pool\n3 Forest\n1 Island\n1 Multiversal Passage\n2 Spirebluff Canal\n4 Starting Town\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Annul\n2 Fire Magic\n3 Into the Flood Maw\n2 Snakeskin Veil\n2 Spell Pierce\n1 Wild Ride\n2 Flashfreeze\n2 Pawpatch Formation\n",
- "updated_at": "2026-09-10T06:40:48Z",
+ "source_text": "# piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）\n# 方針: decklists/strategy/piza.md\n\n\nDeck\n1 Patchwork Beastie\n1 Spectral Sailor\n4 Chrome Dome\n1 Courier of Comestibles\n3 Oblivious Bookworm\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n\n4 Guac & Marshmallow Pizza\n4 Rapid Rescue\n4 Sewer-veillance Cam\n4 Agatha's Soul Cauldron\n3 Does Machines\n1 Nature's Rhythm\n\n1 Ba Sing Se\n4 Botanical Sanctum\n3 Breeding Pool\n3 Forest\n1 Island\n1 Multiversal Passage\n2 Spirebluff Canal\n4 Starting Town\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Annul\n3 Into the Flood Maw\n3 Snakeskin Veil\n2 Spell Pierce\n2 Flashfreeze\n2 Heritage Reclamation\n2 Pyroclasm\n",
+ "updated_at": "2026-09-10T07:32:43Z",
  "warnings": []
 }

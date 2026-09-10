@@ -1,6 +1,7 @@
 # piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）
 # 方針: decklists/strategy/piza.md
 
+
 Deck
 1 Patchwork Beastie
 1 Spectral Sailor
@@ -31,10 +32,9 @@ Deck
 
 Sideboard
 1 Annul
-2 Fire Magic
 3 Into the Flood Maw
-2 Snakeskin Veil
+3 Snakeskin Veil
 2 Spell Pierce
-1 Wild Ride
 2 Flashfreeze
-2 Pawpatch Formation
+2 Heritage Reclamation
+2 Pyroclasm
