@@ -7,7 +7,10 @@
 使い方:
     python shuffle.py deck.txt                 # 乱数シードは自動
     python shuffle.py piza --seed 12345        # 登録済みデッキ名でもよい／再現したいとき
-    python shuffle.py deck.txt --games 20 --out sim/   # 複数ゲーム分を一括生成
+    python shuffle.py deck.txt --games 20 --out playtest/<対局>/   # 複数ゲーム分を一括生成
+
+出力はプレイ記録なので playtest 配下に置く（既定は playtest/）。対局に紐づくものは
+その対局フォルダを --out で明示する。規定は references/storage-layout.md。
 
 デッキの解釈は decks.py と共通なので、Arena 形式（"4 Lightning Bolt (2XM) 129"）、
 "デッキ"/"サイドボード" の見出し、# コメントをそのまま読み、カード名は英語名に揃う。
@@ -30,7 +33,8 @@ def main():
     ap.add_argument("deck", help="登録名 または デッキリストのファイルパス")
     ap.add_argument("--seed", type=int)
     ap.add_argument("--games", type=int, default=1)
-    ap.add_argument("--out", default=".")
+    ap.add_argument("--out", default="playtest",
+                    help="出力先。既定は playtest/。対局に紐づくなら playtest/<対局フォルダ>/ を指定する")
     ap.add_argument("--decks-dir", default=decks.DEFAULT_DIR)
     ap.add_argument("--cards-dir", default=cardcache.DEFAULT_DIR)
     ap.add_argument("--offline", action="store_true")

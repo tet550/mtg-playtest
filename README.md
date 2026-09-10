@@ -71,12 +71,30 @@ python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json
     references/                 進行手順・スキーマ・保存先規約・ログ書式
     scripts/                    盤面管理 CLI（mtg.py とモジュール群）
     tests/                      unittest によるリグレッションテスト
-decklists/                      デッキリスト（Arena 形式のテキスト）
-decks/                          登録済みデッキ（JSON。カード名と oracle_id のみ）
+decklists/                      デッキリスト（Arena 形式のテキスト。人が書く正本）
+decks/                          登録済みデッキ（decklists から生成。検証済みの定義）
 design/                         設計メモ（永続状態・誘発処理・効果の関連付けなど）
 cards/                          カードキャッシュ（Git 管理外。実行時に自動生成）
 playtest/                       対局データ（Git 管理外。実行のたびに生成）
 ```
+
+### データの流れ
+
+```text
+decklists/*.txt  ──deck add──▶  decks/*.json  ──init──▶  playtest/<対局>/g01.json
+（人が書く）                    （検証済み定義）           （対局の記録）
+                                      ▲
+                             cards/（Scryfall キャッシュ）
+```
+
+- **`decklists/`** … 手で書くデッキリスト。ここが唯一の手書きの正本。
+- **`decks/`** … `deck add` が `decklists/` を読んで作る**デッキ定義の登録簿**。カード名の表記揺れ・
+  4枚制限・枚数不足を登録時に潰し、以後は登録名（`--deck1 piza`）で参照できる。**対局の記録ではない**
+  ので、対局をいくら回しても増えません。増えるのはデッキを追加・サイド調整したときだけです。
+- **`playtest/`** … 盤面の状態・操作バッチ・undo 履歴・`results.jsonl`・レポートといった
+  **プレイ記録はすべてここ**。1つの依頼＝1フォルダで、命名規約は
+  [`references/storage-layout.md`](.claude/skills/mtg-playtest/references/storage-layout.md)。
+  `shuffle.py` の引き順出力もここに入ります。
 
 `cards/` と `playtest/` は `.gitignore` で除外しています。クローン直後には存在せず、
 初回の実行時に作られます。理由は [NOTICE.md](NOTICE.md) を参照してください。
