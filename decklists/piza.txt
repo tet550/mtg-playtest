@@ -2,6 +2,7 @@
 # 方針: decklists/strategy/piza.md
 
 
+
 Deck
 1 Patchwork Beastie
 1 Spectral Sailor
@@ -32,9 +33,9 @@ Deck
 
 Sideboard
 1 Annul
+2 Fire Magic
 3 Into the Flood Maw
 3 Snakeskin Veil
 2 Spell Pierce
 2 Flashfreeze
 2 Heritage Reclamation
-2 Pyroclasm
