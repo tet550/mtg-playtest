@@ -1,30 +1,34 @@
-# ボロスドワーフ / ユーザー提供画像から転記
+# boros-dwarves — ボロスドワーフ（装備品アグロ）
+# 出典: ユーザー提供画像から転記
+
 Deck
-4 ドワーフの打ち壊し屋
-2 スケートボード
-3 ドク・オックの触手
-4 Lavaspur Boots
+4 Dwarven Mauler
+2 Dwalin, Weaponmaster
+4 Dáin's Company
+4 Kíli the Resourceful
+1 Raubahn, Bull of Ala Mhigo
+1 Dáin Ironfoot
+2 Thorin, Mountain-king
+
+3 Doc Ock's Tentacles
 3 Ghostfire Blade
-4 臨機応変なる者、キーリ
-1 アラミゴの猛牛、ラウバーン
-2 武器の達人、ドワーリン
-4 ダーインの隊
-3 「侍」の刀
-1 鉄の足のダーイン
-2 山の王、ソーリン
-4 力線の斧
-4 はなれ山
-3 山
-4 サンビロウの境界
-4 感動的な眺望所
-4 聖なる鋳造所
-4 魂の洞窟
+4 Lavaspur Boots
+2 Skateboard
+3 Samurai's Katana
+4 Leyline Axe
+
+4 Cavern of Souls
+4 Inspiring Vantage
+3 Mountain
+4 Sacred Foundry
+4 Sunbillow Verge
+4 The Lonely Mountain
 
 Sideboard
-2 噴出の稲妻
-2 悪魔祓い
-2 安らかなる眠り
-2 解呪
-3 薄暮の休戦
-3 幽霊による庇護
-1 削剥
+2 Burst Lightning
+1 Abrade
+3 Dawn's Truce
+2 Disenchant
+2 Exorcise
+2 Rest in Peace
+3 Sheltered by Ghosts

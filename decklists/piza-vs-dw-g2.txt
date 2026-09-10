@@ -1,0 +1,54 @@
+# piza-vs-dw-g2 — piza の vs ボロスドワーフ（dw）サイド後（G2）
+# 元: decklists/piza.txt
+# IN  (9): 2 Fire Magic / 3 Into the Flood Maw / 2 Pawpatch Formation / 2 Snakeskin Veil
+# OUT (9): 2 Agatha's Soul Cauldron / 1 Courier of Comestibles / 2 Does Machines /
+#          1 Nature's Rhythm / 1 Patchwork Beastie / 1 Rapid Rescue / 1 Spectral Sailor
+# 理由: 盤面に触らない札とアグロ相手に間に合わない札を抜く。
+#       Patchwork Beastie は昂揚が付くまでブロックできない。
+#       Fire Magic のファイラ（{2}）は Dwarven Mauler 2/1・Dwalin 2/1・Dáin's Company 2/2・
+#       Kíli 1/2 を流し、こちらの Chrome Dome 1/3 と Mona Lisa 1/3 は生き残る一方的な掃除。
+#       Into the Flood Maw は装備したクリーチャーを戻して装備コストごと損させる。
+#       Snakeskin Veil と Pawpatch Formation は、G1後に相手が入れてくる Disenchant・Abrade・
+#       Sheltered by Ghosts への保険。
+
+Deck
+4 Chrome Dome
+3 Oblivious Bookworm
+4 Redshift, Rocketeer Chief
+4 Mona Lisa, Science Geek
+
+2 Fire Magic
+4 Guac & Marshmallow Pizza
+3 Into the Flood Maw
+3 Rapid Rescue
+4 Sewer-veillance Cam
+2 Snakeskin Veil
+2 Agatha's Soul Cauldron
+1 Does Machines
+2 Pawpatch Formation
+
+1 Ba Sing Se
+4 Botanical Sanctum
+3 Breeding Pool
+3 Forest
+1 Island
+1 Multiversal Passage
+2 Spirebluff Canal
+4 Starting Town
+1 Steam Vents
+1 Stomping Ground
+1 Training Compound
+
+Sideboard
+1 Patchwork Beastie
+1 Spectral Sailor
+1 Courier of Comestibles
+
+1 Annul
+1 Rapid Rescue
+2 Spell Pierce
+1 Wild Ride
+2 Agatha's Soul Cauldron
+2 Does Machines
+2 Flashfreeze
+1 Nature's Rhythm

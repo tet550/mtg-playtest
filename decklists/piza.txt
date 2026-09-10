@@ -1,36 +1,40 @@
-# プレイ方針の記載欄：decklists/piza-strategy.md
-デッキ
-4 ロケッティアの隊長、レッドシフト (DFT) 218
-4 ワカモレとマシュマロのピザ (TMT) 116
-1 食料配達人 (TMT) 112
-4 クロームドーム (TMT) 172
-4 監視亀ラ (TMT) 53
-4 科学オタク、モナリザ (TMT) 123
-4 始まりの町 (FIN) 289
-3 メカの天才 (TMT) 34
-3 繁殖池 (RNA) 246
-1 自然の律動 (TDM) 150
-1 継ぎ接ぎのけだもの (DSK) 195
-4 アガサの魂の大釜 (WOE) 242
-1 幽体の船乗り (FDN) 164
-1 バーシンセー (TLA) 266
-1 マルチバースへの通り道 (SPM) 180
-1 複合訓練施設 (MSH) 275
-4 植物の聖域 (OTJ) 267
-3 不注意な読書家 (DSK) 225
-2 尖塔断の運河 (OTJ) 270
-1 踏み鳴らされる地 (RNA) 259
-4 迅速な救助 (MSH) 181
-1 蒸気孔 (GRN) 257
-3 森
-1 島
+# piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）
+# 方針: decklists/piza-strategy.md
 
-サイドボード
-2 呪文貫き (SOA) 23
-1 無効 (EOE) 46
-3 洪水の大口へ (BLB) 52
-2 脚当ての陣形 (BLB) 186
-2 蛇皮のヴェール (TDM) 159
-1 激しき乗りこなし (TDM) 132
-2 瞬間凍結 (FDN) 590
-2 炎魔法 (FIN) 136
+Deck
+1 Patchwork Beastie
+1 Spectral Sailor
+4 Chrome Dome
+1 Courier of Comestibles
+3 Oblivious Bookworm
+4 Redshift, Rocketeer Chief
+4 Mona Lisa, Science Geek
+
+4 Guac & Marshmallow Pizza
+4 Rapid Rescue
+4 Sewer-veillance Cam
+4 Agatha's Soul Cauldron
+3 Does Machines
+1 Nature's Rhythm
+
+1 Ba Sing Se
+4 Botanical Sanctum
+3 Breeding Pool
+3 Forest
+1 Island
+1 Multiversal Passage
+2 Spirebluff Canal
+4 Starting Town
+1 Steam Vents
+1 Stomping Ground
+1 Training Compound
+
+Sideboard
+1 Annul
+2 Fire Magic
+3 Into the Flood Maw
+2 Snakeskin Veil
+2 Spell Pierce
+1 Wild Ride
+2 Flashfreeze
+2 Pawpatch Formation

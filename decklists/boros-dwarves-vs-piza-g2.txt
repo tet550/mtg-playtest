@@ -1,37 +1,42 @@
-# Name boros-dwarves-vs-piza-g2
-# ボロスドワーフ vs piza サイド後（G2）
-# OUT: 3 ドク・オックの触手 / 3 Ghostfire Blade / 2 スケートボード
-#      いずれも「先にクリーチャーが要る」装備品。G1では盤面に装備品4個・クリーチャー0体の時間が3ターン続いた。
-#      触手は装備{5}、Ghostfire Bladeは有色クリーチャー相手に装備{3}で、いちばん置きにくい。
-# IN : 3 幽霊による庇護 / 2 悪魔祓い / 2 解呪 / 1 削剥
-#      G1でメインに置物への解答が0枚。クロームドーム／モナリザ／ピザに触れる札を8枚入れる。
-#      幽霊による庇護は「除去＋クロックの継続」を1枚で満たすのでアグロの手を止めない。
+# boros-dwarves-vs-piza-g2 — boros-dwarves の vs piza サイド後（G2）
+# 元: decklists/boros-dwarves.txt
+# IN  (8): 1 Abrade / 2 Disenchant / 2 Exorcise / 3 Sheltered by Ghosts
+# OUT (8): 3 Doc Ock's Tentacles / 3 Ghostfire Blade / 2 Skateboard
+# 理由: 抜いた3種はいずれも「先にクリーチャーが要る」装備品。G1では盤面に装備品4個・
+#       クリーチャー0体の時間が3ターン続いた。Doc Ock's Tentacles は装備{5}、
+#       Ghostfire Blade は有色クリーチャー相手に装備{3}で、いちばん置きにくい。
+#       G1ではメインに置物への解答が0枚だったので、Chrome Dome／Mona Lisa／
+#       Guac & Marshmallow Pizza に触れる札を8枚入れる。
+#       Sheltered by Ghosts は「除去＋クロックの継続」を1枚で満たすのでアグロの手を止めない。
+
 Deck
-4 ドワーフの打ち壊し屋
+4 Dwarven Mauler
+2 Dwalin, Weaponmaster
+4 Dáin's Company
+4 Kíli the Resourceful
+1 Raubahn, Bull of Ala Mhigo
+1 Dáin Ironfoot
+2 Thorin, Mountain-king
+
 4 Lavaspur Boots
-4 臨機応変なる者、キーリ
-1 アラミゴの猛牛、ラウバーン
-2 武器の達人、ドワーリン
-4 ダーインの隊
-3 幽霊による庇護
-2 悪魔祓い
-2 解呪
-1 削剥
-3 「侍」の刀
-1 鉄の足のダーイン
-2 山の王、ソーリン
-4 力線の斧
-4 はなれ山
-3 山
-4 サンビロウの境界
-4 感動的な眺望所
-4 聖なる鋳造所
-4 魂の洞窟
+1 Abrade
+2 Disenchant
+2 Exorcise
+3 Sheltered by Ghosts
+3 Samurai's Katana
+4 Leyline Axe
+
+4 Cavern of Souls
+4 Inspiring Vantage
+3 Mountain
+4 Sacred Foundry
+4 Sunbillow Verge
+4 The Lonely Mountain
 
 Sideboard
-2 噴出の稲妻
-2 安らかなる眠り
-3 薄暮の休戦
-3 ドク・オックの触手
+2 Burst Lightning
+3 Doc Ock's Tentacles
 3 Ghostfire Blade
-2 スケートボード
+2 Skateboard
+3 Dawn's Truce
+2 Rest in Peace

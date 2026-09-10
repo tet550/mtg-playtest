@@ -93,7 +93,7 @@ burn → decks\burn-03b5db72.json
 | `sideboard` | object[] | サイドボード。同じ形 |
 | `main_total` | integer | `main` の `count` 合計。**一致しなければ不正** |
 | `sideboard_total` | integer | 同上 |
-| `source_file` | string\|null | 取り込み元のファイルパス |
+| `source_file` | string\|null | 取り込み元のファイルパス（区切りは `/`） |
 | `source_text` | string | **元のテキストをそのまま**保存する。解釈が変わったとき読み直せる |
 | `warnings` | string[] | 解釈時の警告（読めなかった行、読み飛ばした節） |
 | `problems` | string[] | 検証で見つかった問題。空なら適正 |

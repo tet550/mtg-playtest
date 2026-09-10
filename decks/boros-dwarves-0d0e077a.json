@@ -1,8 +1,8 @@
 {
  "created_at": "2026-09-10T06:21:57Z",
- "description": "boros-dwarves の vs piza サイド後（G2）",
+ "description": "ボロスドワーフ（装備品アグロ）",
  "format": "standard",
- "key": "boros-dwarves-vs-piza-g2",
+ "key": "boros-dwarves",
  "legal": true,
  "main": [
   {
@@ -131,6 +131,34 @@
   },
   {
    "colors": [],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Doc Ock's Tentacles",
+   "oracle_id": "a5a18764-eb29-4bd8-a2e9-0ce55f4f6c88",
+   "printed": "ドク・オックの触手",
+   "source_name": "Doc Ock's Tentacles",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Ghostfire Blade",
+   "oracle_id": "093b1d8d-c836-4e9b-855b-4020361aa6ac",
+   "printed": null,
+   "source_name": "Ghostfire Blade",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [],
    "count": 4,
    "mana_value": 1,
    "name": "Lavaspur Boots",
@@ -144,67 +172,17 @@
    ]
   },
   {
-   "colors": [
-    "R"
-   ],
-   "count": 1,
-   "mana_value": 2,
-   "name": "Abrade",
-   "oracle_id": "f9db72dc-9a5b-48a4-a86e-7464d9a2166a",
-   "printed": "削剥",
-   "source_name": "Abrade",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Instant"
-   ]
-  },
-  {
-   "colors": [
-    "W"
-   ],
+   "colors": [],
    "count": 2,
-   "mana_value": 2,
-   "name": "Disenchant",
-   "oracle_id": "a7e97fa9-4b72-4548-b854-5be5f18a6f1a",
-   "printed": "解呪",
-   "source_name": "Disenchant",
+   "mana_value": 1,
+   "name": "Skateboard",
+   "oracle_id": "decfde5e-ea53-4b15-8f69-51da7ef39d15",
+   "printed": "スケートボード",
+   "source_name": "Skateboard",
    "status": "ok",
    "supertypes": [],
    "types": [
-    "Instant"
-   ]
-  },
-  {
-   "colors": [
-    "W"
-   ],
-   "count": 2,
-   "mana_value": 2,
-   "name": "Exorcise",
-   "oracle_id": "58916455-844c-4d97-908f-8205bdc117c0",
-   "printed": "悪魔祓い",
-   "source_name": "Exorcise",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Sorcery"
-   ]
-  },
-  {
-   "colors": [
-    "W"
-   ],
-   "count": 3,
-   "mana_value": 2,
-   "name": "Sheltered by Ghosts",
-   "oracle_id": "d13fc657-c6fc-4394-bc70-691050550226",
-   "printed": "幽霊による庇護",
-   "source_name": "Sheltered by Ghosts",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Enchantment"
+    "Artifact"
    ]
   },
   {
@@ -325,7 +303,7 @@
   }
  ],
  "main_total": 60,
- "name": "boros-dwarves-vs-piza-g2",
+ "name": "boros-dwarves",
  "problems": [],
  "schema": "mtg-playtest/deck@2",
  "sideboard": [
@@ -346,45 +324,19 @@
    ]
   },
   {
-   "colors": [],
-   "count": 3,
-   "mana_value": 1,
-   "name": "Doc Ock's Tentacles",
-   "oracle_id": "a5a18764-eb29-4bd8-a2e9-0ce55f4f6c88",
-   "printed": "ドク・オックの触手",
-   "source_name": "Doc Ock's Tentacles",
+   "colors": [
+    "R"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Abrade",
+   "oracle_id": "f9db72dc-9a5b-48a4-a86e-7464d9a2166a",
+   "printed": "削剥",
+   "source_name": "Abrade",
    "status": "ok",
    "supertypes": [],
    "types": [
-    "Artifact"
-   ]
-  },
-  {
-   "colors": [],
-   "count": 3,
-   "mana_value": 1,
-   "name": "Ghostfire Blade",
-   "oracle_id": "093b1d8d-c836-4e9b-855b-4020361aa6ac",
-   "printed": null,
-   "source_name": "Ghostfire Blade",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Artifact"
-   ]
-  },
-  {
-   "colors": [],
-   "count": 2,
-   "mana_value": 1,
-   "name": "Skateboard",
-   "oracle_id": "decfde5e-ea53-4b15-8f69-51da7ef39d15",
-   "printed": "スケートボード",
-   "source_name": "Skateboard",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Artifact"
+    "Instant"
    ]
   },
   {
@@ -409,6 +361,38 @@
    ],
    "count": 2,
    "mana_value": 2,
+   "name": "Disenchant",
+   "oracle_id": "a7e97fa9-4b72-4548-b854-5be5f18a6f1a",
+   "printed": "解呪",
+   "source_name": "Disenchant",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Exorcise",
+   "oracle_id": "58916455-844c-4d97-908f-8205bdc117c0",
+   "printed": "悪魔祓い",
+   "source_name": "Exorcise",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 2,
+   "mana_value": 2,
    "name": "Rest in Peace",
    "oracle_id": "087f9ad7-e74f-40e2-8102-1ed2925d0418",
    "printed": "安らかなる眠り",
@@ -418,11 +402,27 @@
    "types": [
     "Enchantment"
    ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Sheltered by Ghosts",
+   "oracle_id": "d13fc657-c6fc-4394-bc70-691050550226",
+   "printed": "幽霊による庇護",
+   "source_name": "Sheltered by Ghosts",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
   }
  ],
  "sideboard_total": 15,
- "source_file": "decklists/boros-dwarves-vs-piza-g2.txt",
- "source_text": "# boros-dwarves-vs-piza-g2 — boros-dwarves の vs piza サイド後（G2）\n# 元: decklists/boros-dwarves.txt\n# IN  (8): 1 Abrade / 2 Disenchant / 2 Exorcise / 3 Sheltered by Ghosts\n# OUT (8): 3 Doc Ock's Tentacles / 3 Ghostfire Blade / 2 Skateboard\n# 理由: 抜いた3種はいずれも「先にクリーチャーが要る」装備品。G1では盤面に装備品4個・\n#       クリーチャー0体の時間が3ターン続いた。Doc Ock's Tentacles は装備{5}、\n#       Ghostfire Blade は有色クリーチャー相手に装備{3}で、いちばん置きにくい。\n#       G1ではメインに置物への解答が0枚だったので、Chrome Dome／Mona Lisa／\n#       Guac & Marshmallow Pizza に触れる札を8枚入れる。\n#       Sheltered by Ghosts は「除去＋クロックの継続」を1枚で満たすのでアグロの手を止めない。\n\nDeck\n4 Dwarven Mauler\n2 Dwalin, Weaponmaster\n4 Dáin's Company\n4 Kíli the Resourceful\n1 Raubahn, Bull of Ala Mhigo\n1 Dáin Ironfoot\n2 Thorin, Mountain-king\n\n4 Lavaspur Boots\n1 Abrade\n2 Disenchant\n2 Exorcise\n3 Sheltered by Ghosts\n3 Samurai's Katana\n4 Leyline Axe\n\n4 Cavern of Souls\n4 Inspiring Vantage\n3 Mountain\n4 Sacred Foundry\n4 Sunbillow Verge\n4 The Lonely Mountain\n\nSideboard\n2 Burst Lightning\n3 Doc Ock's Tentacles\n3 Ghostfire Blade\n2 Skateboard\n3 Dawn's Truce\n2 Rest in Peace\n",
- "updated_at": "2026-09-10T06:21:57Z",
+ "source_file": "decklists/boros-dwarves.txt",
+ "source_text": "# boros-dwarves — ボロスドワーフ（装備品アグロ）\n# 出典: ユーザー提供画像から転記\n\nDeck\n4 Dwarven Mauler\n2 Dwalin, Weaponmaster\n4 Dáin's Company\n4 Kíli the Resourceful\n1 Raubahn, Bull of Ala Mhigo\n1 Dáin Ironfoot\n2 Thorin, Mountain-king\n\n3 Doc Ock's Tentacles\n3 Ghostfire Blade\n4 Lavaspur Boots\n2 Skateboard\n3 Samurai's Katana\n4 Leyline Axe\n\n4 Cavern of Souls\n4 Inspiring Vantage\n3 Mountain\n4 Sacred Foundry\n4 Sunbillow Verge\n4 The Lonely Mountain\n\nSideboard\n2 Burst Lightning\n1 Abrade\n3 Dawn's Truce\n2 Disenchant\n2 Exorcise\n2 Rest in Peace\n3 Sheltered by Ghosts\n",
+ "updated_at": "2026-09-10T06:22:50Z",
  "warnings": []
 }

@@ -1,32 +1,36 @@
-# 緑単上陸 / FunkiMunki / MOショーケースチャレンジ（スタンダード）2026-08-21 優勝
-# 出典: https://www.izzetmtgnews.com/archives/147306
-# 日本語名が併記されていたが、新セットのカードは Scryfall に日本語印刷が無いため英語名で登録する
-デッキ
-14 Forest
-4 Fabled Passage
-3 Ba Sing Se
-2 Elven Passage
-2 Escape Tunnel
-1 Demolition Field
-1 Promising Vein
+# mono-green-landfall — 緑単上陸
+# 出典: FunkiMunki / MOショーケースチャレンジ（スタンダード）2026-08-21 優勝
+#       https://www.izzetmtgnews.com/archives/147306
+
+Deck
 4 Llanowar Elves
 4 Sazh's Chocobo
+1 Surrak, Elusive Hunter
 4 Icetill Explorer
 4 Mightform Harmonizer
-1 Surrak, Elusive Hunter
-1 Lumbering Worldwagon
-3 Esper Origins
-3 Glimpse the Core
+
 1 Meltstrider's Resolve
+3 Esper Origins // Summon: Esper Maduin
+3 Glimpse the Core
 4 Earthbender Ascension
+1 Lumbering Worldwagon
 4 Sapling Nursery
 
-サイドボード
-3 Meltstrider's Resolve
+3 Ba Sing Se
+1 Demolition Field
+2 Elven Passage
+2 Escape Tunnel
+4 Fabled Passage
+14 Forest
+1 Promising Vein
+
+Sideboard
 1 Keen-Eyed Curator
-2 Torpor Orb
-2 Warg Tactics
 4 Mossborn Hydra
 1 Surrak, Elusive Hunter
 1 Leatherhead, Swamp Stalker
 1 Gigantic Big Bear
+
+3 Meltstrider's Resolve
+2 Torpor Orb
+2 Warg Tactics

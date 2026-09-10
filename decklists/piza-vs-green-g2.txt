@@ -1,22 +1,23 @@
-# piza-vs-tokens-g2 — piza の vs ボロストークン（tokens）サイド後（G2）
+# piza-vs-green-g2 — piza の vs 緑単上陸（green）サイド後（G2）
 # 元: decklists/piza.txt
-# IN  (2): 2 Fire Magic
-# OUT (2): 1 Courier of Comestibles / 1 Nature's Rhythm
+# IN  (4): 2 Flashfreeze / 2 Into the Flood Maw
+# OUT (4): 1 Courier of Comestibles / 1 Nature's Rhythm / 1 Oblivious Bookworm /
+#          1 Patchwork Beastie
 
 Deck
-1 Patchwork Beastie
 1 Spectral Sailor
 4 Chrome Dome
-3 Oblivious Bookworm
+2 Oblivious Bookworm
 4 Redshift, Rocketeer Chief
 4 Mona Lisa, Science Geek
 
-2 Fire Magic
 4 Guac & Marshmallow Pizza
+2 Into the Flood Maw
 4 Rapid Rescue
 4 Sewer-veillance Cam
 4 Agatha's Soul Cauldron
 3 Does Machines
+2 Flashfreeze
 
 1 Ba Sing Se
 4 Botanical Sanctum
@@ -31,13 +32,15 @@ Deck
 1 Training Compound
 
 Sideboard
+1 Patchwork Beastie
 1 Courier of Comestibles
+1 Oblivious Bookworm
 
-1 Annul
-3 Into the Flood Maw
+2 Annul
+1 Into the Flood Maw
+1 Pick Your Poison
 2 Snakeskin Veil
 2 Spell Pierce
 1 Wild Ride
-2 Flashfreeze
 1 Nature's Rhythm
 2 Pawpatch Formation

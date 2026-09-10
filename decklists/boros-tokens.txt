@@ -1,27 +1,33 @@
-# Name Boros Tokens
+# boros-tokens — ボロストークン
+# 出典: サイド15枚は 2026-09-03 時点の完成リストを採用
+
 Deck
-1 Plains
-3 Mountain
-4 Sacred Foundry
-4 Inspiring Vantage
-3 Song of Totentanz
-3 Anim Pakal, Thousandth Moon
-4 Warleader's Call
 4 Hired Claw
-4 Sunbillow Verge
-4 Voice of Victory
 4 Stadium Headliner
-4 Frontline Rush
-2 Dalkovan Encampment
-2 Multiversal Passage
-4 The Last Ronin's Technique
-2 Erode
 4 Belladonna Took
-4 Political Triumph
-Sideboard
-2 Elspeth, Storm Slayer
+4 Voice of Victory
+3 Anim Pakal, Thousandth Moon
+
 2 Erode
-3 Dawn's Truce
-2 Requisition Raid
-3 Rest in Peace
+4 Political Triumph
+3 Song of Totentanz
+4 Frontline Rush
+4 Warleader's Call
+4 The Last Ronin's Technique
+
+2 Dalkovan Encampment
+4 Inspiring Vantage
+3 Mountain
+2 Multiversal Passage
+1 Plains
+4 Sacred Foundry
+4 Sunbillow Verge
+
+Sideboard
 3 The Queen of Dale
+
+2 Erode
+2 Requisition Raid
+3 Dawn's Truce
+3 Rest in Peace
+2 Elspeth, Storm Slayer

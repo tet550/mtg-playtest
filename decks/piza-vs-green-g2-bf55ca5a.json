@@ -1,27 +1,10 @@
 {
  "created_at": "2026-09-10T06:21:57Z",
- "description": "piza の vs ボロストークン サイド後（G2）",
+ "description": "piza の vs 緑単上陸 サイド後（G2）",
  "format": "standard",
- "key": "piza-vs-tokens-g2",
+ "key": "piza-vs-green-g2",
  "legal": true,
  "main": [
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 1,
-   "mana_value": 1,
-   "name": "Patchwork Beastie",
-   "oracle_id": "6cf995e9-115a-4659-bace-9fbe75898b48",
-   "printed": "継ぎ接ぎのけだもの",
-   "source_name": "Patchwork Beastie",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Artifact",
-    "Creature"
-   ]
-  },
   {
    "colors": [
     "U"
@@ -58,7 +41,7 @@
     "G",
     "U"
    ],
-   "count": 3,
+   "count": 2,
    "mana_value": 2,
    "name": "Oblivious Bookworm",
    "oracle_id": "300fd0a2-23e6-4da9-bfaa-ad626097d5b5",
@@ -109,22 +92,6 @@
   },
   {
    "colors": [
-    "R"
-   ],
-   "count": 2,
-   "mana_value": 1,
-   "name": "Fire Magic",
-   "oracle_id": "c87db803-3490-41bc-af7a-78f99bcd77c8",
-   "printed": "炎魔法",
-   "source_name": "Fire Magic",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Instant"
-   ]
-  },
-  {
-   "colors": [
     "G"
    ],
    "count": 4,
@@ -137,6 +104,22 @@
    "supertypes": [],
    "types": [
     "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Into the Flood Maw",
+   "oracle_id": "8cb36a67-9206-4665-a03f-64f52ba559c4",
+   "printed": "洪水の大口へ",
+   "source_name": "Into the Flood Maw",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
    ]
   },
   {
@@ -201,6 +184,22 @@
    "supertypes": [],
    "types": [
     "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Flashfreeze",
+   "oracle_id": "eaf98e03-729b-4145-b2af-c910c415c15d",
+   "printed": "瞬間凍結",
+   "source_name": "Flashfreeze",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
    ]
   },
   {
@@ -363,10 +362,27 @@
   }
  ],
  "main_total": 60,
- "name": "piza-vs-tokens-g2",
+ "name": "piza-vs-green-g2",
  "problems": [],
  "schema": "mtg-playtest/deck@2",
  "sideboard": [
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Patchwork Beastie",
+   "oracle_id": "6cf995e9-115a-4659-bace-9fbe75898b48",
+   "printed": "継ぎ接ぎのけだもの",
+   "source_name": "Patchwork Beastie",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact",
+    "Creature"
+   ]
+  },
   {
    "colors": [
     "G"
@@ -385,9 +401,26 @@
   },
   {
    "colors": [
+    "G",
     "U"
    ],
    "count": 1,
+   "mana_value": 2,
+   "name": "Oblivious Bookworm",
+   "oracle_id": "300fd0a2-23e6-4da9-bfaa-ad626097d5b5",
+   "printed": "不注意な読書家",
+   "source_name": "Oblivious Bookworm",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 2,
    "mana_value": 1,
    "name": "Annul",
    "oracle_id": "d08e9784-75f7-4164-ac48-d06160f8c56b",
@@ -403,7 +436,7 @@
    "colors": [
     "U"
    ],
-   "count": 3,
+   "count": 1,
    "mana_value": 1,
    "name": "Into the Flood Maw",
    "oracle_id": "8cb36a67-9206-4665-a03f-64f52ba559c4",
@@ -413,6 +446,22 @@
    "supertypes": [],
    "types": [
     "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Pick Your Poison",
+   "oracle_id": "9af4a832-d634-47aa-91ed-79d44fe08864",
+   "printed": "毒を選べ",
+   "source_name": "Pick Your Poison",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
    ]
   },
   {
@@ -465,22 +514,6 @@
   },
   {
    "colors": [
-    "U"
-   ],
-   "count": 2,
-   "mana_value": 2,
-   "name": "Flashfreeze",
-   "oracle_id": "eaf98e03-729b-4145-b2af-c910c415c15d",
-   "printed": "瞬間凍結",
-   "source_name": "Flashfreeze",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Instant"
-   ]
-  },
-  {
-   "colors": [
     "G"
    ],
    "count": 1,
@@ -513,8 +546,8 @@
   }
  ],
  "sideboard_total": 15,
- "source_file": "decklists/piza-vs-tokens-g2.txt",
- "source_text": "# piza-vs-tokens-g2 — piza の vs ボロストークン（tokens）サイド後（G2）\n# 元: decklists/piza.txt\n# IN  (2): 2 Fire Magic\n# OUT (2): 1 Courier of Comestibles / 1 Nature's Rhythm\n\nDeck\n1 Patchwork Beastie\n1 Spectral Sailor\n4 Chrome Dome\n3 Oblivious Bookworm\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n\n2 Fire Magic\n4 Guac & Marshmallow Pizza\n4 Rapid Rescue\n4 Sewer-veillance Cam\n4 Agatha's Soul Cauldron\n3 Does Machines\n\n1 Ba Sing Se\n4 Botanical Sanctum\n3 Breeding Pool\n3 Forest\n1 Island\n1 Multiversal Passage\n2 Spirebluff Canal\n4 Starting Town\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Courier of Comestibles\n\n1 Annul\n3 Into the Flood Maw\n2 Snakeskin Veil\n2 Spell Pierce\n1 Wild Ride\n2 Flashfreeze\n1 Nature's Rhythm\n2 Pawpatch Formation\n",
+ "source_file": "decklists/piza-vs-green-g2.txt",
+ "source_text": "# piza-vs-green-g2 — piza の vs 緑単上陸（green）サイド後（G2）\n# 元: decklists/piza.txt\n# IN  (4): 2 Flashfreeze / 2 Into the Flood Maw\n# OUT (4): 1 Courier of Comestibles / 1 Nature's Rhythm / 1 Oblivious Bookworm /\n#          1 Patchwork Beastie\n\nDeck\n1 Spectral Sailor\n4 Chrome Dome\n2 Oblivious Bookworm\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n\n4 Guac & Marshmallow Pizza\n2 Into the Flood Maw\n4 Rapid Rescue\n4 Sewer-veillance Cam\n4 Agatha's Soul Cauldron\n3 Does Machines\n2 Flashfreeze\n\n1 Ba Sing Se\n4 Botanical Sanctum\n3 Breeding Pool\n3 Forest\n1 Island\n1 Multiversal Passage\n2 Spirebluff Canal\n4 Starting Town\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Patchwork Beastie\n1 Courier of Comestibles\n1 Oblivious Bookworm\n\n2 Annul\n1 Into the Flood Maw\n1 Pick Your Poison\n2 Snakeskin Veil\n2 Spell Pierce\n1 Wild Ride\n1 Nature's Rhythm\n2 Pawpatch Formation\n",
  "updated_at": "2026-09-10T06:21:57Z",
  "warnings": []
 }

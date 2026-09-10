@@ -87,7 +87,8 @@ decklists/*.txt  ──deck add──▶  decks/*.json  ──init──▶  pla
                              cards/（Scryfall キャッシュ）
 ```
 
-- **`decklists/`** … 手で書くデッキリスト。ここが唯一の手書きの正本。
+- **`decklists/`** … 手で書くデッキリスト。ここが唯一の手書きの正本。命名と書式の規約は
+  [`decklists/README.md`](decklists/README.md)。
 - **`decks/`** … `deck add` が `decklists/` を読んで作る**デッキ定義の登録簿**。カード名の表記揺れ・
   4枚制限・枚数不足を登録時に潰し、以後は登録名（`--deck1 piza`）で参照できる。**対局の記録ではない**
   ので、対局をいくら回しても増えません。増えるのはデッキを追加・サイド調整したときだけです。

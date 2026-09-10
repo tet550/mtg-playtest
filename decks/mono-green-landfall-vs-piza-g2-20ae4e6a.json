@@ -1,8 +1,8 @@
 {
  "created_at": "2026-09-10T06:21:58Z",
- "description": "緑単上陸（MOショーケースチャレンジ 2026-08-21 優勝）",
+ "description": "mono-green-landfall の vs piza サイド後（G2）",
  "format": "standard",
- "key": "mono-green-landfall",
+ "key": "mono-green-landfall-vs-piza-g2",
  "legal": true,
  "main": [
   {
@@ -41,7 +41,23 @@
    "colors": [
     "G"
    ],
-   "count": 1,
+   "count": 4,
+   "mana_value": 3,
+   "name": "Mossborn Hydra",
+   "oracle_id": "84122d81-9634-4d3f-85a5-f6cf4303691a",
+   "printed": "苔生まれのハイドラ",
+   "source_name": "Mossborn Hydra",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
    "mana_value": 3,
    "name": "Surrak, Elusive Hunter",
    "oracle_id": "7a0fe73f-6e08-4c9a-80e1-c2ead6cebe06",
@@ -75,6 +91,24 @@
    "colors": [
     "G"
    ],
+   "count": 1,
+   "mana_value": 4,
+   "name": "Leatherhead, Swamp Stalker",
+   "oracle_id": "ee9b606a-a1fe-43c8-84d0-9bf7b012cc75",
+   "printed": null,
+   "source_name": "Leatherhead, Swamp Stalker",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
    "count": 4,
    "mana_value": 4,
    "name": "Mightform Harmonizer",
@@ -91,7 +125,7 @@
    "colors": [
     "G"
    ],
-   "count": 1,
+   "count": 4,
    "mana_value": 1,
    "name": "Meltstrider's Resolve",
    "oracle_id": "6f9bc0c6-1792-4771-a839-95a22d9c699a",
@@ -107,23 +141,7 @@
    "colors": [
     "G"
    ],
-   "count": 3,
-   "mana_value": 2,
-   "name": "Esper Origins // Summon: Esper Maduin",
-   "oracle_id": "947b40a2-e272-4ef6-85fb-3d767a21bc7a",
-   "printed": "幻獣との交わり",
-   "source_name": "Esper Origins // Summon: Esper Maduin",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Sorcery"
-   ]
-  },
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 3,
+   "count": 1,
    "mana_value": 2,
    "name": "Glimpse the Core",
    "oracle_id": "fa44fa48-d270-4f0f-b672-d63e1c1942ce",
@@ -155,23 +173,7 @@
    "colors": [
     "G"
    ],
-   "count": 1,
-   "mana_value": 3,
-   "name": "Lumbering Worldwagon",
-   "oracle_id": "7e60a641-1f2d-45ff-b3f2-d389be938b22",
-   "printed": null,
-   "source_name": "Lumbering Worldwagon",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Artifact"
-   ]
-  },
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 4,
+   "count": 2,
    "mana_value": 8,
    "name": "Sapling Nursery",
    "oracle_id": "8bcbae66-1854-480e-a449-33e5389610ab",
@@ -255,7 +257,7 @@
   },
   {
    "colors": [],
-   "count": 14,
+   "count": 13,
    "mana_value": 0,
    "name": "Forest",
    "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
@@ -285,7 +287,7 @@
   }
  ],
  "main_total": 60,
- "name": "mono-green-landfall",
+ "name": "mono-green-landfall-vs-piza-g2",
  "problems": [],
  "schema": "mtg-playtest/deck@2",
  "sideboard": [
@@ -301,58 +303,6 @@
    "source_name": "Keen-Eyed Curator",
    "status": "ok",
    "supertypes": [],
-   "types": [
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 4,
-   "mana_value": 3,
-   "name": "Mossborn Hydra",
-   "oracle_id": "84122d81-9634-4d3f-85a5-f6cf4303691a",
-   "printed": "苔生まれのハイドラ",
-   "source_name": "Mossborn Hydra",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 1,
-   "mana_value": 3,
-   "name": "Surrak, Elusive Hunter",
-   "oracle_id": "7a0fe73f-6e08-4c9a-80e1-c2ead6cebe06",
-   "printed": "神出鬼没の狩人、スーラク",
-   "source_name": "Surrak, Elusive Hunter",
-   "status": "ok",
-   "supertypes": [
-    "Legendary"
-   ],
-   "types": [
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 1,
-   "mana_value": 4,
-   "name": "Leatherhead, Swamp Stalker",
-   "oracle_id": "ee9b606a-a1fe-43c8-84d0-9bf7b012cc75",
-   "printed": null,
-   "source_name": "Leatherhead, Swamp Stalker",
-   "status": "ok",
-   "supertypes": [
-    "Legendary"
-   ],
    "types": [
     "Creature"
    ]
@@ -378,15 +328,31 @@
     "G"
    ],
    "count": 3,
-   "mana_value": 1,
-   "name": "Meltstrider's Resolve",
-   "oracle_id": "6f9bc0c6-1792-4771-a839-95a22d9c699a",
-   "printed": null,
-   "source_name": "Meltstrider's Resolve",
+   "mana_value": 2,
+   "name": "Esper Origins // Summon: Esper Maduin",
+   "oracle_id": "947b40a2-e272-4ef6-85fb-3d767a21bc7a",
+   "printed": "幻獣との交わり",
+   "source_name": "Esper Origins // Summon: Esper Maduin",
    "status": "ok",
    "supertypes": [],
    "types": [
-    "Enchantment"
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Glimpse the Core",
+   "oracle_id": "fa44fa48-d270-4f0f-b672-d63e1c1942ce",
+   "printed": null,
+   "source_name": "Glimpse the Core",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
    ]
   },
   {
@@ -418,11 +384,59 @@
    "types": [
     "Instant"
    ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 3,
+   "name": "Lumbering Worldwagon",
+   "oracle_id": "7e60a641-1f2d-45ff-b3f2-d389be938b22",
+   "printed": null,
+   "source_name": "Lumbering Worldwagon",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 8,
+   "name": "Sapling Nursery",
+   "oracle_id": "8bcbae66-1854-480e-a449-33e5389610ab",
+   "printed": "若木の生育場",
+   "source_name": "Sapling Nursery",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Forest",
+   "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+   "printed": "森",
+   "source_name": "Forest",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
   }
  ],
  "sideboard_total": 15,
- "source_file": "decklists/mono-green-landfall.txt",
- "source_text": "# mono-green-landfall — 緑単上陸\n# 出典: FunkiMunki / MOショーケースチャレンジ（スタンダード）2026-08-21 優勝\n#       https://www.izzetmtgnews.com/archives/147306\n\nDeck\n4 Llanowar Elves\n4 Sazh's Chocobo\n1 Surrak, Elusive Hunter\n4 Icetill Explorer\n4 Mightform Harmonizer\n\n1 Meltstrider's Resolve\n3 Esper Origins // Summon: Esper Maduin\n3 Glimpse the Core\n4 Earthbender Ascension\n1 Lumbering Worldwagon\n4 Sapling Nursery\n\n3 Ba Sing Se\n1 Demolition Field\n2 Elven Passage\n2 Escape Tunnel\n4 Fabled Passage\n14 Forest\n1 Promising Vein\n\nSideboard\n1 Keen-Eyed Curator\n4 Mossborn Hydra\n1 Surrak, Elusive Hunter\n1 Leatherhead, Swamp Stalker\n1 Gigantic Big Bear\n\n3 Meltstrider's Resolve\n2 Torpor Orb\n2 Warg Tactics\n",
- "updated_at": "2026-09-10T06:21:58Z",
+ "source_file": "decklists/mono-green-landfall-vs-piza-g2.txt",
+ "source_text": "# mono-green-landfall-vs-piza-g2 — mono-green-landfall の vs piza サイド後（G2）\n# 元: decklists/mono-green-landfall.txt\n# IN  (9): 1 Leatherhead, Swamp Stalker / 3 Meltstrider's Resolve / 4 Mossborn Hydra /\n#          1 Surrak, Elusive Hunter\n# OUT (9): 3 Esper Origins // Summon: Esper Maduin / 1 Forest / 2 Glimpse the Core /\n#          1 Lumbering Worldwagon / 2 Sapling Nursery\n# 理由: piza 側は6〜7ターンに無限マナで詰めてくる純コンボ。こちらに干渉手段がほぼ無いのが\n#       G1の敗因なので、「盤面に触れる呪文」と「1〜2ターン速いクロック」に寄せる。\n\nDeck\n4 Llanowar Elves\n4 Sazh's Chocobo\n4 Mossborn Hydra\n2 Surrak, Elusive Hunter\n4 Icetill Explorer\n1 Leatherhead, Swamp Stalker\n4 Mightform Harmonizer\n\n4 Meltstrider's Resolve\n1 Glimpse the Core\n4 Earthbender Ascension\n2 Sapling Nursery\n\n3 Ba Sing Se\n1 Demolition Field\n2 Elven Passage\n2 Escape Tunnel\n4 Fabled Passage\n13 Forest\n1 Promising Vein\n\nSideboard\n1 Keen-Eyed Curator\n1 Gigantic Big Bear\n\n3 Esper Origins // Summon: Esper Maduin\n2 Glimpse the Core\n2 Torpor Orb\n2 Warg Tactics\n1 Lumbering Worldwagon\n2 Sapling Nursery\n\n1 Forest\n",
+ "updated_at": "2026-09-10T06:22:50Z",
  "warnings": []
 }

@@ -1,43 +1,10 @@
 {
- "created_at": "2026-09-10T06:21:57Z",
- "description": "piza の vs ボロストークン サイド後（G2）",
+ "created_at": "2026-09-10T06:21:56Z",
+ "description": "piza の vs ボロスドワーフ サイド後（G2）",
  "format": "standard",
- "key": "piza-vs-tokens-g2",
+ "key": "piza-vs-dw-g2",
  "legal": true,
  "main": [
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 1,
-   "mana_value": 1,
-   "name": "Patchwork Beastie",
-   "oracle_id": "6cf995e9-115a-4659-bace-9fbe75898b48",
-   "printed": "継ぎ接ぎのけだもの",
-   "source_name": "Patchwork Beastie",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Artifact",
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "U"
-   ],
-   "count": 1,
-   "mana_value": 1,
-   "name": "Spectral Sailor",
-   "oracle_id": "a8fdbcdf-479d-4582-9ad5-9fbd4c740c29",
-   "printed": "幽体の船乗り",
-   "source_name": "Spectral Sailor",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Creature"
-   ]
-  },
   {
    "colors": [],
    "count": 4,
@@ -141,9 +108,25 @@
   },
   {
    "colors": [
+    "U"
+   ],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Into the Flood Maw",
+   "oracle_id": "8cb36a67-9206-4665-a03f-64f52ba559c4",
+   "printed": "洪水の大口へ",
+   "source_name": "Into the Flood Maw",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
     "G"
    ],
-   "count": 4,
+   "count": 3,
    "mana_value": 1,
    "name": "Rapid Rescue",
    "oracle_id": "de1ad369-5aa3-4c54-8fb1-30b7f1d4d542",
@@ -172,8 +155,24 @@
    ]
   },
   {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Snakeskin Veil",
+   "oracle_id": "1e6a24be-8281-41c1-a5ba-b68f0ef1d7b8",
+   "printed": "蛇皮のヴェール",
+   "source_name": "Snakeskin Veil",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
    "colors": [],
-   "count": 4,
+   "count": 2,
    "mana_value": 2,
    "name": "Agatha's Soul Cauldron",
    "oracle_id": "c259e16f-2a44-4552-8678-815f757a02e8",
@@ -191,7 +190,7 @@
    "colors": [
     "U"
    ],
-   "count": 3,
+   "count": 1,
    "mana_value": 2,
    "name": "Does Machines",
    "oracle_id": "df54b79d-f31d-4582-86c0-1d34ec77be0f",
@@ -201,6 +200,22 @@
    "supertypes": [],
    "types": [
     "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Pawpatch Formation",
+   "oracle_id": "fa99cf82-ebf1-4526-ab9c-b24eb2970f2a",
+   "printed": "脚当ての陣形",
+   "source_name": "Pawpatch Formation",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
    ]
   },
   {
@@ -363,10 +378,43 @@
   }
  ],
  "main_total": 60,
- "name": "piza-vs-tokens-g2",
+ "name": "piza-vs-dw-g2",
  "problems": [],
  "schema": "mtg-playtest/deck@2",
  "sideboard": [
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Patchwork Beastie",
+   "oracle_id": "6cf995e9-115a-4659-bace-9fbe75898b48",
+   "printed": "継ぎ接ぎのけだもの",
+   "source_name": "Patchwork Beastie",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact",
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Spectral Sailor",
+   "oracle_id": "a8fdbcdf-479d-4582-9ad5-9fbd4c740c29",
+   "printed": "幽体の船乗り",
+   "source_name": "Spectral Sailor",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
   {
    "colors": [
     "G"
@@ -401,30 +449,14 @@
   },
   {
    "colors": [
-    "U"
-   ],
-   "count": 3,
-   "mana_value": 1,
-   "name": "Into the Flood Maw",
-   "oracle_id": "8cb36a67-9206-4665-a03f-64f52ba559c4",
-   "printed": "洪水の大口へ",
-   "source_name": "Into the Flood Maw",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Instant"
-   ]
-  },
-  {
-   "colors": [
     "G"
    ],
-   "count": 2,
+   "count": 1,
    "mana_value": 1,
-   "name": "Snakeskin Veil",
-   "oracle_id": "1e6a24be-8281-41c1-a5ba-b68f0ef1d7b8",
-   "printed": "蛇皮のヴェール",
-   "source_name": "Snakeskin Veil",
+   "name": "Rapid Rescue",
+   "oracle_id": "de1ad369-5aa3-4c54-8fb1-30b7f1d4d542",
+   "printed": "迅速な救助",
+   "source_name": "Rapid Rescue",
    "status": "ok",
    "supertypes": [],
    "types": [
@@ -464,6 +496,38 @@
    ]
   },
   {
+   "colors": [],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Agatha's Soul Cauldron",
+   "oracle_id": "c259e16f-2a44-4552-8678-815f757a02e8",
+   "printed": "アガサの魂の大釜",
+   "source_name": "Agatha's Soul Cauldron",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Does Machines",
+   "oracle_id": "df54b79d-f31d-4582-86c0-1d34ec77be0f",
+   "printed": "メカの天才",
+   "source_name": "Does Machines",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
    "colors": [
     "U"
    ],
@@ -494,27 +558,11 @@
    "types": [
     "Sorcery"
    ]
-  },
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 2,
-   "mana_value": 2,
-   "name": "Pawpatch Formation",
-   "oracle_id": "fa99cf82-ebf1-4526-ab9c-b24eb2970f2a",
-   "printed": "脚当ての陣形",
-   "source_name": "Pawpatch Formation",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Instant"
-   ]
   }
  ],
  "sideboard_total": 15,
- "source_file": "decklists/piza-vs-tokens-g2.txt",
- "source_text": "# piza-vs-tokens-g2 — piza の vs ボロストークン（tokens）サイド後（G2）\n# 元: decklists/piza.txt\n# IN  (2): 2 Fire Magic\n# OUT (2): 1 Courier of Comestibles / 1 Nature's Rhythm\n\nDeck\n1 Patchwork Beastie\n1 Spectral Sailor\n4 Chrome Dome\n3 Oblivious Bookworm\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n\n2 Fire Magic\n4 Guac & Marshmallow Pizza\n4 Rapid Rescue\n4 Sewer-veillance Cam\n4 Agatha's Soul Cauldron\n3 Does Machines\n\n1 Ba Sing Se\n4 Botanical Sanctum\n3 Breeding Pool\n3 Forest\n1 Island\n1 Multiversal Passage\n2 Spirebluff Canal\n4 Starting Town\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Courier of Comestibles\n\n1 Annul\n3 Into the Flood Maw\n2 Snakeskin Veil\n2 Spell Pierce\n1 Wild Ride\n2 Flashfreeze\n1 Nature's Rhythm\n2 Pawpatch Formation\n",
- "updated_at": "2026-09-10T06:21:57Z",
+ "source_file": "decklists/piza-vs-dw-g2.txt",
+ "source_text": "# piza-vs-dw-g2 — piza の vs ボロスドワーフ（dw）サイド後（G2）\n# 元: decklists/piza.txt\n# IN  (9): 2 Fire Magic / 3 Into the Flood Maw / 2 Pawpatch Formation / 2 Snakeskin Veil\n# OUT (9): 2 Agatha's Soul Cauldron / 1 Courier of Comestibles / 2 Does Machines /\n#          1 Nature's Rhythm / 1 Patchwork Beastie / 1 Rapid Rescue / 1 Spectral Sailor\n# 理由: 盤面に触らない札とアグロ相手に間に合わない札を抜く。\n#       Patchwork Beastie は昂揚が付くまでブロックできない。\n#       Fire Magic のファイラ（{2}）は Dwarven Mauler 2/1・Dwalin 2/1・Dáin's Company 2/2・\n#       Kíli 1/2 を流し、こちらの Chrome Dome 1/3 と Mona Lisa 1/3 は生き残る一方的な掃除。\n#       Into the Flood Maw は装備したクリーチャーを戻して装備コストごと損させる。\n#       Snakeskin Veil と Pawpatch Formation は、G1後に相手が入れてくる Disenchant・Abrade・\n#       Sheltered by Ghosts への保険。\n\nDeck\n4 Chrome Dome\n3 Oblivious Bookworm\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n\n2 Fire Magic\n4 Guac & Marshmallow Pizza\n3 Into the Flood Maw\n3 Rapid Rescue\n4 Sewer-veillance Cam\n2 Snakeskin Veil\n2 Agatha's Soul Cauldron\n1 Does Machines\n2 Pawpatch Formation\n\n1 Ba Sing Se\n4 Botanical Sanctum\n3 Breeding Pool\n3 Forest\n1 Island\n1 Multiversal Passage\n2 Spirebluff Canal\n4 Starting Town\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Patchwork Beastie\n1 Spectral Sailor\n1 Courier of Comestibles\n\n1 Annul\n1 Rapid Rescue\n2 Spell Pierce\n1 Wild Ride\n2 Agatha's Soul Cauldron\n2 Does Machines\n2 Flashfreeze\n1 Nature's Rhythm\n",
+ "updated_at": "2026-09-10T06:22:50Z",
  "warnings": []
 }

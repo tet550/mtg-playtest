@@ -1,8 +1,8 @@
 {
  "created_at": "2026-09-10T06:21:57Z",
- "description": "boros-tokens の vs piza サイド後（G2）",
+ "description": "ボロストークン",
  "format": "standard",
- "key": "boros-tokens-vs-piza-g2",
+ "key": "boros-tokens",
  "legal": true,
  "main": [
   {
@@ -73,6 +73,25 @@
   },
   {
    "colors": [
+    "R",
+    "W"
+   ],
+   "count": 3,
+   "mana_value": 3,
+   "name": "Anim Pakal, Thousandth Moon",
+   "oracle_id": "05551d91-50c6-46d1-86a4-cd3d177d0923",
+   "printed": null,
+   "source_name": "Anim Pakal, Thousandth Moon",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
     "W"
    ],
    "count": 2,
@@ -101,22 +120,6 @@
    "supertypes": [],
    "types": [
     "Enchantment"
-   ]
-  },
-  {
-   "colors": [
-    "W"
-   ],
-   "count": 2,
-   "mana_value": 1,
-   "name": "Requisition Raid",
-   "oracle_id": "09669283-eb14-46a2-b37a-51d7a52da891",
-   "printed": null,
-   "source_name": "Requisition Raid",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Sorcery"
    ]
   },
   {
@@ -154,22 +157,6 @@
   },
   {
    "colors": [
-    "W"
-   ],
-   "count": 3,
-   "mana_value": 2,
-   "name": "Rest in Peace",
-   "oracle_id": "087f9ad7-e74f-40e2-8102-1ed2925d0418",
-   "printed": "安らかなる眠り",
-   "source_name": "Rest in Peace",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Enchantment"
-   ]
-  },
-  {
-   "colors": [
     "R",
     "W"
    ],
@@ -189,7 +176,7 @@
    "colors": [
     "W"
    ],
-   "count": 2,
+   "count": 4,
    "mana_value": 4,
    "name": "The Last Ronin's Technique",
    "oracle_id": "6a51bb21-0c01-4ad8-99d7-17685db90b69",
@@ -305,7 +292,7 @@
   }
  ],
  "main_total": 60,
- "name": "boros-tokens-vs-piza-g2",
+ "name": "boros-tokens",
  "problems": [],
  "schema": "mtg-playtest/deck@2",
  "sideboard": [
@@ -319,25 +306,6 @@
    "oracle_id": "a2ec1dd0-86c7-423d-b562-ed95b79bf8f7",
    "printed": null,
    "source_name": "The Queen of Dale",
-   "status": "ok",
-   "supertypes": [
-    "Legendary"
-   ],
-   "types": [
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "R",
-    "W"
-   ],
-   "count": 3,
-   "mana_value": 3,
-   "name": "Anim Pakal, Thousandth Moon",
-   "oracle_id": "05551d91-50c6-46d1-86a4-cd3d177d0923",
-   "printed": null,
-   "source_name": "Anim Pakal, Thousandth Moon",
    "status": "ok",
    "supertypes": [
     "Legendary"
@@ -366,6 +334,22 @@
    "colors": [
     "W"
    ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Requisition Raid",
+   "oracle_id": "09669283-eb14-46a2-b37a-51d7a52da891",
+   "printed": null,
+   "source_name": "Requisition Raid",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "W"
+   ],
    "count": 3,
    "mana_value": 2,
    "name": "Dawn's Truce",
@@ -382,16 +366,16 @@
    "colors": [
     "W"
    ],
-   "count": 2,
-   "mana_value": 4,
-   "name": "The Last Ronin's Technique",
-   "oracle_id": "6a51bb21-0c01-4ad8-99d7-17685db90b69",
-   "printed": null,
-   "source_name": "The Last Ronin's Technique",
+   "count": 3,
+   "mana_value": 2,
+   "name": "Rest in Peace",
+   "oracle_id": "087f9ad7-e74f-40e2-8102-1ed2925d0418",
+   "printed": "安らかなる眠り",
+   "source_name": "Rest in Peace",
    "status": "ok",
    "supertypes": [],
    "types": [
-    "Instant"
+    "Enchantment"
    ]
   },
   {
@@ -414,8 +398,8 @@
   }
  ],
  "sideboard_total": 15,
- "source_file": "decklists/boros-tokens-vs-piza-g2.txt",
- "source_text": "# boros-tokens-vs-piza-g2 — boros-tokens の vs piza サイド後（G2）\n# 元: decklists/boros-tokens.txt\n# IN  (5): 2 Requisition Raid / 3 Rest in Peace\n# OUT (5): 3 Anim Pakal, Thousandth Moon / 2 The Last Ronin's Technique\n\nDeck\n4 Hired Claw\n4 Stadium Headliner\n4 Belladonna Took\n4 Voice of Victory\n\n2 Erode\n4 Political Triumph\n2 Requisition Raid\n3 Song of Totentanz\n4 Frontline Rush\n3 Rest in Peace\n4 Warleader's Call\n2 The Last Ronin's Technique\n\n2 Dalkovan Encampment\n4 Inspiring Vantage\n3 Mountain\n2 Multiversal Passage\n1 Plains\n4 Sacred Foundry\n4 Sunbillow Verge\n\nSideboard\n3 The Queen of Dale\n3 Anim Pakal, Thousandth Moon\n\n2 Erode\n3 Dawn's Truce\n2 The Last Ronin's Technique\n2 Elspeth, Storm Slayer\n",
+ "source_file": "decklists/boros-tokens.txt",
+ "source_text": "# boros-tokens — ボロストークン\n# 出典: サイド15枚は 2026-09-03 時点の完成リストを採用\n\nDeck\n4 Hired Claw\n4 Stadium Headliner\n4 Belladonna Took\n4 Voice of Victory\n3 Anim Pakal, Thousandth Moon\n\n2 Erode\n4 Political Triumph\n3 Song of Totentanz\n4 Frontline Rush\n4 Warleader's Call\n4 The Last Ronin's Technique\n\n2 Dalkovan Encampment\n4 Inspiring Vantage\n3 Mountain\n2 Multiversal Passage\n1 Plains\n4 Sacred Foundry\n4 Sunbillow Verge\n\nSideboard\n3 The Queen of Dale\n\n2 Erode\n2 Requisition Raid\n3 Dawn's Truce\n3 Rest in Peace\n2 Elspeth, Storm Slayer\n",
  "updated_at": "2026-09-10T06:21:57Z",
  "warnings": []
 }
