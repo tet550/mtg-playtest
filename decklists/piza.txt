@@ -1,5 +1,5 @@
 # piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）
-# 方針: decklists/piza-strategy.md
+# 方針: decklists/strategy/piza.md
 
 Deck
 1 Patchwork Beastie

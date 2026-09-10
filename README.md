@@ -72,6 +72,8 @@ python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json
     scripts/                    盤面管理 CLI（mtg.py とモジュール群）
     tests/                      unittest によるリグレッションテスト
 decklists/                      デッキリスト（Arena 形式のテキスト。人が書く正本）
+  strategy/<登録名>.md          デッキごとのプレイ方針。あれば対局前に自動で案内される
+  sideboarding.md               マッチアップごとのサイドボード計画
 decks/                          登録済みデッキ（decklists から生成。検証済みの定義）
 design/                         設計メモ（永続状態・誘発処理・効果の関連付けなど）
 cards/                          カードキャッシュ（Git 管理外。実行時に自動生成）
@@ -88,7 +90,8 @@ decklists/*.txt  ──deck add──▶  decks/*.json  ──init──▶  pla
 ```
 
 - **`decklists/`** … 手で書くデッキリスト。ここが唯一の手書きの正本。命名と書式の規約は
-  [`decklists/README.md`](decklists/README.md)。
+  [`decklists/README.md`](decklists/README.md)。デッキごとのプレイ方針は
+  `decklists/strategy/<登録名>.md` に置くと、`deck show` と `init` が対局前にパスを案内します。
 - **`decks/`** … `deck add` が `decklists/` を読んで作る**デッキ定義の登録簿**。カード名の表記揺れ・
   4枚制限・枚数不足を登録時に潰し、以後は登録名（`--deck1 piza`）で参照できる。**対局の記録ではない**
   ので、対局をいくら回しても増えません。増えるのはデッキを追加・サイド調整したときだけです。

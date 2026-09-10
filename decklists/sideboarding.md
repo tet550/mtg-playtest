@@ -32,7 +32,7 @@ G1とG2で別行になって `stats` の勝率が読めなくなる。実際に�
 
 ## piza
 
-素の構築: [`piza.txt`](piza.txt) ／ プレイ方針: [`piza-strategy.md`](piza-strategy.md)
+素の構築: [`piza.txt`](piza.txt) ／ プレイ方針: [`strategy/piza.md`](strategy/piza.md)
 
 ### vs ボロスドワーフ（dw）
 

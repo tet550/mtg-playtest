@@ -303,6 +303,13 @@ def cmd_init(args, _):
             st["zones"]["%s:library" % pid].append(oid)
         if names:
             print("%s (%s): %d枚をシャッフル" % (pid, name, len(names)))
+    # 方針文書があることは、対局の**最初のプレイ判断より前**に分かっている必要がある。
+    # 使うデッキは init でしか分からないので、ここで必ず出す。
+    for pid in ("P1", "P2"):
+        sp = decks.strategy_path(st["players"][pid].get("deck"))
+        if sp:
+            print("方針: %s = %s （最初のプレイ判断より前に読む）"
+                  % (pid, sp.as_posix()))
     if getattr(args, "prefetch", False):
         names = sorted({o["name"] for o in st["objects"].values()})
         print("オラクル情報を取得します（%d種類）..." % len(names))
@@ -941,6 +948,9 @@ def cmd_deck(args, st):
         if getattr(args, "brief", False):
             print("%s: メイン%d / サイド%d（登録情報）" %
                   (deck["name"], deck["main_total"], deck.get("sideboard_total", 0)))
+            sp = decks.strategy_path(deck["name"])
+            if sp:
+                print("方針: %s （このデッキを使うなら対局前に読む）" % sp.as_posix())
             for entry in deck["main"]:
                 print("%d %s" % (entry["count"], entry["name"]))
             for problem in deck.get("problems", []) + deck.get("warnings", []):

@@ -24,6 +24,9 @@ import cardcache
 SCHEMA = "mtg-playtest/deck@2"
 LEGACY_SCHEMAS = ("mtg-playtest/deck@1",)
 DEFAULT_DIR = "decks"
+# プレイ方針の置き場所。`<STRATEGY_DIR>/<登録名>.md` があれば、その登録名のデッキを
+# 使うときに読む。方針は登録JSONに書き写さず、対局のたびにここを見る（写すと古くなる）。
+STRATEGY_DIR = "decklists/strategy"
 
 # 1行の書式: 「4 稲妻」「4x Lightning Bolt」「4 Lightning Bolt (2XM) 129」
 LINE = re.compile(r"^(\d+)\s*[xX]?\s+(.+?)$")
@@ -315,6 +318,18 @@ def resolve_source(spec, dirpath, cards_dir, offline=False):
 
 # ---------------------------------------------------------------- 表示
 
+def strategy_path(name, dirpath=None):
+    """デッキ名に対応するプレイ方針の文書。無ければ None。
+
+    デッキ登録に方針を書き込まず、ファイルの有無だけで判断する。
+    後から方針を書き足しても登録し直さずに効く。
+    """
+    if not name:
+        return None
+    p = pathlib.Path(dirpath or STRATEGY_DIR) / ("%s.md" % cardcache.cache_key(name))
+    return p if p.is_file() else None
+
+
 def stats(deck):
     """マナカーブ・タイプ・色の内訳。保存はせず、その都度数える（古くならないため）。"""
     curve, types, colors, lands = {}, {}, {}, 0
@@ -338,6 +353,9 @@ def render(deck, verbose=False):
     lines.append("メイン %d枚 / サイド %d枚 / %s"
                  % (deck["main_total"], deck.get("sideboard_total", 0),
                     "適正" if deck.get("legal") else "要修正"))
+    sp = strategy_path(deck["name"])
+    if sp:
+        lines.append("方針: %s （このデッキを使うなら対局前に読む）" % sp.as_posix())
     st = stats(deck)
     lines.append("土地 %d / 呪文 %d" % (st["lands"], deck["main_total"] - st["lands"]))
     if st["curve"]:
@@ -378,6 +396,7 @@ def render_listing(rows):
               "main%3d" % d.get("main_total", 0),
               "side%3d" % d.get("sideboard_total", 0),
               "ok" if d.get("legal") else "NG",
+              "方針あり" if strategy_path(d.get("name")) else "        ",
               d.get("name") or ""] for d in rows]
     return cardcache.table(table)
 

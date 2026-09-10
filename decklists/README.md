@@ -33,8 +33,8 @@ python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --
 
 ```text
 # <登録名> — <一行説明>
-# 出典: <URL・由来>              ← あれば
-# 方針: decklists/<name>.md      ← 別途プレイ方針を書いてあれば
+# 出典: <URL・由来>                    ← あれば
+# 方針: decklists/strategy/<登録名>.md ← 方針文書があれば
 
 Deck
 <クリーチャー>
@@ -57,6 +57,23 @@ Sideboard
   素の構築とサイド後の diff がそのまま IN/OUT になるので、この順を崩さない。
 - 見出しは `Deck` / `Sideboard`。`デッキ` / `サイドボード` も解釈されるが、書くときは英語で揃える。
 - 対局フォルダに書くサイド後の60枚も同じ書式にする（ヘッダーは素の構築と IN/OUT を書く）。
+
+## プレイ方針
+
+`strategy/<登録名>.md` に置く。ファイル名は登録名と同じにする（`piza` → `strategy/piza.md`）。
+
+置いておくと、そのデッキを使うときに自動で案内が出る。**登録JSONには書き写さない**
+（写すと方針を直すたびに登録し直すことになる）。
+
+| 出る場所 | 出力 |
+|---|---|
+| `deck show <登録名>`（`--brief` でも） | `方針: decklists/strategy/piza.md （このデッキを使うなら対局前に読む）` |
+| `deck list` | 該当デッキの行に `方針あり` |
+| `init`（そのデッキを使ったとき） | `方針: P2 = decklists/strategy/piza.md （最初のプレイ判断より前に読む）` |
+
+中身の書式は自由。デッキの狙い・始動手順・キープ基準・不利マッチでの方針など、
+プレイ中に迷う判断を書く。カードの入れ替えは方針ではないので
+[`sideboarding.md`](sideboarding.md) に書く。
 
 ## 旧名との対応
 
