@@ -72,8 +72,8 @@ python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json
     scripts/                    盤面管理 CLI（mtg.py とモジュール群）
     tests/                      unittest によるリグレッションテスト
 decklists/                      デッキリスト（Arena 形式のテキスト。人が書く正本）
-  strategy/<登録名>.md          デッキごとのプレイ方針。あれば対局前に自動で案内される
-  sideboarding.md               マッチアップごとのサイドボード計画
+  strategy/<登録名>.md          デッキごとのプレイ方針とサイドボード計画
+                                （あれば対局前に自動で案内される）
 decks/                          登録済みデッキ（decklists から生成。検証済みの定義）
 design/                         設計メモ（永続状態・誘発処理・効果の関連付けなど）
 cards/                          カードキャッシュ（Git 管理外。実行時に自動生成）
@@ -99,8 +99,8 @@ decklists/*.txt  ──deck add──▶  decks/*.json  ──init──▶  pla
   **プレイ記録はすべてここ**。1つの依頼＝1フォルダで、命名規約は
   [`references/storage-layout.md`](.claude/skills/mtg-playtest/references/storage-layout.md)。
   `shuffle.py` の引き順出力と、サイドボード後のデッキリストもここに入ります。
-- サイド後の構成は `decks/` に登録しません。計画は
-  [`decklists/sideboarding.md`](decklists/sideboarding.md)、実際に使った60枚は対局フォルダの
+- サイド後の構成は `decks/` に登録しません。計画は方針文書
+  （`decklists/strategy/<登録名>.md` の「サイドボード」節）、実際に使った60枚は対局フォルダの
   `g02-<略称>.txt`。登録を増やすと同じ物理デッキが `stats` で別デッキとして数えられます。
 
 `cards/` と `playtest/` は `.gitignore` で除外しています。クローン直後には存在せず、

@@ -10,8 +10,8 @@ python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --
 ## ここに置くもの / 置かないもの
 
 **`decklists/` と `decks/` が持つのは素の構築（G1で使う75枚）だけ。**
-サイド後の構成はマッチごとの記録なので登録しない。計画は
-[`sideboarding.md`](sideboarding.md)、実際に使った60枚は
+サイド後の構成はマッチごとの記録なので登録しない。計画は方針文書
+（`strategy/<登録名>.md` の「サイドボード」節）、実際に使った60枚は
 `playtest/<対局フォルダ>/g02-<略称>.txt`（規定は
 [`references/storage-layout.md`](../.claude/skills/mtg-playtest/references/storage-layout.md)）。
 
@@ -58,7 +58,7 @@ Sideboard
 - 見出しは `Deck` / `Sideboard`。`デッキ` / `サイドボード` も解釈されるが、書くときは英語で揃える。
 - 対局フォルダに書くサイド後の60枚も同じ書式にする（ヘッダーは素の構築と IN/OUT を書く）。
 
-## プレイ方針
+## プレイ方針とサイドボード計画
 
 `strategy/<登録名>.md` に置く。ファイル名は登録名と同じにする（`piza` → `strategy/piza.md`）。
 
@@ -72,8 +72,12 @@ Sideboard
 | `init`（そのデッキを使ったとき） | `方針: P2 = decklists/strategy/piza.md （最初のプレイ判断より前に読む）` |
 
 中身の書式は自由。デッキの狙い・始動手順・キープ基準・不利マッチでの方針など、
-プレイ中に迷う判断を書く。カードの入れ替えは方針ではないので
-[`sideboarding.md`](sideboarding.md) に書く。
+プレイ中に迷う判断を書く。
+
+**マッチアップごとのサイドボード計画も同じ文書に「サイドボード」節として立てる。**
+IN/OUT のカード名はデッキリストと同じ英語名で書き、そのまま `g02-<略称>.txt` に写せる形にする
+（例: [`strategy/piza.md`](strategy/piza.md) の「サイドボード」）。
+サイド後の75枚は素の構築 ± IN/OUT で一意に決まるので、75枚を並べ直さない。
 
 ## 旧名との対応
 
@@ -84,10 +88,8 @@ Sideboard
 |---|---|
 | 登録名 `ボロスドワーフ` | `boros-dwarves` |
 | 登録名 `Boros Tokens` | `boros-tokens` |
-| `piza-g2` / `piza-vs-dwarves-g2` / `piza-vs-tokens-g2` | 登録をやめ、[`sideboarding.md`](sideboarding.md) の「piza」節へ |
-| `boros-dwarves-vs-piza-g2` | 同 「boros-dwarves」節 |
-| `boros-tokens-vs-piza-g2` | 同 「boros-tokens」節 |
-| `mono-green-landfall-g2` / 登録名 `mono-green-g2` | 同 「mono-green-landfall」節 |
+| `piza-g2` / `piza-vs-dwarves-g2` / `piza-vs-tokens-g2` | 登録をやめ、[`strategy/piza.md`](strategy/piza.md) の「サイドボード」節へ |
+| `boros-dwarves-vs-piza-g2` / `boros-tokens-vs-piza-g2` / `mono-green-landfall-g2`（登録名 `mono-green-g2`） | 登録をやめ、計画も削除（方針文書がまだ無いデッキ）。必要になったら `strategy/<登録名>.md` を立てて書き直す。過去の内容は git 履歴（`9d1cea2`）にある |
 
 素の構築の中身（メイン60・サイド15の内訳）はこの整理で一切変えていない。
 サイド後の75枚は素の構築 ± IN/OUT で復元できる。

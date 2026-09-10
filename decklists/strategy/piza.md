@@ -224,6 +224,51 @@ Lv3に届く見込みが立った時点で、器を1〜2枚先に並べる。優
 - 尖塔断の運河は他に3枚以上の土地があるとタップイン、蒸気孔と踏み鳴らされる地は2点払わないとタップイン。
   始動ターンを数えるときはアンタップで置けるかを確認する。
 
+## サイドボード
+
+ゲーム2以降の入れ替え。**IN/OUT のカード名は `piza.txt` と同じ英語名**で書く
+（そのまま対局フォルダの `g02-piza.txt` に写せるようにするため）。
+サイド後の75枚は素の構築 ± IN/OUT で一意に決まる。
+
+- メイン60 = `piza.txt` のメイン ＋ IN − OUT
+- サイド15 = `piza.txt` のサイド − IN ＋ OUT
+
+登録は増やさない。書き出す場所と `init` の渡し方は
+[`storage-layout.md`](../../.claude/skills/mtg-playtest/references/storage-layout.md)
+の「サイドボード後のデッキ」に従う。
+
+### vs ボロスドワーフ（dw）
+
+- **IN  (9)**: 2 Fire Magic / 3 Into the Flood Maw / 2 Pawpatch Formation / 2 Snakeskin Veil
+- **OUT (9)**: 2 Agatha's Soul Cauldron / 1 Courier of Comestibles / 2 Does Machines /
+  1 Nature's Rhythm / 1 Patchwork Beastie / 1 Rapid Rescue / 1 Spectral Sailor
+
+盤面に触らない札と、アグロ相手に間に合わない札を抜く。継ぎ接ぎのけだものは昂揚が付くまで
+ブロックできない。炎魔法のファイラ（{2}）はドワーフの打ち壊し屋2/1・ドワーリン2/1・
+ダーインの隊2/2・キーリ1/2を流し、こちらのクロームドーム1/3と科学オタク、モナリザ1/3は
+生き残る一方的な掃除。洪水の大口へは装備したクリーチャーを戻して装備コストごと損させる。
+蛇皮のヴェールと脚当ての陣形は、G1後に相手が入れてくる解呪・削剥・幽霊による庇護への保険。
+
+### vs 緑単上陸（green）
+
+- **IN  (4)**: 2 Flashfreeze / 2 Into the Flood Maw
+- **OUT (4)**: 1 Courier of Comestibles / 1 Nature's Rhythm / 1 Oblivious Bookworm /
+  1 Patchwork Beastie
+
+入れ替えの根拠は記録に残っていない（瞬間凍結は緑の脅威、洪水の大口へは上陸で育った
+クリーチャーに当たる、という枠であることまでは読み取れる）。次に当たったときに書き足す。
+
+この計画はサイドを調整する前の75枚に対して作られていた（当時の15枚には毒を選べと
+2枚目の無効が入り、炎魔法が無かった）。**メインの IN/OUT はそのまま使えるが、
+サイド15枚は現在の `piza.txt` から再計算した値を正とする。**
+
+### vs ボロストークン（tokens）
+
+- **IN  (2)**: 2 Fire Magic
+- **OUT (2)**: 1 Courier of Comestibles / 1 Nature's Rhythm
+
+根拠は記録に残っていない。次に当たったときに書き足す。
+
 ## 追記欄
 
 <!-- プレイ方針の追加・修正をここに記載 -->
