@@ -1,5 +1,5 @@
 {
- "created_at": "2026-09-10T06:21:57Z",
+ "created_at": "2026-09-10T06:30:37Z",
  "description": "ボロストークン",
  "format": "standard",
  "key": "boros-tokens",
@@ -400,6 +400,6 @@
  "sideboard_total": 15,
  "source_file": "decklists/boros-tokens.txt",
  "source_text": "# boros-tokens — ボロストークン\n# 出典: サイド15枚は 2026-09-03 時点の完成リストを採用\n\nDeck\n4 Hired Claw\n4 Stadium Headliner\n4 Belladonna Took\n4 Voice of Victory\n3 Anim Pakal, Thousandth Moon\n\n2 Erode\n4 Political Triumph\n3 Song of Totentanz\n4 Frontline Rush\n4 Warleader's Call\n4 The Last Ronin's Technique\n\n2 Dalkovan Encampment\n4 Inspiring Vantage\n3 Mountain\n2 Multiversal Passage\n1 Plains\n4 Sacred Foundry\n4 Sunbillow Verge\n\nSideboard\n3 The Queen of Dale\n\n2 Erode\n2 Requisition Raid\n3 Dawn's Truce\n3 Rest in Peace\n2 Elspeth, Storm Slayer\n",
- "updated_at": "2026-09-10T06:21:57Z",
+ "updated_at": "2026-09-10T06:30:37Z",
  "warnings": []
 }

@@ -44,6 +44,7 @@ seed・実行モード・デッキ版・勝敗はreport.mdに記録し、フォ�
 <対局フォルダ>/
   g01.json                 # 状態。g02.json、g03.json…
   g01-001.mtg              # 操作バッチ。ゲームごとに001から連番
+  g02-<略称>.txt           # サイド後のデッキリスト。サイドした席のぶんだけ
   results.jsonl            # この実行の共通結果
   report.md                # 条件・ゲーム別結果・参照・訂正
   findings.md              # 実行上の問題がある場合だけ
@@ -51,6 +52,20 @@ seed・実行モード・デッキ版・勝敗はreport.mdに記録し、フォ�
   output/g01/run-*.jsonl   # CLIが生成する証跡。名前を変更しない
   audit.jsonl              # CLIが必要時に生成
 ```
+
+## サイドボード後のデッキ（登録を増やさない）
+
+**サイド後のリストを `deck add` で登録しない。** マッチアップごとに登録を増やすと、同じ物理デッキがG1とG2で別デッキとして数えられ、2ゲームのマッチが`stats`で「4デッキ・各50%」になって勝率が読めなくなる。`decks/`に置くのは素の構築だけ。
+
+サイド後の60枚は**その対局の記録**なので、対局フォルダに`g02-<略称>.txt`として置く（G3は`g03-<略称>.txt`）。書式は`decklists/README.md`と同じ。入れ替えの計画と根拠は`decklists/sideboarding.md`が正本で、そこから外れた場合だけreport.mdに差分を書く。
+
+`init`にはそのファイルのパスを渡し、**集計に使うデッキ名は`--deckN-name`で素の構築の登録名に寄せる**。
+
+```text
+init --deck1 playtest/<対局>/g02-dw.txt   --deck1-name boros-dwarves      --deck2 playtest/<対局>/g02-piza.txt --deck2-name piza --seed <seed> --first <席>
+```
+
+`--deckN-name`を省くとファイル名がそのままデッキ名として記録される。実際に読んだファイルは`results.jsonl`の`deck_sources`に残るので、どの構成で回したゲームかは後から辿れる。サイドしなかった席は登録名をそのまま渡す。
 
 修正・生成器のバッチも次の未使用番号にする（例：g01-008.mtg）。実行済みバッチを上書きしない。`--state`と`--results`はこのフォルダ内を明示し、playtest直下へ状態や結果を散在させない。`shuffle.py`の出力もプレイ記録なので`--out`でこのフォルダを明示し、リポジトリ直下へ置かない。空のreport・findings・履歴フォルダを先に量産しない。
 

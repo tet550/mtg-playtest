@@ -1,5 +1,5 @@
 {
- "created_at": "2026-09-10T06:21:57Z",
+ "created_at": "2026-09-10T06:30:37Z",
  "description": "ボロスドワーフ（装備品アグロ）",
  "format": "standard",
  "key": "boros-dwarves",
@@ -423,6 +423,6 @@
  "sideboard_total": 15,
  "source_file": "decklists/boros-dwarves.txt",
  "source_text": "# boros-dwarves — ボロスドワーフ（装備品アグロ）\n# 出典: ユーザー提供画像から転記\n\nDeck\n4 Dwarven Mauler\n2 Dwalin, Weaponmaster\n4 Dáin's Company\n4 Kíli the Resourceful\n1 Raubahn, Bull of Ala Mhigo\n1 Dáin Ironfoot\n2 Thorin, Mountain-king\n\n3 Doc Ock's Tentacles\n3 Ghostfire Blade\n4 Lavaspur Boots\n2 Skateboard\n3 Samurai's Katana\n4 Leyline Axe\n\n4 Cavern of Souls\n4 Inspiring Vantage\n3 Mountain\n4 Sacred Foundry\n4 Sunbillow Verge\n4 The Lonely Mountain\n\nSideboard\n2 Burst Lightning\n1 Abrade\n3 Dawn's Truce\n2 Disenchant\n2 Exorcise\n2 Rest in Peace\n3 Sheltered by Ghosts\n",
- "updated_at": "2026-09-10T06:22:50Z",
+ "updated_at": "2026-09-10T06:30:37Z",
  "warnings": []
 }

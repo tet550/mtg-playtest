@@ -275,7 +275,8 @@ def cmd_init(args, _):
           "players": {}, "objects": {}, "cards": {}, "zones": {"stack": []},
           "log": [], "next_oid": 1, "seed": args.seed, "rng_seq": 0,
           "effects": [], "combat": {"attackers": {}, "blocks": {}}, "passed": []}
-    for pid, name, deck in (("P1", args.p1, args.deck1), ("P2", args.p2, args.deck2)):
+    for pid, name, deck, as_name in (("P1", args.p1, args.deck1, args.deck1_name),
+                                     ("P2", args.p2, args.deck2, args.deck2_name)):
         st["players"][pid] = {"name": name, "life": args.life, "poison": 0,
                               "pool": {}, "land_drops": 1, "lands_played": 0,
                               "mulligans": 0, "counters": {}}
@@ -288,7 +289,11 @@ def cmd_init(args, _):
                 print("!! %s のデッキ「%s」に問題があります:" % (pid, d["name"]))
                 for pb in d["problems"]:
                     print("   " + pb)
-            st["players"][pid]["deck"] = d["name"]
+            # 集計はデッキ単位で読みたい。サイド後のリストは対局フォルダに置く運用なので
+            # ファイル名がそのままデッキ名になると、同じ物理デッキがG1とG2で別行になる。
+            # --deckN-name で素の構築の登録名に寄せ、実際に読んだ出所は deck_source に残す。
+            st["players"][pid]["deck"] = as_name or d["name"]
+            st["players"][pid]["deck_source"] = deck
             names = decks.card_names(d)
         random.Random("%s:deck:%s" % (args.seed, pid)).shuffle(names)
         for n in names:
@@ -2147,7 +2152,9 @@ def record_result(args, st, result, reason, concede_by=None):
            "life": {p: st["players"][p]["life"] for p in st["players"]},
            "mulligans": {p: st["players"][p].get("mulligans", 0) for p in st["players"]},
            "names": {p: st["players"][p]["name"] for p in st["players"]},
-           "decks": {p: st["players"][p].get("deck") for p in st["players"]}}
+           "decks": {p: st["players"][p].get("deck") for p in st["players"]},
+           "deck_sources": {p: st["players"][p].get("deck_source")
+                            for p in st["players"]}}
     path = results_path(args)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -2335,6 +2342,9 @@ def build_parser():
     s.add_argument("--p2", default="P2")
     s.add_argument("--deck1", help="登録名 または デッキリストのファイルパス")
     s.add_argument("--deck2", help="登録名 または デッキリストのファイルパス")
+    s.add_argument("--deck1-name", help="集計に使うデッキ名。サイド後のリストをファイルで"
+                                        "渡すときに、素の構築の登録名を指定する")
+    s.add_argument("--deck2-name", help="同上（P2側）")
     s.add_argument("--seed", type=int, default=random.randrange(2 ** 32))
     s.add_argument("--life", type=int, default=20)
     s.add_argument("--first", choices=["P1", "P2", "random"], default="P1",

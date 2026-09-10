@@ -1,5 +1,5 @@
 {
- "created_at": "2026-09-10T06:21:58Z",
+ "created_at": "2026-09-10T06:30:37Z",
  "description": "緑単上陸（MOショーケースチャレンジ 2026-08-21 優勝）",
  "format": "standard",
  "key": "mono-green-landfall",
@@ -423,6 +423,6 @@
  "sideboard_total": 15,
  "source_file": "decklists/mono-green-landfall.txt",
  "source_text": "# mono-green-landfall — 緑単上陸\n# 出典: FunkiMunki / MOショーケースチャレンジ（スタンダード）2026-08-21 優勝\n#       https://www.izzetmtgnews.com/archives/147306\n\nDeck\n4 Llanowar Elves\n4 Sazh's Chocobo\n1 Surrak, Elusive Hunter\n4 Icetill Explorer\n4 Mightform Harmonizer\n\n1 Meltstrider's Resolve\n3 Esper Origins // Summon: Esper Maduin\n3 Glimpse the Core\n4 Earthbender Ascension\n1 Lumbering Worldwagon\n4 Sapling Nursery\n\n3 Ba Sing Se\n1 Demolition Field\n2 Elven Passage\n2 Escape Tunnel\n4 Fabled Passage\n14 Forest\n1 Promising Vein\n\nSideboard\n1 Keen-Eyed Curator\n4 Mossborn Hydra\n1 Surrak, Elusive Hunter\n1 Leatherhead, Swamp Stalker\n1 Gigantic Big Bear\n\n3 Meltstrider's Resolve\n2 Torpor Orb\n2 Warg Tactics\n",
- "updated_at": "2026-09-10T06:21:58Z",
+ "updated_at": "2026-09-10T06:30:37Z",
  "warnings": []
 }

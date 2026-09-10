@@ -95,7 +95,10 @@ decklists/*.txt  ──deck add──▶  decks/*.json  ──init──▶  pla
 - **`playtest/`** … 盤面の状態・操作バッチ・undo 履歴・`results.jsonl`・レポートといった
   **プレイ記録はすべてここ**。1つの依頼＝1フォルダで、命名規約は
   [`references/storage-layout.md`](.claude/skills/mtg-playtest/references/storage-layout.md)。
-  `shuffle.py` の引き順出力もここに入ります。
+  `shuffle.py` の引き順出力と、サイドボード後のデッキリストもここに入ります。
+- サイド後の構成は `decks/` に登録しません。計画は
+  [`decklists/sideboarding.md`](decklists/sideboarding.md)、実際に使った60枚は対局フォルダの
+  `g02-<略称>.txt`。登録を増やすと同じ物理デッキが `stats` で別デッキとして数えられます。
 
 `cards/` と `playtest/` は `.gitignore` で除外しています。クローン直後には存在せず、
 初回の実行時に作られます。理由は [NOTICE.md](NOTICE.md) を参照してください。

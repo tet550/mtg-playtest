@@ -7,19 +7,27 @@
 python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --name piza --description "..."
 ```
 
+## ここに置くもの / 置かないもの
+
+**`decklists/` と `decks/` が持つのは素の構築（G1で使う75枚）だけ。**
+サイド後の構成はマッチごとの記録なので登録しない。計画は
+[`sideboarding.md`](sideboarding.md)、実際に使った60枚は
+`playtest/<対局フォルダ>/g02-<略称>.txt`（規定は
+[`references/storage-layout.md`](../.claude/skills/mtg-playtest/references/storage-layout.md)）。
+
+マッチアップごとに登録を増やすと、同じ物理デッキが `stats` で別デッキとして数えられ、
+2ゲームのマッチが「4デッキ・各50%」になって勝率が読めなくなる。
+
 ## ファイル名
 
-| 種類 | 形式 | 例 |
-|---|---|---|
-| 素の構築 | `<デッキ名>.txt` | `piza.txt` / `boros-dwarves.txt` |
-| サイド後 | `<デッキ名>-vs-<相手の略称>-g2.txt` | `piza-vs-dw-g2.txt` |
+`<デッキ名>.txt`（`piza.txt` / `boros-dwarves.txt`）。
 
 - `<デッキ名>` は半角英小文字・数字・ハイフン。そのまま登録名になる。
-- `<相手の略称>` は
-  [`references/storage-layout.md`](../.claude/skills/mtg-playtest/references/storage-layout.md)
-  のデッキ略称表（`dw` / `tokens` / `green` / `piza`）を使う。playtest のフォルダ名と同じ語彙。
 - **登録名 = ファイル名の拡張子を除いた部分**。`deck add --name` にこれを渡すので、
   `decks/` 側のファイル名も `<登録名>-<ハッシュ>.json` になり、両者が一対一で対応する。
+- 短い略称（`dw` / `tokens` / `green` / `piza`）は
+  [`references/storage-layout.md`](../.claude/skills/mtg-playtest/references/storage-layout.md)
+  のデッキ略称表で固定する。playtest のフォルダ名と同じ語彙。
 
 ## 中身の書式
 
@@ -27,10 +35,6 @@ python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --
 # <登録名> — <一行説明>
 # 出典: <URL・由来>              ← あれば
 # 方針: decklists/<name>.md      ← 別途プレイ方針を書いてあれば
-# 元: decklists/<素の構築>.txt   ← サイド後のみ
-# IN  (n): <枚数> <カード名> / ...
-# OUT (n): <枚数> <カード名> / ...
-# 理由: <サイドの根拠>            ← あれば。複数行可
 
 Deck
 <クリーチャー>
@@ -52,7 +56,7 @@ Sideboard
   群の間は空行で区切る（空行と `#` 行はパーサーが無視する）。
   素の構築とサイド後の diff がそのまま IN/OUT になるので、この順を崩さない。
 - 見出しは `Deck` / `Sideboard`。`デッキ` / `サイドボード` も解釈されるが、書くときは英語で揃える。
-- `IN` / `OUT` は素の構築とのメインデッキの差分。枚数の合計が一致しない場合は書き間違い。
+- 対局フォルダに書くサイド後の60枚も同じ書式にする（ヘッダーは素の構築と IN/OUT を書く）。
 
 ## 旧名との対応
 
@@ -61,10 +65,12 @@ Sideboard
 
 | 旧名 | 新名 |
 |---|---|
-| `piza-g2` | `piza-vs-green-g2` |
-| `piza-vs-dwarves-g2` | `piza-vs-dw-g2` |
-| `mono-green-landfall-g2` / 登録名 `mono-green-g2` | `mono-green-landfall-vs-piza-g2` |
 | 登録名 `ボロスドワーフ` | `boros-dwarves` |
 | 登録名 `Boros Tokens` | `boros-tokens` |
+| `piza-g2` / `piza-vs-dwarves-g2` / `piza-vs-tokens-g2` | 登録をやめ、[`sideboarding.md`](sideboarding.md) の「piza」節へ |
+| `boros-dwarves-vs-piza-g2` | 同 「boros-dwarves」節 |
+| `boros-tokens-vs-piza-g2` | 同 「boros-tokens」節 |
+| `mono-green-landfall-g2` / 登録名 `mono-green-g2` | 同 「mono-green-landfall」節 |
 
-デッキの中身（メイン60・サイド15の内訳）はこの整理で一切変えていない。
+素の構築の中身（メイン60・サイド15の内訳）はこの整理で一切変えていない。
+サイド後の75枚は素の構築 ± IN/OUT で復元できる。
