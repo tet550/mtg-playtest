@@ -79,7 +79,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 - `stack resolve` は解決の記録だけで、スタックから取り除かない。通常は効果適用後、カードは `move`、能力は `stack pop`。`pending` 管理能力は `pending resolve` が効果・除去・完了をまとめて保存する（[区間ファイルの手順](bookkeeping.md)）。関連帰還能力は `linked resolve L1` を使う。装備の修整・付与は `fx`、カウンター総数は `counter --set` で記録する。
 - 装備由来の効果は装備ごとの `--src` で分ける。`fx` の付け替えでは旧対象からの適用終了と新対象への適用が自動計算される。`fx set E1` は同じ効果の全定義を置換、別の能力解決は `fx add`。旧 `mod/grant` は `--replace-legacy` で確認して移行し、二重計上しない。`grant --clear` で付け替えの後始末をしない。
 - 起動コストの生け贄でLTBが誘発する場合は、元の起動型能力→コスト支払い・生け贄→LTBの順に記帳し、上にあるLTBから解決する。`stack resolve`直後は対象・効果を確認し、別の能力の効果を適用しない。
-- `combat damage`は先制・二段攻撃・トランプルに対応する。該当時は`combat damage --step first --trample`→SBAで死亡を適用→`combat damage --step regular --trample`。決着したら通常ダメージまで続けない。既定の一括処理を使って出た未適用警告は「何も適用せず停止」とは限らないので、同じダメージを手動で重ねない。絆魂等の未対応部分は補う。
+- `combat damage`は先制・二段攻撃・トランプルに対応する。該当時は`combat damage --step first --trample`→SBAで死亡を適用→`combat damage --step regular --trample`。**既知の不具合: 先制ステップでブロッカーが全滅した攻撃クリーチャーを、通常ステップで無ブロック扱いにして全ダメージをプレイヤーへ通す（トランプルの有無を見ない）。** CR510.1aではブロックされたままなので、トランプルが無ければ0点が正しい。二段攻撃かつトランプル無しの攻撃クリーチャーでブロッカーが先制で死んだ場合は、`--step regular`を使わず`damage <oid> <n>`で個別に適用する。決着したら通常ダメージまで続けない。既定の一括処理を使って出た未適用警告は「何も適用せず停止」とは限らないので、同じダメージを手動で重ねない。絆魂等の未対応部分は補う。
 - コンボの必要マナは状態（手札／戦場／墓地、酔い、初期プール、用途制限）を明記して戦略資料と照合する。過去のnoteの「5マナ」などを一般条件として流用しない。ブロックは主要な割り当てごとに残ライフ・残る始動役を比較し、生存する別案がある場合に「ブロックせざるを得ない」と断定しない。
 - 無限コンボは1周のコスト・増減・繰り返し条件を自分で検証し、有限回数を宣言して記帳する。裁定に確信がなければ該当カードと公式条文を確認する。
 - 一括記帳は `loop <P1|P2> <回数> --life <1周の純増> --mana <1周の純増> --draw <1周の枚数> --proof "コスト・収支・反復条件・合意"`。必要な増分だけ指定する。詳細と制限は [loop.md](loop.md) を参照。方針文書があるデッキ（`init` の「方針:」行）では、その文書の始動手順を先に読む。
@@ -108,6 +108,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
 | 装備先の指定 | `attach <装備品oid> --to <クリーチャーoid>` |
 | 装備ごとの修整 | `mod <対象oid> +1/+0 --until attached --src <装備品oid>`（別装備は別行） |
+| 装備品の付け替え | **`attach <装備品oid> --to <新しい対象>` だけ**を実行する。`fx add`は装備品が初めて戦場に出たときの1回きり。付け替えのたびに`fx add`を書くと同一src・同一abilityの定義が二重に残り、`fx add`は警告を出さないのでP/Tが静かに膨らむ。疑わしいときは`fx list`で同じsrcの行が2つ無いか確認し、余分な方を`fx remove E<n>` |
 | 静的な全体修整（アンセム） | `fx` の `--scope` では「自軍の該当タイプ全部」を表現できない。対象1体ずつ `mod <oid> +N/+0 --until permanent` を入れ、係数の根拠を `note` に残す。**発生源の数が変わっても自動再計算されない**ので、増減したら`mod`を引き直す |
 | 装備効果を自動計算へ登録 | `fx add --src <装備品oid> --ability bonus --pt +1/+0 --grant トランプル`（以後の付け替えはattachだけ。旧mod/grantがあれば定義確認後 `--replace-legacy`） |
 | 複数キーワードの付与 | `fx add --src <oid> --ability bonus --pt +1/+0 --grant 速攻 "護法{1}"`（`--grant`は1回にまとめる。2回書くと後勝ちで上書きされ、消えた付与は`fx list`か攻撃時の召喚酔い警告まで気付けない） |
@@ -131,7 +132,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 土地を置く | `move <oid> battlefield`（タップインは`--tapped`。`play P1`ではない） |
 | ライフ変更 | `life P2 -2`（`--reason`はない。必要な理由だけnote） |
 | 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。警戒は`--no-tap`） |
-| 戦闘ダメージ | 応答・誘発・ブロックを確認し`combat.damage`へ進めてから`combat damage`。別ステップや非空スタックでは停止する |
+| 戦闘ダメージ | 応答・誘発・ブロックを確認し`combat.damage`へ進めてから`combat damage`。別ステップや非空スタックでは停止する。**先制ステップでブロッカーが全滅した非トランプルの攻撃クリーチャーには`--step regular`を使わない**（無ブロック扱いで誤ってプレイヤーに通る）。その1体だけ`damage`で手動適用する |
 | 次ターン | `turn next --to precombat_main --draw`（途中の誘発があるならそこで区切る） |
 | 攻撃中のノーム | `token P1 Gnome --types Artifact/Creature --subtypes Gnome --power 1 --toughness 1 --attacking -n 2` |
 | トークンのoid | 採番は生成時の出力（`トークン生成: 英雄(125)`）でしか分からない。**生成行の直後でバッチを区切り**、oidを読んでから`attach`／`fx add`／`stack push --src`を書く（推測すると`oid ... は存在しません`で停止する） |
