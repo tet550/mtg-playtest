@@ -216,8 +216,9 @@ def resolve_part(api, args, st, p):
         raise SystemExit("この処理待ち能力はスタックの一番上ではありません。")
     if p["status"] == "stack":
         require_ready(st)
-    if not args.file or not args.part:
-        raise SystemExit("pending resolve T番号 --file <実ファイル> --part <区間名> [--pause] が必要です。")
+    commands = getattr(args, 'commands', None)
+    if not (args.file or commands) or not args.part:
+        raise SystemExit("pending resolve T番号 (--file <実ファイル> または --do <操作>) --part <区間名> [--pause] が必要です。")
     if args.part in p["parts"]:
         raise SystemExit("区間 %s は適用済みです。再実行できません。" % args.part)
     prepared = []
@@ -225,7 +226,9 @@ def resolve_part(api, args, st, p):
     gl = ["--state", args.state, "--cards-dir", args.cards_dir, "--offline"]
     if args.seat:
         gl += ["--as", args.seat]
-    for n, line in api.command_lines(pathlib.Path(args.file).read_text(encoding="utf-8-sig")):
+    text = '\n'.join(commands) + '\n' if commands else pathlib.Path(args.file).read_text(encoding="utf-8-sig")
+    label = args.file or '--do'
+    for n, line in api.command_lines(text):
         try:
             words = api.command_words(line)
             if not words or words[0] not in EFFECT_COMMANDS | {"fx", "linked"}:
@@ -238,7 +241,7 @@ def resolve_part(api, args, st, p):
             api.enforce_seat(a)
             prepared.append((n, line, a))
         except (ValueError, SystemExit) as error:
-            raise SystemExit("%s:%s: %s（状態変更なし）" % (args.file, n, error))
+            raise SystemExit("%s:%s: %s（状態変更なし）" % (label, n, error))
     if any(a.cmd in OBSERVE_RESULT for _, _, a in prepared[:-1]):
         raise SystemExit("ドロー・サーチ・乱数・lookは区間の最後に置いて結果を確認してください（状態変更なし）。")
     draft = copy.deepcopy(st)
@@ -252,9 +255,12 @@ def resolve_part(api, args, st, p):
             for n, line, a in prepared:
                 api.command_handlers()[a.cmd](a, draft)
     except (SystemExit, ValueError, KeyError, OSError) as error:
-        raise SystemExit("解決区間 %s の %s:%s 失敗: %s（この区間は未適用）" % (args.part, args.file, n, error))
+        raise SystemExit("解決区間 %s の %s:%s 失敗: %s（この区間は未適用）" % (args.part, label, n, error))
     finally:
         api._CTX["offline"] = offline
+    if commands:
+        args.file = str(api.input_files.save_commands(args.state, text))
+        print('操作ファイル: ' + args.file)
     pending["parts"][args.part] = dict(file=str(args.file), commands=[line for _, line, _ in prepared])
     if not args.pause:
         api.remove_ability(draft, pending["stack_oid"])
@@ -307,7 +313,10 @@ def add_parser(sub):
     s.add_argument("--controller", choices=["P1", "P2"], help="add時必須")
     s.add_argument("--src", help="任意の発生源oid/oid@世代。規則由来なら省略")
     s.add_argument("--targets", help="stack時の対象（AIが適正を確認）")
-    s.add_argument("--file", help="resolve:適用する既存コマンドの実ファイル")
+    source = s.add_mutually_exclusive_group()
+    source.add_argument("--file", help="resolve:適用する既存コマンドの実ファイル")
+    source.add_argument("--do", dest="commands", action="append", metavar="COMMAND",
+                        help="resolve:短い操作を直接指定。複数操作は繰り返す。成功時に連番.mtgへ自動保存")
     s.add_argument("--part", help="resolve:再実行を防ぐ区間名、必須")
     s.add_argument("--pause", action="store_true", help="resolve:この区間を保存し、解決途中として続き待ち")
     s.add_argument("--reason", help="cancel:取消し・打ち消し等の理由、必須")

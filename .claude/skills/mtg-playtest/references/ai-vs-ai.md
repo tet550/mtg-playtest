@@ -51,6 +51,9 @@ python $mtg --state $state --results $results stats --tag A-vs-B
 
 `python` がPATHにない環境では利用可能なPython実行ファイルの絶対パスを使う。
 Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <引数>` も使える。PATHのPythonを優先し、なければ同梱ランタイムを探す。
+プロジェクト直下の `& ./mtg.ps1 <引数>` は同じ入口の短縮で、標準入力もそのまま渡す。
+
+毎回の `--state` / `--results` は `session` で短縮名に登録できる。`python $mtg --state <state> --results <results> session g01green` の後は `python $mtg --session g01green show` のように書く。**`--session` とパス指定（`--state` など）は併用できず、同じ名前の再登録もできない**（既存の登録を黙って上書きしないため）。登録は `playtest/.sessions/<名前>.json` に残る。`run` の中では `session` を使えない。
 
 ## 投了（`concede`）を使ってよい場面
 
@@ -101,9 +104,10 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 残りライブラリーの確認 | `zone P1:library`（P2なら `zone P2:library`。投了判断でのアウト確認用） |
 | ライブラリーの上からN枚を見る | `look P1 4`（上から4枚。移動しない。効果などで見る必要があるときだけ） |
 | 呪文をスタックへ | `stack push <oid> --cast --controller P1`（詠唱を明示して回数記録・castメモ表示。`--cast`省略は詠唱扱いしない） |
-| 誘発の処理待ちを記帳 | `pending add "果敢" --controller P1 --src <oid>`（srcは省略可、1回につき1登録）→ 順序・対象確認後 `pending stack T1 --targets <oid>`（対象なしならtargets省略） |
+| 誘発の処理待ちを記帳 | `pending add "果敢" --controller P1 --src <oid>`（srcは省略可、1回につき1登録）→ 順序・対象確認後 `pending stack T1 --targets <oid>`（対象なしならtargets省略）。**自分の誘発が複数あるときは後に解決したいものを先に積む**（後入れ先出し）。積んだ後に順序を変える手段は無く`undo`で戻すしかないので、積む前に解決順を決める |
 | 処理待ちの一覧 | `pending list`／`pending list --all`（linkedの帰還も参照表示。重複登録しない） |
-| 台帳の能力を解決 | 応答確認後 `pending resolve T1 --file <実ファイル> --part bonus`（効果と完了を一括保存。結果を見て続けるなら `--pause`、続きは別part。手順は [bookkeeping.md](bookkeeping.md)） |
+| 使い捨てのバッチを標準入力から流す | `... run - --compact`（`-` は標準入力。構文検査を通った内容は状態ファイル横の `<state名>-NNN.mtg` に自動保存され、「操作ファイル: <パス>」と出る。既存の番号は上書きしない）。ファイルを自分で書く従来の手順もそのまま使える |
+| 台帳の能力を解決 | 応答確認後 `pending resolve T1 --file <実ファイル> --part bonus`、または1〜2行なら `pending resolve T1 --do "counter 3 +1/+1 1" --part bonus`（`--do` は繰り返し可。`--file` とは併用不可。成功時に連番`.mtg`へ自動保存）（効果と完了を一括保存。結果を見て続けるなら `--pause`、続きは別part。手順は [bookkeeping.md](bookkeeping.md)）。**解決用ファイルに`sba`は書けない**（「解決用ファイルで使用できないコマンドです」で停止）ので、格闘などの死亡確認は`pending resolve`の後に別途`sba --apply-deaths`を打つ |
 | 台帳の能力を取消し | `pending cancel T1 --reason "打ち消し"`（理由必須。解決途中はundoで戻す） |
 | 確認メモ | `remind add "果敢を確認" --on cast --player P1 --src <oid>`（on必須：cast/enter/turn。player・src省略可。自動誘発なし）／`remind list`／`remind remove R1` |
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
@@ -122,15 +126,17 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 追放カードのプレイ許可 | 追放時に `--play-until eot --player P1` → `linked play L1 1 --player P1`（呪文は詠唱回数・castメモに反映、土地は含めない。支払い・対象・追加制限は別途確認） |
 | 旧方式の能力付与 | `grant <対象oid> トランプル --until attached --src <付与元oid>`（`attached` は省略時も既定で `--src` 必須。実際の装着先と一致が必要。fx管理中は使用不可） |
 | 旧付与を発生源ごと取消し | `grant <対象oid> --clear --src <付与元oid>`（src省略は他の発生源分も全削除。fxはfx removeで取消し） |
-| サーチ（カード名で探す） | `search P2 "Chrome Dome" --to battlefield`（名前は位置引数。`--name`は無い。候補が複数なら未完了で停止する） |
+| サーチ（カード名で探す） | `search P2 "Chrome Dome" --to battlefield`（名前は位置引数。`--name`は無い。候補が複数なら未完了で停止する）。**`--tapped`は無い**ので「タップ状態で戦場に出す」効果は`search`の次の行に`tap <oid>`を書く。寓話の小道のように直後にアンタップする効果なら、タップ行を省いてその旨を`note`に残す |
 | サーチの選択 | `search P2 --oid <候補oid> --to hand`（既定でシャッフル） |
 | 複数手の復旧 | `undo 3`（3保存分。指定不足・超過は変更せず停止） |
 | Classレベルの記帳 | `effect add "[oid] Class level 2: 適用する能力"`（表示用メモ。カードの能力・支払いは別途確認） |
+| 土地をクリーチャー化（土の技・ミシュラランド） | `card set --oid <土地oid> --types Land/Creature --power 0 --toughness 0` → `counter <oid> +1/+1 N` → 説明を`effect add`。**P/Tを登録しないと攻撃・ブロック宣言は通り、`combat damage`で「P/T未登録」と出て全体停止する** |
 | 盤面の説明メモ | `effect add "現在の適用条件" --until eot`（showに常時表示。期限省略はpermanent）。場面ごとの確認はremind、確定した誘発はpending、数値効果はmod/grant/fxへ記帳 |
 | 応答なしの解決 | `pass P1` → `pass P2` → 通常は`stack resolve` → 効果適用 → カードは`move`、能力は`stack pop`。台帳の能力は`pending resolve`、帰還能力は`linked resolve`で完了まで処理 |
 | マナ | `tap <oid...>` → `mana P1 add WR` → `mana P1 spend WR`（生成色・量・用途制限は確認） |
 | SBA | `sba --apply`（トークン消滅・装着先のない通常オーラ）／裁定確認後の `sba --apply-deaths`（同時死亡後も再評価。授与・置換等は先に裁定） |
 | 土地を置く | `move <oid> battlefield`（タップインは`--tapped`。`play P1`ではない） |
+| クリーチャーへのダメージ | `damage <oid> <点数>`（**発生源を渡すオプションは無い**。格闘・火力の発生源や絆魂・接死の判定は`note`と手動処理で補う） |
 | ライフ変更 | `life P2 -2`（`--reason`はない。必要な理由だけnote） |
 | 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。警戒は`--no-tap`） |
 | 戦闘ダメージ | 応答・誘発・ブロックを確認し`combat.damage`へ進めてから`combat damage`。別ステップや非空スタックでは停止する。先制・二段攻撃は`combat damage --step first --trample`→`sba --apply-deaths`→未決着なら`combat damage --step regular --trample`。ブロック済みでブロッカー不在なら非トランプルは0点、トランプルは全点を自動適用。`combat show`でもブロック済みと表示する。超過があるのに`--trample`を省略すると全体未適用で停止 |

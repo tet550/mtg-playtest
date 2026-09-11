@@ -8,5 +8,10 @@ if ($pythonCommand) {
 if (-not (Test-Path -LiteralPath $mtgPython -PathType Leaf)) {
     throw 'Python was not found. Locate an installed Python runtime and invoke mtg.py with its absolute path.'
 }
-& $mtgPython (Join-Path $PSScriptRoot 'mtg.py') @args
+if ($MyInvocation.ExpectingInput) {
+    $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+    $input | & $mtgPython (Join-Path $PSScriptRoot 'mtg.py') @args
+} else {
+    & $mtgPython (Join-Path $PSScriptRoot 'mtg.py') @args
+}
 exit $LASTEXITCODE

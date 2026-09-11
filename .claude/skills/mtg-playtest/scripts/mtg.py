@@ -35,6 +35,7 @@ import io
 import tempfile
 
 import compact_output
+import input_files
 import combat_damage
 import relations
 import bookkeeping
@@ -1114,22 +1115,18 @@ def render_hand(st, pid, unsorted=False, indent="  "):
         o = st["objects"][str(oid)]
         c = card_of(st, o)
         types = c.get("types", [])
-        mv = c.get("mana_value")
         kind = types_ja(types)
         if c.get("power") is not None:
             kind += " %s/%s" % (c["power"], c["toughness"])
         # 日本語を含むのは最後の1列だけにする。カード名とタイプの間に
         # 桁揃えを挟むと、フォント次第でそこから右が全部ズレる。
-        rows.append(["-" if "Land" in types else ("?" if mv is None else str(mv)),
-                     c.get("cost", "") or "-",
+        rows.append([c.get("cost", "") or "-",
                      "[%d]%s ／ %s" % (oid, disp_of(st, o), kind)])
-    head = "%s %s の手札 %d枚%s" % (pid, st["players"][pid]["name"], len(oids),
-                                    "" if unsorted else "（土地 → マナ総量 順）")
+    head = "%s %s の手札 %d枚" % (pid, st["players"][pid]["name"], len(oids))
     if not rows:
         return [head, indent + "（なし）"]
-    # 見出しを必ず付ける。付けないと MV の列が枚数に見える。
     # oid は盤面表示と同じく [oid]カード名 の形にして、列としては持たない。
-    rows.insert(0, ["MV", "コスト", "カード名 ／ タイプ"])
+    rows.insert(0, ["コスト", "カード名 ／ タイプ"])
     w = [max(width(r[i]) for r in rows) for i in range(len(rows[0]))]
     lines = [head]
     for r in rows:
@@ -2273,6 +2270,7 @@ def build_parser():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--state", default="playtest/state.json")
+    ap.add_argument("--session", metavar="NAME", help="sessionで登録した短縮名。パス指定との併用不可")
     ap.add_argument("--as", dest="seat", choices=["P1", "P2"],
                     help="この席として実行する。相手の手札・ライブラリー・秘匿メモへの"
                          "参照を拒否し、隠匿情報の参照を audit.jsonl に残す")
@@ -2290,6 +2288,9 @@ def build_parser():
     ap.add_argument("--en", action="store_true",
                     help="カード名を英語で表示する（既定は日本語印刷名を優先）")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("session", help="--state等の保存先を短縮名に登録（既存名は上書きしない）")
+    s.add_argument("name")
 
     s = sub.add_parser("init", help="デッキを読み込んでゲームを開始")
     s.add_argument("--prefetch", action="store_true",
@@ -2709,8 +2710,8 @@ def run_batch(args):
                     raise ValueError("pass-both P1|P2 は席制限なしのバッチ専用です")
                 commands = [["pass", parts[1]], ["pass", "P2" if parts[1] == "P1" else "P1"]]
             for command in commands:
-                if command[0] == "run":
-                    raise ValueError("run は入れ子にできません")
+                if command[0] in ("run", "session"):
+                    raise ValueError("run/session はバッチ内では使用できません")
                 parsed = parse_file_command(command, gl, parser)
                 if parsed.cmd == "phase" and parsed.op in ("to", "set") and parsed.value not in PHASES:
                     raise ValueError("不明なフェイズ: " + str(parsed.value))
@@ -2720,6 +2721,9 @@ def run_batch(args):
     if errors:
         print("構文検査失敗（状態変更なし）\n" + "\n".join(errors))
         sys.exit(1)
+    if args.file == "-":
+        args.file = str(input_files.save_commands(args.state, text))
+        print("操作ファイル: " + args.file)
     done = failed = 0
     baseline = load(args) if args.delta and state_path(args).exists() else None
     baseline_view = None
@@ -2831,7 +2835,10 @@ def command_handlers():
 
 
 def dispatch(argv):
-    args = parse_command(argv)
+    args = parse_command(input_files.expand(argv))
+    if args.cmd == "session":
+        input_files.register(args)
+        return
     _CTX["dir"] = args.cards_dir
     _CTX["offline"] = args.offline
     _CTX["english"] = args.en
