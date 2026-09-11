@@ -155,6 +155,12 @@ def cmd_fx(api, args, st):
     if not any((args.pt, args.base_pt, args.grant, args.manual, args.counter)):
         raise SystemExit("効果内容（--pt / --base-pt / --grant / --manual）が必要です。")
     if args.scope == "attached":
+        if not old and args.until == "source":
+            duplicate = next((f for f in st["fx"] if f["source"] == source
+                              and f["ability"] == args.ability and f["scope"] == "attached"
+                              and f["until"] == "source"), None)
+            if duplicate:
+                raise SystemExit("同じ発生源・能力の装着効果 %s が登録済みです。付け替えはattach、訂正はfx setを使ってください。" % duplicate["id"])
         legacy = [(o, field, e) for o in st["objects"].values() for field in ("mods", "grants")
                   for e in o.get(field, []) if e.get("until") == "attached" and str(e.get("src")) == str(source["oid"])]
         if legacy and not args.replace_legacy:

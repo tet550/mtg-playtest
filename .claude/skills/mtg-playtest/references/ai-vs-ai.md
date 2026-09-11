@@ -9,8 +9,8 @@
 1. 対象の2デッキだけ `deck show <登録名> --brief` で確認する。出力に `方針: decklists/strategy/<登録名>.md` が出たら、その文書を対局前に読み、そのデッキのプレイ方針として固定する（`init` も同じ行を出す）。登録JSON全文は読まない。BO1はメインの名前・枚数・警告で足りる。登録済みで変更がなければ再登録・全件検証しない。新規・変更時は `deck add <file> --quiet` で検証し、警告を解消する。サイド後の構成は登録せず、対局フォルダの `g02-<略称>.txt` を `init --deckN <パス> --deckN-name <素の構築の登録名>` で読む（[storage-layout.md](storage-layout.md)）。カードキャッシュ全体、過去対局、履歴、ソース全文は読まない。
 2. [storage-layout.md](storage-layout.md) に従って保存先を作り、`init` のseedでシャッフルする。別途全ゲーム分のシャッフルファイルは作らない。各ゲームに別の状態ファイルとseed、連戦に共通の結果ファイルを使う。独立した連戦は先手を交互、マッチ形式は前ゲーム敗者が選ぶ。
 3. 初手を配り、マリガンを処理する。盤面と両手札は `show --hand both` の1回で確認する。既知のカードテキストは再表示しない。未知のカードが現れたときだけ `card show <名前>` を読む。
-4. 確定した操作を `run <file> --compact` にまとめる。1行ごとの保存とundoは維持される。ドロー・ランダム結果・未知の誘発など、その出力で判断が変わる箇所でバッチを区切り、結果を読んでから次の操作を決める。応答可能なら両席の応答を判断してから解決する。未確認の分岐をまとめて実行しない。
-5. 通常はバッチの末尾に `show --hand both` を1回だけ置く。初回は全文、開始盤面が既知の次回以降は `run <file> --compact --delta` でバッチ開始時からの差分を受け取る。同一バッチで2回目以降のshowは前回showからの差分。再開時や文脈を失ったときは `--delta` を外す。差分の `-` は変更前、`+` は変更後であり、物理的なカード移動だけを意味しない。個々の `hand` / `view` / `show` を重ねない。`--compact` は既知の成功メッセージ・定型説明だけ省略し、警告・未知の出力・ドロー・探索候補は残す。全stdoutとコマンドは状態ファイル横の `output/<state名>/run-*.jsonl` に保存する。詳細は異常時の該当行だけ読む。エラー時は止め、修正してから続ける（`--keep-going` は使わない）。
+4. 確定した操作を標準入力の `run - --compact` にまとめる。入力ファイルはCLIが自動保存する。既存ファイルの `run <file> --compact` も使える。1行ごとの保存とundoは維持される。ドロー・ランダム結果・未知の誘発など、その出力で判断が変わる箇所でバッチを区切り、結果を読んでから次の操作を決める。応答可能なら両席の応答を判断してから解決する。未確認の分岐をまとめて実行しない。
+5. 通常はバッチの末尾に `show --hand both` を1回置き、**毎回全文で確認する**。個々の `hand` / `view` / `show` を重ねない。`--delta` は利用者が明示的に選び、開始盤面が既知の場合だけ使う。再開時や文脈を失ったときは全文へ戻す。差分の `-` は変更前、`+` は変更後であり、物理的なカード移動だけを意味しない。`--compact` は既知の成功メッセージ・定型説明だけ省略し、警告・未知の出力・ドロー・探索候補は残す。全stdoutとコマンドは状態ファイル横の `output/<state名>/run-*.jsonl` に保存する。詳細は異常時の該当行だけ読む。エラー時は止め、修正してから続ける（`--keep-going` は使わない）。
 6. `note` は開始方針、重要な分岐、裁定、コンボの収支、補正に限定する。通常の展開・攻撃・ドローを操作と同じ内容で説明し直さない。進捗・保存版・終了報告は [log-format.md](log-format.md) に従い、重要イベントの根拠を実行時に記録する。毎手の理由や全ログを再読・再掲しない。
 7. `end` で勝敗を記録し、最後に同じ結果ファイルの `stats --tag` を読む。報告・集計項目は共通規定に従う。
 
@@ -32,21 +32,22 @@
 - `phase`はカードを引かない。ドロー・ステップの通過時は警告を確認し、未処理の場合だけ`draw <席> 1`を実行する。再開や補正で既に引いている場合に二重ドローしない。
 - マナは `mana P1 add` に**実際に生み出す色だけ**（無色は `C`、数字はエラー）、`mana P1 spend` に**コスト表記そのまま**（`spend 2G` でよい）。
 - 装備の効果は `fx add --src <装備品oid> --ability bonus --pt +1/+0 --grant トランプル` のように一度登録する。複数のキーワードは `--grant 速攻 "護法{1}"` と**1つの`--grant`に並べる**（`--grant A --grant B` は後勝ちで上書きされ、先に書いた方が消える）。カウンター連動はテキストを確認して `--counter <名前> --per-counter +1/+0` を指定すると自動再計算する。付け替えはattachだけ。旧mod/grantの移行、効果の訂正・例外は [relations.md](relations.md) を読む。
-- `run` に渡せるのは実ファイルだけ。Windows/Git Bash のプロセス置換（`run <(...)`）は動かない。使い捨てのバッチもスクラッチ領域に書き出す。
+- 使い捨てのバッチは標準入力から `run - --compact` へ渡す。Windows/Git Bashのプロセス置換（`run <(...)`）は使わない。状態JSON・証跡JSONL・連番入力ファイルはCLIが読み書きするため、AIが生成・全文確認する必要はない。
 
 ```powershell
-$mtg = '.claude/skills/mtg-playtest/scripts/mtg.py'
 $runDir = 'playtest/20260909-1412-bo1-dw-vs-piza' # 例。実際の作成日時・席で作る。作成前に ls playtest/ で同名の有無を確認する
-$state = "$runDir/g01.json"
-$results = "$runDir/results.jsonl"
-python $mtg --state $state init --deck1 A --deck2 B --seed 101 --first P1
-# g01-001.mtg: draw P1 7 / draw P2 7 / show --hand both を1行ずつ記述
-python $mtg --state $state run "$runDir/g01-001.mtg" --compact
+& ./mtg.ps1 --state "$runDir/g01.json" session dw_piza_g01 # 未使用の短縮名を選ぶ
+& ./mtg.ps1 --session dw_piza_g01 init --deck1 A --deck2 B --seed 101 --first P1
+@'
+draw P1 7
+draw P2 7
+show --hand both
+'@ | & ./mtg.ps1 --session dw_piza_g01 run - --compact
 # キープ・マリガンを判断後、各バッチを同様に実行する。
-python $mtg --state $state --results $results end --winner P1 --reason '決着理由' --tag A-vs-B
+& ./mtg.ps1 --session dw_piza_g01 end --winner P1 --reason '決着理由' --tag A-vs-B
 # 決着済みの盤面を記帳し続けるより投了が早いときだけ:
-# python $mtg --state $state --results $results concede P2 --reason '...' --tag A-vs-B
-python $mtg --state $state --results $results stats --tag A-vs-B
+# & ./mtg.ps1 --session dw_piza_g01 concede P2 --reason '...' --tag A-vs-B
+& ./mtg.ps1 --session dw_piza_g01 stats --tag A-vs-B
 ```
 
 `python` がPATHにない環境では利用可能なPython実行ファイルの絶対パスを使う。
@@ -103,6 +104,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | カード全文の確認 | `card show <名前>`。**未キャッシュの名前は `[missing]` と出して終了コード0で終わる**（取得しない）ので、その場合は `card fetch <名前>` で取り直す。`cards/` は.gitignore対象なのでクローン直後は全カードが未キャッシュ |
 | 残りライブラリーの確認 | `zone P1:library`（P2なら `zone P2:library`。投了判断でのアウト確認用） |
 | ライブラリーの上からN枚を見る | `look P1 4`（上から4枚。移動しない。効果などで見る必要があるときだけ） |
+| 見た残りを無作為順で一番下へ | 例：残りが24・3・51なら`pick 24 3 51`の結果を読み、そのoidを`move <oid> library`。未選択の2枚で再度pickして同様に移し、最後の1枚も移す。対局のseed付き乱数を使い、ライブラリー全体をshuffleしない。解決中はpickを区間末尾に置いて`--pause`し、結果を読むたび別partで続ける |
 | 呪文をスタックへ | `stack push <oid> --cast --controller P1`（詠唱を明示して回数記録・castメモ表示。`--cast`省略は詠唱扱いしない） |
 | 誘発の処理待ちを記帳 | `pending add "果敢" --controller P1 --src <oid>`（srcは省略可、1回につき1登録）→ 順序・対象確認後 `pending stack T1 --targets <oid>`（対象なしならtargets省略）。**自分の誘発が複数あるときは後に解決したいものを先に積む**（後入れ先出し）。積んだ後に順序を変える手段は無く`undo`で戻すしかないので、積む前に解決順を決める |
 | 処理待ちの一覧 | `pending list`／`pending list --all`（linkedの帰還も参照表示。重複登録しない） |
@@ -112,10 +114,10 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 確認メモ | `remind add "果敢を確認" --on cast --player P1 --src <oid>`（on必須：cast/enter/turn。player・src省略可。自動誘発なし）／`remind list`／`remind remove R1` |
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
 | 装備先の指定 | `attach <装備品oid> --to <クリーチャーoid>` |
-| 装備の解除 | `attach <装備品oid> --detach`（`--to` は取らない）。装備先が除去されたときに使う。**解除しても`fx`の定義は残る**ので、同じ装備品を別のクリーチャーへ付けるときは`attach`だけにし、`fx add`を再実行しない |
+| 装備の解除 | 装備先が戦場を離れると自動解除。効果で明示的に外す場合だけ `attach <装備品oid> --detach`（`--to` は取らない）。**解除しても装備品の`fx`定義は残る**ので、再装備は`attach`だけ |
 | 装備ごとの修整 | `mod <対象oid> +1/+0 --until attached --src <装備品oid>`（別装備は別行） |
-| 装備品の付け替え | **`attach <装備品oid> --to <新しい対象>` だけ**を実行する。`fx add`は装備品が初めて戦場に出たときの1回きり。付け替えのたびに`fx add`を書くと同一src・同一abilityの定義が二重に残り、`fx add`は警告を出さないのでP/Tが静かに膨らむ。疑わしいときは`fx list`で同じsrcの行が2つ無いか確認し、余分な方を`fx remove E<n>` |
-| 静的な全体修整（アンセム） | `fx` の `--scope` では「自軍の該当タイプ全部」を表現できない。対象1体ずつ `mod <oid> +N/+0 --until permanent` を入れ、係数の根拠を `note` に残す。**発生源の数が変わっても自動再計算されない**ので、増減したら`mod`を引き直す |
+| 装備品の付け替え | **`attach <装備品oid> --to <新しい対象>` だけ**を実行する。同じ発生源・世代・abilityの装着効果を`fx add`で重複登録すると変更前に停止する。訂正は`fx set E<n>`。装備品自体が戦場を離れて戻ったら新しい世代として再登録する |
+| 静的な全体修整（アンセム） | 自軍の全クリーチャーなら `fx add --src <発生源oid> --ability anthem --scope controller-creatures --pt +1/+1`。新規クリーチャー・コントローラー変更・発生源の退場を自動反映する。クリーチャー・タイプ等の条件絞り込みは未対応なのでAIが個別に管理する。移行時は同じ修整の旧modを除いて二重計上を防ぐ。ETB等の誘発は別途pendingへ |
 | 装備効果を自動計算へ登録 | `fx add --src <装備品oid> --ability bonus --pt +1/+0 --grant トランプル`（以後の付け替えはattachだけ。旧mod/grantがあれば定義確認後 `--replace-legacy`） |
 | 複数キーワードの付与 | `fx add --src <oid> --ability bonus --pt +1/+0 --grant 速攻 "護法{1}"`（`--grant`は1回にまとめる。2回書くと後勝ちで上書きされ、消えた付与は`fx list`か攻撃時の召喚酔い警告まで気付けない） |
 | 発生源のカウンターに連動 | `fx add --src <装備品oid> --ability bonus --counter charge --per-counter +1/+0`（カードの実際の条件・係数を確認）。`fx add` の確認出力にはカウンター指定が出ないため、登録確認は `fx list` の `counter=<名前>*[P, T]` で行う |
@@ -136,6 +138,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 応答なしの解決 | `pass P1` → `pass P2` → 通常は`stack resolve` → 効果適用 → カードは`move`、能力は`stack pop`。台帳の能力は`pending resolve`、帰還能力は`linked resolve`で完了まで処理 |
 | マナ | `tap <oid...>` → `mana P1 add WR` → `mana P1 spend WR`（生成色・量・用途制限は確認） |
 | SBA | `sba --apply`（トークン消滅・装着先のない通常オーラ）／裁定確認後の `sba --apply-deaths`（同時死亡後も再評価。授与・置換等は先に裁定） |
+| トークンを生け贄に捧げる | 置換効果がなければ`move <oid> graveyard`、解決完了後に`sba --apply`。追放へ置き換えない。死亡・戦場を離れる誘発を確認して個別にpendingへ登録する |
 | 土地を置く | `move <oid> battlefield`（タップインは`--tapped`。`play P1`ではない） |
 | クリーチャーへのダメージ | `damage <oid> <点数>`（**発生源を渡すオプションは無い**。格闘・火力の発生源や絆魂・接死の判定は`note`と手動処理で補う） |
 | ライフ変更 | `life P2 -2`（`--reason`はない。必要な理由だけnote） |

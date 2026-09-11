@@ -61,6 +61,18 @@ class InputTests(unittest.TestCase):
         self.call('undo', '1')
         self.assertEqual(self.read()['players']['P1']['life'], 20)
 
+    def test_pending_required_arguments_fail_before_any_batch_operation(self):
+        before = self.state.read_bytes()
+        files = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
+        for line in ['pending resolve T1 --do "life P1 2"',
+                     'pending resolve T1 --part bonus',
+                     'pending resolve --part bonus --do "life P1 2"',
+                     'pending resolve T1 --part " " --do "life P1 2"']:
+            with self.subTest(line=line), self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                self.call('run', '-', '--compact', text='life P1 -2\n' + line + '\n')
+            self.assertEqual(self.state.read_bytes(), before)
+            self.assertEqual({p.relative_to(self.root): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}, files)
+
     def test_generated_file_never_overwrites_existing_or_fills_gap(self):
         (self.root/'g01-010.mtg').write_text('old', encoding='utf-8')
         self.call('run', '-', text='life P1 -1\n')

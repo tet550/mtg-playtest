@@ -83,6 +83,35 @@ class RelationsTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), before)
         self.assertEqual(len(self.read()["fx"]), 1)
 
+    def test_duplicate_attached_definition_rejected_even_after_detach(self):
+        self.call("attach", "3", "--to", "1")
+        self.fx()
+        for target in (None, "2"):
+            self.call("attach", "3", *( ["--to", target] if target else ["--detach"] ))
+            before = self.path.read_bytes()
+            with self.assertRaisesRegex(SystemExit, "E1.*attach.*fx set"):
+                self.fx()
+            self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(self.pt(2), (3, 2))
+        self.call("fx", "set", "E1", "--src", "3", "--ability", "bonus", "--pt", "+2/+0")
+        self.assertEqual(self.pt(2), (4, 2))
+
+    def test_distinct_abilities_and_repeated_resolved_effects_can_add(self):
+        self.call("attach", "3", "--to", "1")
+        self.fx()
+        self.call("fx", "add", "--src", "3", "--ability", "other", "--pt", "+1/+0")
+        for _ in range(2):
+            self.fx("3", "--scope", "fixed", "--targets", "1", "--until", "eot")
+        self.assertEqual(self.pt(1), (6, 2))
+
+    def test_blinked_source_can_register_same_ability_again(self):
+        self.fx()
+        self.call("move", "3", "exile")
+        self.call("move", "3", "battlefield")
+        self.call("attach", "3", "--to", "1")
+        self.fx()
+        self.assertEqual(self.pt(1), (3, 2))
+
     def test_invalid_src_and_legacy_migration_do_not_double_count(self):
         self.call("attach", "3", "--to", "1")
         before = self.path.read_bytes()

@@ -2805,6 +2805,9 @@ def parse_command(argv, parser=None):
 
     parser = parser or build_parser()
     args = parser.parse_args(argv)
+    if args.cmd == "pending" and args.op == "resolve":
+        if not args.value or not args.part or not args.part.strip() or not (args.file or args.commands):
+            parser.error("pending resolveにはID・--part・--fileまたは--doが必要です。")
     if args.cmd == "turn" and args.draw and (not args.to or args.to not in PHASES or PHASES.index(args.to) < PHASES.index("beginning.draw")):
         parser.error("--drawにはドロー以降の--toが必要: turn next --to precombat_main --draw")
     return args
