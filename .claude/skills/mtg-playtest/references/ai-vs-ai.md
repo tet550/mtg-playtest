@@ -112,6 +112,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 確認メモ | `remind add "果敢を確認" --on cast --player P1 --src <oid>`（on必須：cast/enter/turn。player・src省略可。自動誘発なし）／`remind list`／`remind remove R1` |
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
 | 装備先の指定 | `attach <装備品oid> --to <クリーチャーoid>` |
+| 装備の解除 | `attach <装備品oid> --detach`（`--to` は取らない）。装備先が除去されたときに使う。**解除しても`fx`の定義は残る**ので、同じ装備品を別のクリーチャーへ付けるときは`attach`だけにし、`fx add`を再実行しない |
 | 装備ごとの修整 | `mod <対象oid> +1/+0 --until attached --src <装備品oid>`（別装備は別行） |
 | 装備品の付け替え | **`attach <装備品oid> --to <新しい対象>` だけ**を実行する。`fx add`は装備品が初めて戦場に出たときの1回きり。付け替えのたびに`fx add`を書くと同一src・同一abilityの定義が二重に残り、`fx add`は警告を出さないのでP/Tが静かに膨らむ。疑わしいときは`fx list`で同じsrcの行が2つ無いか確認し、余分な方を`fx remove E<n>` |
 | 静的な全体修整（アンセム） | `fx` の `--scope` では「自軍の該当タイプ全部」を表現できない。対象1体ずつ `mod <oid> +N/+0 --until permanent` を入れ、係数の根拠を `note` に残す。**発生源の数が変わっても自動再計算されない**ので、増減したら`mod`を引き直す |
