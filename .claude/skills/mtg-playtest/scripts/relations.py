@@ -235,6 +235,7 @@ def cleanup(st):
     """End-of-turn bookkeeping, shared by cleanup step and turn shortcut."""
     for o in st["objects"].values():
         o["damage"] = 0
+        o.pop("deathtouch_damage", None)
         for field in ("mods", "grants"):
             o[field] = [e for e in o.get(field, []) if e.get("until") != "eot"]
     st["effects"] = [e for e in st.get("effects", []) if e.get("until") != "eot"]
@@ -295,6 +296,7 @@ def move_many(api, st, moves):
             o.update(incarnation=o.get("incarnation", 1) + 1, tapped=False,
                      damage=0, counters={}, mods=[], grants=[], attached_to=None, note="",
                      controller=o["owner"], sick=True)
+            o.pop("deathtouch_damage", None)
             o.update(carried)
             if spell_to_permanent:
                 for f in st["fx"]:

@@ -35,6 +35,7 @@ import io
 import tempfile
 
 import compact_output
+import combat_damage
 import relations
 import bookkeeping
 import mana
@@ -780,6 +781,8 @@ def cmd_sba(args, st):
                 found.append("%s(%d): P/T未登録または'*' → 手動で確認" % (o["name"], oid))
             elif v[1] <= 0:
                 found.append("%s(%d): タフネス%d → 墓地へ" % (o["name"], oid, v[1]))
+            elif o.get("deathtouch_damage") and not has_kw(st, oid, "破壊不能", "indestructible"):
+                found.append("%s(%d): 接死ダメージ → 破壊" % (o["name"], oid))
             elif o["damage"] >= v[1]:
                 found.append("%s(%d): %d点/タフネス%d → 破壊"
                              % (o["name"], oid, o["damage"], v[1]))
@@ -804,15 +807,17 @@ def cmd_sba(args, st):
             v = pt(st, o)
             if v is None:
                 continue
-            if v[1] > 0 and o["damage"] < v[1]:
+            if v[1] > 0 and o["damage"] < v[1] and not o.get("deathtouch_damage"):
                 continue
-            if has_kw(st, oid, "破壊不能", "indestructible"):
-                # 破壊不能はタフネス0では死ぬが致死ダメージでは死なない。
-                # 機械的に切り分けられないので、ここでは触らず必ず知らせる。
+            if v[1] > 0 and has_kw(st, oid, "破壊不能", "indestructible"):
+                # 破壊不能は破壊を防ぐが、タフネス0以下の墓地移動は防がない。
                 found.append("%s(%d): 破壊不能を持つので --apply-deaths では動かしません。"
                              "手で判断してください。" % (o["name"], oid))
                 continue
             dead.append(oid)
+        # 接死は前回のSBA以降に受けたダメージだけを見る（CR 702.2b）。
+        for o in st["objects"].values():
+            o.pop("deathtouch_damage", None)
         if dead or orphaned:
             moving = list(dict.fromkeys(dead + orphaned))
             relations.move_many(sys.modules[__name__], st, [(oid, "%s:graveyard" % obj(st, oid)["owner"], False) for oid in moving])
@@ -1912,9 +1917,10 @@ def pairs(st):
     bf = set(st["zones"]["P1:battlefield"] + st["zones"]["P2:battlefield"])
     out = []
     for a, target in cb["attackers"].items():
-        # 先制攻撃ステップで死んだブロッカーは、通常ステップにはもういない。
-        # ここで落としておかないと「ブロックされたまま何も通らない」ことになり、
-        # トランプルの通過ダメージを丸ごと取りこぼす（CR 702.19b）。
+        if int(a) not in bf:
+            continue
+        # 戦場を離れたブロッカーはダメージの割り振り先から除く。
+        # ブロック済みかどうかは、生存者でなく cb["blocks"] の宣言記録で判定する。
         blockers = [int(b) for b, at in cb["blocks"].items()
                     if at == int(a) and int(b) in bf]
         out.append((int(a), target, blockers))
@@ -2009,6 +2015,7 @@ def cmd_combat(args, st):
         print("戦闘の記録をクリアしました。")
         return
     rows = pairs(st)
+    blocked_attackers = set(cb["blocks"].values())
     if not rows:
         print("攻撃クリーチャーが宣言されていません。")
         return
@@ -2017,91 +2024,30 @@ def cmd_combat(args, st):
             av = pt(st, obj(st, a))
             bs = ", ".join("[%d]%s%s" % (b, disp_oid(st, b),
                                          " %d/%d" % pt(st, obj(st, b)) if pt(st, obj(st, b)) else "")
-                           for b in blockers) or "ブロックなし → %s" % target
+                           for b in blockers) or (
+                               "ブロック済み（ブロッカー不在） → %s" % target
+                               if a in blocked_attackers else "ブロックなし → %s" % target)
             print("  [%d]%s%s → %s" % (a, disp_oid(st, a),
                                        " %d/%d" % av if av else "", bs))
         return
     # op == "damage"
     step = getattr(args, "step", "all") or "all"
-    involved, applied, skipped = [], [], []
-    trample_done = {}
-    for a, target, blockers in rows:
-        ao = obj(st, a)
-        av = pt(st, ao)
-        involved.append(a)
-        if av is None:
-            print("!! %s(%d) の P/T が未登録です。card set で登録してください。" % (ao["name"], a))
-            continue
-        att_deals = deals_in(st, a, step)
-        if not att_deals:
-            skipped.append("%s(%d)[%s]" % (disp_oid(st, a), a, strike_role(st, a)))
-        if not blockers:
-            # ブロックされていない、または全ブロッカーが先制攻撃ステップで死んだ場合。
-            # 後者でもトランプルなら全ダメージがプレイヤーへ通る（CR 702.19b）。
-            # どちらにせよ割り振りは起きないので、トランプルの手動処理は要らない。
-            trample_done.setdefault(a, set()).update({"トランプル", "trample"})
-            if not att_deals:
-                continue
-            if target in st["players"]:
-                st["players"][target]["life"] -= av[0]
-                applied.append("%s(%d) → %s に%d点" % (ao["name"], a, target, av[0]))
-            else:
-                t = obj(st, resolve_ref(st, target))
-                t["damage"] += av[0]
-                applied.append("%s(%d) → %s に%d点" % (ao["name"], a, t["name"], av[0]))
-            continue
-        involved += blockers
-        remaining = av[0] if att_deals else 0
-        trample = has_kw(st, a, "trample", "トランプル")
-        # 致死ダメージは「割り振る前」の残りタフネスで数える。割り振った後に
-        # 数えると必ず0になり、トランプルの超過分が全ダメージになってしまう。
-        lethal = sum(max(0, (pt(st, obj(st, b)) or (0, 0))[1] - obj(st, b)["damage"])
-                     for b in blockers if pt(st, obj(st, b)))
-        excess = max(0, av[0] - lethal) if trample else 0
-        for b in blockers:          # 宣言順に、致死ダメージ分を割り振る既定の配分
-            bo = obj(st, b)
-            bv = pt(st, bo)
-            if bv is None:
-                print("!! %s(%d) の P/T が未登録です。" % (bo["name"], b))
-                continue
-            assign = 0
-            if att_deals:
-                need = max(0, bv[1] - bo["damage"])
-                # トランプル持ちは各ブロッカーに致死分だけ置いて残りを通す。
-                # 単体ブロックのとき全部押し付けると、通過分が消える。
-                assign = (min(remaining, need)
-                          if (trample or len(blockers) > 1) else remaining)
-                bo["damage"] += assign
-                remaining -= assign
-            blk_deals = deals_in(st, b, step)
-            back = bv[0] if blk_deals else 0
-            ao["damage"] += back
-            if not blk_deals:
-                skipped.append("%s(%d)[%s]" % (disp_oid(st, b), b, strike_role(st, b)))
-            applied.append("%s(%d)/%s(%d): %d点 / %d点"
-                           % (ao["name"], a, bo["name"], b, assign, back))
-        if not att_deals:
-            continue
-        if trample and excess:
-            if getattr(args, "trample", False) and target in st["players"]:
-                st["players"][target]["life"] -= excess
-                applied.append("%s(%d) トランプル超過 → %s に%d点"
-                               % (ao["name"], a, target, excess))
-            else:
-                print("!! %s(%d): 致死%d点は適用済み、超過%d点→%sは未適用。補完する（次回は--trample）。"
-                      % (ao["name"], a, lethal, excess, target))
-        elif remaining > 0:
-            print("!! %s(%d) に%d点の余りがあります。" % (ao["name"], a, remaining))
+    api = sys.modules[__name__]
+    packets = combat_damage.plan(api, st, rows, step, getattr(args, "trample", False))
+    resolved = combat_damage.resolve(api, st, packets, getattr(args, "prevent", ()),
+                                     getattr(args, "unprevented", ()))
+    applied = combat_damage.apply(api, st, resolved)
+    involved = list(dict.fromkeys(oid for a, _, bs in rows for oid in [a, *bs]))
+    skipped = ["%s(%d)[%s]" % (disp_oid(st, oid), oid, strike_role(st, oid))
+               for oid in involved if not deals_in(st, oid, step)]
     log(st, "戦闘ダメージ[%s]: %s" % (step, " / ".join(applied)))
     print(chr(10).join("  " + a for a in applied) or "  （適用なし）")
     if step != "all" and skipped:
         print("  （このステップで殴らない: %s）" % ", ".join(sorted(set(skipped))))
-    done = set()
+    done = {"接死", "deathtouch", "トランプル", "trample", "プロテクション", "protection"}
     if step != "all":
         done |= {"先制攻撃", "first strike", "二段攻撃", "double strike"}
-    if getattr(args, "trample", False):
-        done |= {"トランプル", "trample"}
-    notes = keyword_notes(st, involved, done, done_by_oid=trample_done)
+    notes = keyword_notes(st, involved, done)
     if notes:
         print(chr(10) + "!! 未適用（上記ダメージは適用済み）:")
         for n in notes:
@@ -2581,8 +2527,12 @@ def build_parser():
                         "regular=先制攻撃のみのものを除いて殴る（二段攻撃は2回目も殴る）／"
                         "all=区別しない（既定・従来どおり）")
     s.add_argument("--trample", action="store_true",
-                   help="damage: トランプルの超過分を防御プレイヤーに適用する"
-                        "（既定は警告だけ）")
+                   help="damage: トランプルの超過分を攻撃先に適用する"
+                        "（超過があるのに省略すると全ダメージ未適用で停止）")
+    s.add_argument("--prevent", action="append", metavar="SRC:DST",
+                   help="このステップの発生源oid:受け手oid/P1/P2を全軽減。繰り返し可。条件は裁定済みとする")
+    s.add_argument("--unprevented", action="append", metavar="SRC:DST",
+                   help="プロテクションが適用されない、または軽減禁止と裁定した組。繰り返し可")
     s = sub.add_parser("pass", help="優先権をパス（両者パスで次へ）")
     s.add_argument("player", nargs="?")
     s = sub.add_parser("concede", help="投了する（CR 104.3a）。即座に敗北し結果を記録する")
