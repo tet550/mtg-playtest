@@ -35,7 +35,8 @@ decklists/piza.txt と decklists/boros-dwarves.txt を BO1 で1ゲーム回し�
 
 進行の作法・保存先の規約・ログ書式はすべて
 [`.claude/skills/mtg-playtest/SKILL.md`](.claude/skills/mtg-playtest/SKILL.md) と
-`references/` に書かれており、Claude が必要な部分だけ読みます。
+[資料の総目次](.claude/skills/mtg-playtest/references/index.md) から必要な部分だけ読みます。
+開始手順・個別処理・報告書式を分冊化しています。ピザの方針も開始用・コンボ詳細・サイド計画に分かれています。
 
 ### CLI を直接叩く
 
@@ -63,6 +64,15 @@ python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json
 
 各サブコマンドの詳細は `mtg.py <コマンド> -h` で読めます。Windows で Python が PATH に
 無い場合は `scripts/mtg.ps1` が同じ引数を受け取ります。
+
+通常の `show` は名前付き、`show --ids --hand both` はカード名を省略した表示です。
+OID表示でもP/T・タップ・カウンター・能力・装着先は残ります。初登場の対応はドローや
+トークン生成の出力で確認し、再開時は名前付き `show` を使います。
+
+各ターン開始時の名前付き盤面を `output/<状態名>/turn-starts.md` に自動保存します。
+初回は初手・マリガン後のステップ進行時、以降はアンタップ後・通常ドロー前です。
+手札も記録するAI同士の対局は `init ... --history-hand both` を指定します（既定は手札なし）。
+undoでは旧記録を残し、復元点を訂正として追記します。
 
 ## リポジトリの構成
 

@@ -21,6 +21,7 @@
 変更のたびにスナップショットを取るので undo で1手戻せる。
 """
 import argparse
+import copy
 import datetime
 import json
 import pathlib
@@ -273,7 +274,7 @@ def cmd_init(args, _):
         first = random.Random("%s:first" % args.seed).choice(["P1", "P2"])
         print("先手抽選 (seed=%s): %s" % (args.seed, first))
     st = {"turn": 1, "active": first, "phase": "beginning.untap", "priority": first,
-          "first": first,
+          "first": first, "history_hand": args.history_hand,
           "players": {}, "objects": {}, "cards": {}, "zones": {"stack": []},
           "log": [], "next_oid": 1, "seed": args.seed, "rng_seq": 0,
           "effects": [], "combat": {"attackers": {}, "blocks": {}}, "passed": []}
@@ -541,12 +542,20 @@ def cmd_mod(args, st):
     print("%s(%d) → %s  [%s: %s]" % (o["name"], o["oid"], pt(st, o), args.until, note))
 
 
-def stack_str(st):
+def stack_str(st, ids=False):
     s = st["zones"]["stack"]
     if not s:
         return "（空）"
-    items = " | ".join("[%d]%s" % (o, disp_oid(st, o)) for o in reversed(s))
-    return items + "  ←上から"
+    items = []
+    for oid in reversed(s):
+        o = obj(st, oid)
+        ability = card_of(st, o).get("types") == ["Ability"]
+        label = disp_oid(st, oid) if not ids or ability else ""
+        item = "[%d]%s" % (oid, label)
+        if ids and o.get("note"):
+            item += " " + o["note"]
+        items.append(item)
+    return " | ".join(items) + "  ←上から"
 
 
 def push_ability(st, text, controller, targets=None, source=None, ability_key=None):
@@ -689,6 +698,9 @@ def cmd_phase(args, st):
     if st["zones"]["stack"]:
         sys.exit("スタックが空ではありません。効果適用後、カードはmove／能力はstack pop。")
     relations.require_resolved(sys.modules[__name__], st)
+    if (st["turn"] == 1 and st["phase"] == "beginning.untap"
+            and not (args.op in ("to", "set") and args.value == "beginning.untap")):
+        queue_turn_start(st)
     if args.op == "to":
         if args.value not in PHASES:
             sys.exit("フェイズ名: " + ", ".join(PHASES))
@@ -747,6 +759,7 @@ def cmd_turn(args, st):
         o["sick"] = False     # 召喚酔いが解ける
     for p in st["players"].values():
         mana.clear(p)
+    queue_turn_start(st)
     log(st, "ターン開始")
     print("=== T%s %s のターン（アンタップ済み） ===" % (st["turn"], ap))
     bookkeeping.notify(st, "turn", ap)
@@ -1057,6 +1070,8 @@ def cmd_undo(args, _):
     state_path(args).write_text(restored, encoding="utf-8")
     for snapshot in files[-count:]:
         snapshot.unlink()
+    if turn_history_path(args).exists():
+        append_turn_history(args, json.loads(restored), "巻き戻し（%d保存分）。この復元点より後の旧記録は無効。以降が再進行。" % count)
     print("%d手戻しました（残り履歴 %d）。" % (count, len(files) - count))
 
 
@@ -1121,7 +1136,7 @@ def hand_key(st, oid):
             c.get("cost", ""), o["name"])
 
 
-def render_hand(st, pid, unsorted=False, indent="  "):
+def render_hand(st, pid, unsorted=False, indent="  ", ids=False):
     """手札を桁の揃った表にして行のリストで返す。"""
     oids = st["zones"]["%s:hand" % pid]
     order = oids if unsorted else sorted(oids, key=lambda o: hand_key(st, o))
@@ -1136,12 +1151,12 @@ def render_hand(st, pid, unsorted=False, indent="  "):
         # 日本語を含むのは最後の1列だけにする。カード名とタイプの間に
         # 桁揃えを挟むと、フォント次第でそこから右が全部ズレる。
         rows.append([c.get("cost", "") or "-",
-                     "[%d]%s ／ %s" % (oid, disp_of(st, o), kind)])
+                     "[%d]%s ／ %s" % (oid, "" if ids else disp_of(st, o), kind)])
     head = "%s %s の手札 %d枚" % (pid, st["players"][pid]["name"], len(oids))
     if not rows:
         return [head, indent + "（なし）"]
     # oid は盤面表示と同じく [oid]カード名 の形にして、列としては持たない。
-    rows.insert(0, ["コスト", "カード名 ／ タイプ"])
+    rows.insert(0, ["コスト", "oid ／ タイプ" if ids else "カード名 ／ タイプ"])
     w = [max(width(r[i]) for r in rows) for i in range(len(rows[0]))]
     lines = [head]
     for r in rows:
@@ -1149,11 +1164,11 @@ def render_hand(st, pid, unsorted=False, indent="  "):
     return lines
 
 
-def perm_bits(st, oid):
+def perm_bits(st, oid, ids=False):
     """oid を除いた表示部分。同一かどうかの判定にも使うので、
     見えている情報（P/T・ダメージ・カウンター・タップ・酔い）を全部含める。"""
     o = st["objects"][str(oid)]
-    bits = [disp_of(st, o)]
+    bits = [] if ids else [disp_of(st, o)]
     v = pt(st, o)
     if v:
         bits.append("%d/%d" % v)
@@ -1167,8 +1182,11 @@ def perm_bits(st, oid):
         bits.append("(酔)")
     if o.get("token"):
         bits.append("(token)")
-    if granted(st, oid):
-        bits.append("+" + "・".join(granted(st, oid)))
+    keywords = granted(st, oid)
+    if ids:
+        keywords = list(dict.fromkeys(card_of(st, o).get("keywords", []) + keywords))
+    if keywords:
+        bits.append("+" + "・".join(keywords))
     if o.get("attached_to"):
         bits.append("→[%s]" % o["attached_to"])
     return " ".join(bits)
@@ -1186,10 +1204,10 @@ def combat_role(st, oid):
     return ""
 
 
-def fmt_perm(st, oid):
+def fmt_perm(st, oid, ids=False):
     # oid は必ず名前の前。名前の後ろに付けると、直前の P/T やカウンターの
     # 数字と地続きに読めてしまう（"兵士 2/2 +1/+1 x1[41]"）。
-    return "[%d]%s" % (oid, perm_bits(st, oid))
+    return "[%d]%s" % (oid, perm_bits(st, oid, ids=ids))
 
 
 def oid_ranges(oids):
@@ -1205,11 +1223,11 @@ def oid_ranges(oids):
     return ",".join(out)
 
 
-def fmt_perm_group(st, oids):
+def fmt_perm_group(st, oids, ids=False):
     """同じ見た目のパーマネントを1行にまとめる。トークンが十数個並ぶと読めない。"""
     if len(oids) == 1:
-        return fmt_perm(st, oids[0])
-    return "[%s]%s x%d" % (oid_ranges(oids), perm_bits(st, oids[0]), len(oids))
+        return fmt_perm(st, oids[0], ids=ids)
+    return "[%s]%s x%d" % (oid_ranges(oids), perm_bits(st, oids[0], ids=ids), len(oids))
 
 
 # 戦場の並び：土地 → クリーチャー → アーティファクト → エンチャント →
@@ -1228,7 +1246,7 @@ def bf_group(st, oid):
     return "Other"
 
 
-def render_battlefield(st, pid, indent="   ", flat=False):
+def render_battlefield(st, pid, indent="   ", flat=False, ids=False):
     """戦場をカードタイプごとに、1行1パーマネントで返す。
 
     タイプ名は**見出し行**にする。日本語のタイプ名を空白で桁揃えすると、
@@ -1251,17 +1269,19 @@ def render_battlefield(st, pid, indent="   ", flat=False):
         items = sorted(groups[k], key=lambda x: (disp_oid(st, x), x))
         if flat:
             for x in items:
-                lines.append(indent + "    " + fmt_perm(st, x))
+                lines.append(indent + "    " + fmt_perm(st, x, ids=ids))
             continue
         same = {}
         for x in items:
-            same.setdefault((perm_bits(st, x), combat_role(st, x)), []).append(x)
+            key = (perm_bits(st, x),
+                   tuple(card_of(st, obj(st, x)).get("keywords", [])), combat_role(st, x))
+            same.setdefault(key, []).append(x)
         for oids in same.values():
-            lines.append(indent + "    " + fmt_perm_group(st, oids))
+            lines.append(indent + "    " + fmt_perm_group(st, oids, ids=ids))
     return lines
 
 
-def render_pile(st, key, label, indent="   "):
+def render_pile(st, key, label, indent="   ", ids=False):
     """墓地・追放を「カード名 xN」にまとめて全部出す。
 
     oid はここでは出さない。狙って触るときは `zone` を使う。
@@ -1271,6 +1291,8 @@ def render_pile(st, key, label, indent="   "):
     oids = st["zones"][key]
     if not oids:
         return []
+    if ids:
+        return [indent + "%s(%d): [%s]" % (label, len(oids), oid_ranges(oids))]
     counts = {}
     for oid in oids:                      # 古い順を保ったまま数える
         n = disp_oid(st, oid)
@@ -1280,6 +1302,7 @@ def render_pile(st, key, label, indent="   "):
 
 
 def cmd_show(args, st):
+    ids = getattr(args, "ids", False)
     tag = "（優先権なし）" if st["phase"] in NO_PRIORITY else ""
     print("=== Turn %s / %s / %s %s ===" % (st["turn"], st["active"], st["phase"], tag))
     if getattr(args, "next_oid", False):
@@ -1298,24 +1321,61 @@ def cmd_show(args, st):
         if p.get("mana_groups"):
             line += " | " + " / ".join(mana.describe(p)[1:])
         print(line)
-        for line in render_battlefield(st, pid, flat=getattr(args, "flat", False)):
+        for line in render_battlefield(st, pid, flat=getattr(args, "flat", False), ids=ids):
             print(line)
-        for line in render_pile(st, "%s:graveyard" % pid, "墓地"):
+        for line in render_pile(st, "%s:graveyard" % pid, "墓地", ids=ids):
             print(line)
-        for line in render_pile(st, "%s:exile" % pid, "追放"):
+        for line in render_pile(st, "%s:exile" % pid, "追放", ids=ids):
             print(line)
         if args.hand in (pid, "both"):
-            print("   " + "\n   ".join(render_hand(st, pid, indent="  ")))
+            print("   " + "\n   ".join(render_hand(st, pid, indent="  ", ids=ids)))
     if st.get("effects"):
         print("継続効果: " + " / ".join("[%s]%s" % (e["until"], e["text"])
                                         for e in st["effects"]))
     if (st.get("combat") or {}).get("attackers"):
         for a, target, blockers in pairs(st):
-            bs = ", ".join("[%d]%s" % (b, disp_oid(st, b)) for b in blockers)
-            print("戦闘: [%d]%s → %s" % (a, disp_oid(st, a), bs or target))
-    print("スタック: %s" % stack_str(st))
+            bs = ", ".join("[%d]%s" % (b, "" if ids else disp_oid(st, b)) for b in blockers)
+            print("戦闘: [%d]%s → %s" % (a, "" if ids else disp_oid(st, a), bs or target))
+    print("スタック: %s" % stack_str(st, ids=ids))
     relations.describe(sys.modules[__name__], st)
     bookkeeping.list_pending(st, include_links=False)
+
+
+def human_turn_view(st):
+    view = copy.deepcopy(st)
+    hand = st.get("history_hand", "none")
+    seat = _CTX.get("seat")
+    if seat and hand not in ("none", seat):
+        hand = "none"
+    old_offline, old_mem = _CTX["offline"], _CTX["mem"]
+    try:
+        _CTX["offline"], _CTX["mem"] = True, dict(old_mem)
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            cmd_show(_Args(hand=None if hand == "none" else hand, ids=False), view)
+        return output.getvalue()
+    finally:
+        _CTX["offline"], _CTX["mem"] = old_offline, old_mem
+
+
+def queue_turn_start(st):
+    # Transient: dispatch removes this before saving and writes only after success.
+    st["_turn_start_view"] = human_turn_view(st)
+
+
+def turn_history_path(args):
+    return state_path(args).parent / "output" / state_path(args).stem / "turn-starts.md"
+
+
+def append_turn_history(args, st, label, text=None):
+    path = turn_history_path(args)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if text is None:
+        text = human_turn_view(st)
+    # Indented Markdown handles arbitrary card/memo text without fence collisions.
+    with path.open("a", encoding="utf-8") as output:
+        output.write("\n## %s\n\n" % label)
+        output.write("".join("    " + line + "\n" for line in text.splitlines()))
+    print("ターン履歴: " + str(path))
 
 
 def cmd_zone(args, st):
@@ -2308,6 +2368,8 @@ def build_parser():
     s.add_argument("name")
 
     s = sub.add_parser("init", help="デッキを読み込んでゲームを開始")
+    s.add_argument("--history-hand", choices=["none", "P1", "P2", "both"], default="none",
+                   help="人向けターン開始履歴に残す手札（既定none）。AI同士・手札共有ではboth")
     s.add_argument("--prefetch", action="store_true",
                    help="互換用。指定の有無にかかわらず両デッキのメイン・サイドボードのキャッシュを確認し、不足分を取得。未取得なら状態を保存せず停止")
     s.add_argument("--p1", default="P1")
@@ -2334,6 +2396,7 @@ def build_parser():
     s.add_argument("--delta", action="store_true",
                    help="--compact時、showをバッチ開始時／前回showからの差分にする")
     s = sub.add_parser("show", help="盤面を表示")
+    s.add_argument("--ids", action="store_true", help="カード名を省略しoidと状態を表示。初登場はdraw/token、再確認は通常show。能力・裁定メモは残す")
     s.add_argument("--next-oid", action="store_true", help="検証済み反復手順の生成用に次のoidを表示")
     s.add_argument("--flat", action="store_true",
                    help="同じ見た目のパーマネントをまとめず1個ずつ出す")
@@ -2646,6 +2709,8 @@ def enforce_seat(args):
     """--as が指定されているとき、相手の隠匿情報への参照を止める。"""
     seat = getattr(args, "seat", None)
     reads = hidden_reads(args)
+    if args.cmd == "init" and args.history_hand != "none":
+        reads += [("history-hand", args.history_hand)]
     if not seat:
         for kind, target in reads:
             audit(args, kind, target, True, "席指定なし")
@@ -2774,11 +2839,19 @@ def run_batch(args):
                     print("詳細ログ: %s:1-%d" % (transcript, record_count))
                     raise
                 raw_output = captured.getvalue()
-                record_output({"command": line, "stdout": raw_output})
+                record = {"command": line, "stdout": raw_output}
+                if parts[0] == "show":
+                    named_args = build_parser().parse_args(gl + parts)
+                    if named_args.ids:
+                        named_args.ids = False
+                        with contextlib.redirect_stdout(io.StringIO()) as named:
+                            cmd_show(named_args, load(args))
+                        record["named_stdout"] = named.getvalue()
+                record_output(record)
                 if args.delta and parts[0] == "show":
                     # dispatch already enforced the seat boundary for this exact show.
                     show_args = build_parser().parse_args(gl + parts)
-                    view_key = (show_args.hand, show_args.flat, show_args.next_oid)
+                    view_key = (show_args.hand, show_args.flat, show_args.next_oid, show_args.ids)
                     if baseline is not None and baseline_view in (None, view_key):
                         with contextlib.redirect_stdout(io.StringIO()) as prior:
                             cmd_show(show_args, baseline)
@@ -2860,6 +2933,7 @@ def dispatch(argv):
     _CTX["dir"] = args.cards_dir
     _CTX["offline"] = args.offline
     _CTX["english"] = args.en
+    _CTX["seat"] = args.seat
     if args.cmd == "run":
         run_batch(args)
         return
@@ -2898,7 +2972,10 @@ def dispatch(argv):
     bookkeeping.guard(args, st)
     command_handlers()[args.cmd](args, st)
     if args.cmd not in readonly and st is not None:
+        turn_start = st.pop("_turn_start_view", None)
         save(args, st)
+        if turn_start is not None:
+            append_turn_history(args, st, "ターン開始（アンタップ後・ドロー前）", text=turn_start)
 
 
 def main():
