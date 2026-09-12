@@ -56,6 +56,9 @@ python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json
 ```
 
 `--deck1` / `--deck2` には登録名とデッキリストのファイルパスのどちらも渡せます。
+`init` は両デッキのメイン・サイドボードのカードキャッシュを確認し、不足・未解決のカードを自動取得します。
+有効なキャッシュは再取得しません。取得できないカードがあれば状態を保存せず停止します。
+`--offline` では全カードがキャッシュ済みの場合だけ開始でき、従来の `--prefetch` は省略できます。
 初手は `draw P1 7` / `draw P2 7` で引きます。
 
 各サブコマンドの詳細は `mtg.py <コマンド> -h` で読めます。Windows で Python が PATH に

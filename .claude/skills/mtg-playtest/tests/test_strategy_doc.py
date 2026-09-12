@@ -29,7 +29,7 @@ class StrategyDocTests(unittest.TestCase):
         self.cards = self.root / "cards"
         self.cards.mkdir()
         for name in ("Forest", "Island"):
-            (self.cards / ("%s.json" % name)).write_text(json.dumps({
+            mtg.cardcache.path_for(self.cards, name).write_text(json.dumps({
                 "schema": "mtg-playtest/card@2", "key": name.lower(), "name": name,
                 "en_name": name, "printed_name": None, "oracle_id": name.lower(),
                 "types": ["Land"], "supertypes": ["Basic"], "subtypes": [],

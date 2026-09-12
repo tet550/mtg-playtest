@@ -277,6 +277,7 @@ def cmd_init(args, _):
           "players": {}, "objects": {}, "cards": {}, "zones": {"stack": []},
           "log": [], "next_oid": 1, "seed": args.seed, "rng_seq": 0,
           "effects": [], "combat": {"attackers": {}, "blocks": {}}, "passed": []}
+    cache_names = set()
     for pid, name, deck, as_name in (("P1", args.p1, args.deck1, args.deck1_name),
                                      ("P2", args.p2, args.deck2, args.deck2_name)):
         st["players"][pid] = {"name": name, "life": args.life, "poison": 0,
@@ -297,6 +298,8 @@ def cmd_init(args, _):
             st["players"][pid]["deck"] = as_name or d["name"]
             st["players"][pid]["deck_source"] = deck
             names = decks.card_names(d)
+            cache_names.update(names)
+            cache_names.update(e["name"] for e in d.get("sideboard", []) if e["count"] > 0)
         random.Random("%s:deck:%s" % (args.seed, pid)).shuffle(names)
         for n in names:
             oid = st["next_oid"]
@@ -312,13 +315,25 @@ def cmd_init(args, _):
         if sp:
             print("方針: %s = %s （最初のプレイ判断より前に読む）"
                   % (pid, sp.as_posix()))
-    if getattr(args, "prefetch", False):
-        names = sorted({o["name"] for o in st["objects"].values()})
-        print("オラクル情報を取得します（%d種類）..." % len(names))
-        for n in names:
-            rec, how = cardcache.get(n, _CTX["dir"], offline=_CTX["offline"])
-            if how in ("network", "notfound", "offline"):
-                print("  %s %s" % (pad(n, 28), how))
+    names = sorted(cache_names)
+    missing = []
+    for n in names:
+        rec = cardcache.load(_CTX["dir"], n)
+        if not rec or rec.get("unresolved") or not rec.get("types"):
+            missing.append(n)
+    print("カードキャッシュ: %d種確認済み / %d種不足" % (len(names) - len(missing), len(missing)))
+    failed = []
+    for n in missing:
+        # 未解決の仮レコードも再取得する。有効な手入力カードは上の確認で除外済み。
+        rec, how = cardcache.get(n, _CTX["dir"], refresh=True, offline=_CTX["offline"])
+        if not rec or rec.get("unresolved") or not rec.get("types"):
+            failed.append(n)
+            print("  未取得: %s (%s)" % (n, how))
+        else:
+            print("  取得済み: %s" % n)
+    if failed:
+        sys.exit("必要なカードをキャッシュできないため、対戦を開始しません（状態未保存）: "
+                 + ", ".join(failed))
     names = sorted({o["name"] for o in st["objects"].values()})
     rows = cardcache.glossary(names, _CTX["dir"])
     ja = sum(1 for r in rows if r["ja"])
@@ -2294,7 +2309,7 @@ def build_parser():
 
     s = sub.add_parser("init", help="デッキを読み込んでゲームを開始")
     s.add_argument("--prefetch", action="store_true",
-                   help="デッキ内の全カードのオラクル情報を先に取得しておく")
+                   help="互換用。指定の有無にかかわらず両デッキのメイン・サイドボードのキャッシュを確認し、不足分を取得。未取得なら状態を保存せず停止")
     s.add_argument("--p1", default="P1")
     s.add_argument("--p2", default="P2")
     s.add_argument("--deck1", help="登録名 または デッキリストのファイルパス")

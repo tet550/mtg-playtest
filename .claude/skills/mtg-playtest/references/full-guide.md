@@ -377,7 +377,7 @@ python .claude/skills/mtg-playtest/scripts/cardcache.py --dir cards alias 解体
 一度取ったカードは以後ネットワークに出ない。日本語カード名のまま引ける。
 
 ```bash
-python $M init ... --prefetch      # デッキ内の全カードを先に取得しておく（推奨）
+python $M init ...                 # 両デッキのメイン・サイドボードのキャッシュを確認し不足分を自動取得。失敗時は状態未保存で停止（--prefetchは互換用）
 python $M card fetch 僧院の速槍     # 個別に取得（--refresh で取り直し）
 python $M card show 稲妻            # キャッシュの中身を見る
 python $M --offline show           # 一切問い合わせない（キャッシュのみ）

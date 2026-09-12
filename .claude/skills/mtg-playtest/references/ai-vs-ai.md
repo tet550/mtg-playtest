@@ -7,7 +7,8 @@
 ## 読み込みを減らす進行
 
 1. 対象の2デッキだけ `deck show <登録名> --brief` で確認する。出力に `方針: decklists/strategy/<登録名>.md` が出たら、その文書を対局前に読み、そのデッキのプレイ方針として固定する（`init` も同じ行を出す）。登録JSON全文は読まない。BO1はメインの名前・枚数・警告で足りる。登録済みで変更がなければ再登録・全件検証しない。新規・変更時は `deck add <file> --quiet` で検証し、警告を解消する。サイド後の構成は登録せず、対局フォルダの `g02-<略称>.txt` を `init --deckN <パス> --deckN-name <素の構築の登録名>` で読む（[storage-layout.md](storage-layout.md)）。カードキャッシュ全体、過去対局、履歴、ソース全文は読まない。
-2. [storage-layout.md](storage-layout.md) に従って保存先を作り、`init` のseedでシャッフルする。別途全ゲーム分のシャッフルファイルは作らない。各ゲームに別の状態ファイルとseed、連戦に共通の結果ファイルを使う。独立した連戦は先手を交互、マッチ形式は前ゲーム敗者が選ぶ。
+2. `init`は両デッキのメイン・サイドボードのカードキャッシュを必ず確認し、不足・未解決分を取得してから状態を保存する。有効なキャッシュは再取得せず、同名は1回だけ確認する。取得失敗時は状態未保存で停止するため、通信やカード名を確認して再実行する。`--offline`では不足があると停止する。
+   [storage-layout.md](storage-layout.md) に従って保存先を作り、`init` のseedでシャッフルする。別途全ゲーム分のシャッフルファイルは作らない。各ゲームに別の状態ファイルとseed、連戦に共通の結果ファイルを使う。独立した連戦は先手を交互、マッチ形式は前ゲーム敗者が選ぶ。
 3. 初手を配り、マリガンを処理する。盤面と両手札は `show --hand both` の1回で確認する。既知のカードテキストは再表示しない。未知のカードが現れたときだけ `card show <名前>` を読む。
 4. 確定した操作を標準入力の `run - --compact` にまとめる。入力ファイルはCLIが自動保存する。既存ファイルの `run <file> --compact` も使える。1行ごとの保存とundoは維持される。ドロー・ランダム結果・未知の誘発など、その出力で判断が変わる箇所でバッチを区切り、結果を読んでから次の操作を決める。応答可能なら両席の応答を判断してから解決する。未確認の分岐をまとめて実行しない。
 5. 通常はバッチの末尾に `show --hand both` を1回置き、**毎回全文で確認する**。個々の `hand` / `view` / `show` を重ねない。`--delta` は利用者が明示的に選び、開始盤面が既知の場合だけ使う。再開時や文脈を失ったときは全文へ戻す。差分の `-` は変更前、`+` は変更後であり、物理的なカード移動だけを意味しない。`--compact` は既知の成功メッセージ・定型説明だけ省略し、警告・未知の出力・ドロー・探索候補は残す。全stdoutとコマンドは状態ファイル横の `output/<state名>/run-*.jsonl` に保存する。詳細は異常時の該当行だけ読む。エラー時は止め、修正してから続ける（`--keep-going` は使わない）。
@@ -100,6 +101,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 
 | 目的 | コマンド |
 |---|---|
+| 対戦開始・事前キャッシュ | `init --deck1 piza --deck2 boros-dwarves --seed 101 --first P1`。両デッキのメイン・サイドボードの不足・未解決カードを自動取得し、全件確認後に保存。取得失敗は状態未保存で停止。`--offline`はキャッシュ完備時のみ開始可。`--prefetch`は互換用で省略可 |
 | 登録デッキのメイン確認 | `deck show boros-tokens --brief` |
 | カード全文の確認 | `card show <名前>`。**未キャッシュの名前は `[missing]` と出して終了コード0で終わる**（取得しない）ので、その場合は `card fetch <名前>` で取り直す。`cards/` は.gitignore対象なのでクローン直後は全カードが未キャッシュ |
 | 残りライブラリーの確認 | `zone P1:library`（P2なら `zone P2:library`。投了判断でのアウト確認用） |
@@ -149,7 +151,7 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 | 攻撃中のノーム | `token P1 Gnome --types Artifact/Creature --subtypes Gnome --power 1 --toughness 1 --attacking -n 2` |
 | トークンのoid | 採番は生成時の出力（`トークン生成: 英雄(125)`）でしか分からない。**生成行の直後でバッチを区切り**、oidを読んでから`attach`／`fx add`／`stack push --src`を書く（推測すると`oid ... は存在しません`で停止する） |
 | 装備品トークンを生成してつける | `token P1 "斧" --types Artifact --subtypes Equipment --oracle "装備しているクリーチャーは＋１/＋０の修整を受ける。装備{2}"` → `fx add --src <トークンoid> --ability bonus --pt +1/+0`（カウンター連動があれば `--counter <名前> --per-counter +1/+0` を併記）→ `attach <トークンoid> --to <クリーチャーoid>`。`--power/--toughness` は非クリーチャーなので指定しない |
-| 可変収支のピザ反復 | 1周検証後だけ [pizza-recipe.md](pizza-recipe.md) を読む |
+| 可変収支のピザ反復 | 1周検証後だけ [pizza-recipe.md](pizza-recipe.md) を読む。現行生成器の末尾は手札なしの`show`なので、軽量方式では生成ファイル末尾を実行前に`show --hand both`へ変更する（対人・席分離には適用しない）。生成器は誘発を旧式のstack操作で記帳し、pending台帳と発生源参照は作らない |
 | 決着後の消化ターンを畳む | `concede P2 --reason "勝ち手順・アウト枚数・間に合わない根拠" --tag T`（基準は上の節） |
 
 フェイズ名：`beginning.untap` → `beginning.upkeep` → `beginning.draw` → `precombat_main` → `combat.begin` → `combat.attackers` → `combat.blockers` → `combat.damage` → `combat.end` → `postcombat_main` → `ending.end` → `ending.cleanup`。`phase to <名前>`で指定する。`combat.declare_attackers`・`end.end`は無効。
