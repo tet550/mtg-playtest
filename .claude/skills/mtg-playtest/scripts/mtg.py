@@ -914,11 +914,12 @@ def cmd_card(args, st):
         print("  → %s" % cardcache.path_for(_CTX["dir"], args.name))
         return
     if args.op == "show":
-        rec, how = cardcache.get(args.name, _CTX["dir"], offline=True)
-        print("[%s] %s" % (how, cardcache.summary(rec)))
-        ov = (st or {}).get("cards", {}).get(args.name)
-        if ov:
-            print("  このゲーム限定の上書き: %s" % json.dumps(ov, ensure_ascii=False))
+        for name in [args.name] + getattr(args, "more_names", []):
+            rec, how = cardcache.get(name, _CTX["dir"], offline=True)
+            print("[%s] %s" % (how, cardcache.summary(rec)))
+            ov = (st or {}).get("cards", {}).get(name)
+            if ov:
+                print("  このゲーム限定の上書き: %s" % json.dumps(ov, ensure_ascii=False))
         return
     # op == "set"
     fields = {
@@ -1038,6 +1039,11 @@ def cmd_hand(args, st):
 
 def cmd_note(args, st):
     text = " ".join(args.text) if isinstance(args.text, list) else args.text
+    if getattr(args, 'event', None):
+        marker = '[%s]' % args.event
+        if any(': ' + marker + ' ' in entry for entry in st['log']):
+            sys.exit('イベントIDは登録済みです: ' + args.event)
+        text = marker + ' ' + text
     log(st, text, private=args.private)
     if args.private:
         print("記録しました（%s の秘匿メモ。`log --player %s` でのみ見えます）。"
@@ -1136,7 +1142,7 @@ def hand_key(st, oid):
             c.get("cost", ""), o["name"])
 
 
-def render_hand(st, pid, unsorted=False, indent="  ", ids=False):
+def render_hand(st, pid, unsorted=False, indent="  ", ids=False, packed=False):
     """手札を桁の揃った表にして行のリストで返す。"""
     oids = st["zones"]["%s:hand" % pid]
     order = oids if unsorted else sorted(oids, key=lambda o: hand_key(st, o))
@@ -1155,6 +1161,10 @@ def render_hand(st, pid, unsorted=False, indent="  ", ids=False):
     head = "%s %s の手札 %d枚" % (pid, st["players"][pid]["name"], len(oids))
     if not rows:
         return [head, indent + "（なし）"]
+    if packed:
+        # Preserve every card's cost/type/P/T; only remove table padding/header.
+        return [head] + [indent + " | ".join(cost + " " + card for cost, card in rows[i:i+3])
+                         for i in range(0, len(rows), 3)]
     # oid は盤面表示と同じく [oid]カード名 の形にして、列としては持たない。
     rows.insert(0, ["コスト", "oid ／ タイプ" if ids else "カード名 ／ タイプ"])
     w = [max(width(r[i]) for r in rows) for i in range(len(rows[0]))]
@@ -1328,7 +1338,8 @@ def cmd_show(args, st):
         for line in render_pile(st, "%s:exile" % pid, "追放", ids=ids):
             print(line)
         if args.hand in (pid, "both"):
-            print("   " + "\n   ".join(render_hand(st, pid, indent="  ", ids=ids)))
+            print("   " + "\n   ".join(render_hand(st, pid, indent="  ", ids=ids,
+                                                   packed=getattr(args, "packed", False))))
     if st.get("effects"):
         print("継続効果: " + " / ".join("[%s]%s" % (e["until"], e["text"])
                                         for e in st["effects"]))
@@ -1701,6 +1712,10 @@ def cmd_token(args, st):
     「タップ状態で攻撃している状態で」出る。ここで作れないと、
     毎回 card set --oid と tap と attack を継ぎ足すことになり、抜ける。
     """
+    if getattr(args, "preset", None):
+        args = copy.copy(args)
+        args.name, args.oracle = input_files.TOKEN_PRESETS[args.preset]
+        args.types, args.subtypes = "Artifact", args.name
     made = []
     for _ in range(max(1, args.n)):
         made.append(make_one_token(args, st))
@@ -1728,6 +1743,10 @@ def make_one_token(args, st):
     st["objects"][str(oid)] = o
     c = st.setdefault("cards", {}).setdefault(key, {})
     c["token"] = True
+    if getattr(args, 'preset', None):
+        # A preset is a full token definition, not a copy of a same-name cache.
+        c.update(cost='', mana_value=0, colors=[], power=None, toughness=None,
+                 keywords=[], supertypes=[])
     if args.types:
         c["types"] = norm_types([t for t in args.types.split("/") if t])
     elif not rec:
@@ -1949,8 +1968,7 @@ def cmd_attack(args, st):
         warn = []
         if o["tapped"]:
             warn.append("タップ状態")
-        if o["sick"] and not any(kw in ("速攻", "haste")
-                                 for kw in (g.lower() for g in granted(st, oid))):
+        if o["sick"] and not has_unconditional_haste(st, oid):
             warn.append("召喚酔い（速攻が必要）")
         if warn:
             print("!! %s(%d): %s。攻撃可能にする能力を確認。"
@@ -1997,6 +2015,30 @@ def pairs(st):
                     if at == int(a) and int(b) in bf]
         out.append((int(a), target, blockers))
     return out
+
+
+def has_unconditional_haste(st, oid):
+    """Only grant entries or an unconditional keyword line confer known haste.
+
+    Scryfall keywords also describe abilities granted to OTHER objects, so a
+    keyword-list hit or arbitrary Oracle substring is insufficient evidence.
+    """
+    if any(g.casefold() in ("速攻", "haste") for g in granted(st, oid)):
+        return True
+    c = card_of(st, obj(st, oid))
+    oracle = c.get("oracle", "") or ""
+    for line in oracle.splitlines():
+        line = re.sub(r"\([^)]*\)|（[^）]*）", "", line).strip().rstrip(".")
+        # A standalone keyword list, not an ability granting haste conditionally.
+        pieces = [piece.strip().casefold() for piece in re.split(r"[,、・]", line)]
+        known = {k.casefold() for k in KEYWORDS} | {
+            "haste", "速攻", "flying", "飛行", "vigilance", "警戒", "reach", "到達",
+            "defender", "防衛", "flash", "瞬速", "hexproof", "呪禁", "indestructible", "破壊不能"}
+        if set(pieces) <= known and set(pieces) & {"haste", "速攻"}:
+            return True
+    # Manual records sometimes carry keywords without any Oracle text.
+    return not oracle.strip() and any(k.casefold() in ("haste", "速攻")
+                                      for k in c.get("keywords", []))
 
 
 def has_kw(st, oid, *words):
@@ -2395,7 +2437,9 @@ def build_parser():
                    help="既知の定型説明を省略。全出力は状態ファイル横のoutputに保存")
     s.add_argument("--delta", action="store_true",
                    help="--compact時、showをバッチ開始時／前回showからの差分にする")
+    s.epilog = "バッチ専用: pass-both P1|P2 / 生成行 --label name → 後続の $name / note --event E01（--compact必須）"
     s = sub.add_parser("show", help="盤面を表示")
+    s.add_argument("--packed", action="store_true", help="手札を3枚ずつ表示。コスト・タイプ・P/Tは保持")
     s.add_argument("--ids", action="store_true", help="カード名を省略しoidと状態を表示。初登場はdraw/token、再確認は通常show。能力・裁定メモは残す")
     s.add_argument("--next-oid", action="store_true", help="検証済み反復手順の生成用に次のoidを表示")
     s.add_argument("--flat", action="store_true",
@@ -2491,6 +2535,7 @@ def build_parser():
     s = sub.add_parser("card", help="オラクル情報の取得・登録・表示")
     s.add_argument("op", choices=["fetch", "set", "show"])
     s.add_argument("name", nargs="?", help="--oid で個体を指すときは省略できる")
+    s.add_argument("more_names", nargs="*", help="showのみ: 追加のカード名（名前ごとに引用）")
     s.add_argument("--refresh", action="store_true", help="fetch: キャッシュを無視して取り直す")
     s.add_argument("--local", action="store_true",
                    help="set: キャッシュではなくこのゲームだけの上書きにする（同名すべてに効く）")
@@ -2511,6 +2556,7 @@ def build_parser():
                    help="クォートしなくてもよい（空白込みで1行として記録する）")
     s.add_argument("--private", choices=["P1", "P2"],
                    help="そのプレイヤーの秘匿メモにする（`log` の既定表示から外れる）")
+    s.add_argument("--event", help="run --compact専用: E01等のイベントIDを証跡に記録")
     s = sub.add_parser("undo", help="直前のN保存分を戻す（既定1）。表示コマンドは数えない")
     s.add_argument("undo_count", type=int, nargs="?", default=1, metavar="N")
     s = sub.add_parser("log")
@@ -2552,7 +2598,9 @@ def build_parser():
     s.add_argument("--quiet", action="store_true", help="戻すカードを表示と公開ログで伏せる")
     s = sub.add_parser("token", help="トークンを生成")
     s.add_argument("player")
-    s.add_argument("name", help="実在カード名ならコピー・トークンとしてそのオラクルを引き継ぐ")
+    s.add_argument("name", nargs="?", help="実在カード名ならコピー・トークンとしてそのオラクルを引き継ぐ")
+    s.add_argument("--preset", choices=sorted(input_files.TOKEN_PRESETS),
+                   help="名前・タイプ・本文が確定した定型アーティファクト（個別定義とは併用不可）")
     s.add_argument("--types",
                    help="スラッシュ区切り。省略時はコピー元のタイプ、"
                         "実在カードでなければ Creature")
@@ -2781,6 +2829,7 @@ def run_batch(args):
     # not future game choices or the legality of actions against evolving state.
     parser = build_parser()
     prepared, errors = [], []
+    declared, events = {}, set()
     for source_line, line in command_lines(text):
         try:
             parts = command_words(line)
@@ -2792,12 +2841,27 @@ def run_batch(args):
             for command in commands:
                 if command[0] in ("run", "session"):
                     raise ValueError("run/session はバッチ内では使用できません")
-                parsed = parse_file_command(command, gl, parser)
+                command, label = input_files.take_label(command)
+                parsed = parse_file_command(input_files.substitute(command, declared), gl, parser)
+                kind = input_files.label_kind(parsed) if label else None
+                if label:
+                    if label in declared:
+                        raise ValueError('別名の重複: ' + label)
+                    declared[label] = 'T1' if kind == 'pending' else '1'
+                if parsed.cmd == 'note' and parsed.event:
+                    if not args.compact or args.seat:
+                        raise ValueError('note --eventは席制限なしのrun --compact専用です')
+                    if parsed.event in events:
+                        raise ValueError('イベントIDの重複: ' + parsed.event)
+                    events.add(parsed.event)
                 if parsed.cmd == "phase" and parsed.op in ("to", "set") and parsed.value not in PHASES:
                     raise ValueError("不明なフェイズ: " + str(parsed.value))
-                prepared.append((source_line, shlex.join(command) if parts[0] == "pass-both" else line, command))
+                prepared.append((source_line, shlex.join(command) if parts[0] == "pass-both" else line,
+                                 command, label, kind))
         except ValueError as error:
             errors.append("%s:%d: %s" % (args.file, source_line, error))
+    if declared and any(parts[0] in ('undo', 'init') for _, _, parts, _, _ in prepared):
+        errors.append('別名を使うバッチではundo/initを併用できません。別バッチで行ってください。')
     if errors:
         print("構文検査失敗（状態変更なし）\n" + "\n".join(errors))
         sys.exit(1)
@@ -2815,31 +2879,45 @@ def run_batch(args):
                                          dir=output_dir, delete=False) as output_file:
             transcript = pathlib.Path(output_file.name)
     record_count = 0
+    event_start = 1
+    aliases = {}
     def record_output(record):
         nonlocal record_count
         record_count += 1
         record["source_line"] = source_line
         with transcript.open("a", encoding="utf-8") as output_file:
             output_file.write(json.dumps(record, ensure_ascii=False) + "\n")
-    for source_line, line, parts in prepared:
+    for source_line, line, source_parts, label, kind in prepared:
         if not (args.quiet or args.compact):
             print("» " + line)
         sys.stdout.flush()       # エラーは stderr に出るので、順序が入れ替わらないよう流す
         try:
             if args.compact:
                 captured = io.StringIO()
+                parts = None
                 try:
                     with contextlib.redirect_stdout(captured):
-                        dispatch(gl + parts)
+                        parts = input_files.substitute(source_parts, aliases)
+                        result = dispatch(gl + parts, batch_label=kind, event_context=True)
                 except BaseException as error:
-                    record_output({"command": line, "stdout": captured.getvalue(),
-                                   "error": str(error)})
+                    record = {"command": line, "stdout": captured.getvalue(), "error": str(error)}
+                    if parts is not None and (label or parts != source_parts):
+                        record['expanded_command'] = shlex.join(parts)
+                    record_output(record)
                     print(captured.getvalue(), end="")
                     print("失敗した行: " + line)
                     print("詳細ログ: %s:1-%d" % (transcript, record_count))
                     raise
                 raw_output = captured.getvalue()
                 record = {"command": line, "stdout": raw_output}
+                if label or parts != source_parts:
+                    record['expanded_command'] = shlex.join(parts)
+                if label:
+                    aliases[label] = result
+                    record['binding'] = {label: result}
+                if isinstance(result, dict) and 'id' in result:
+                    record['event'] = dict(result, start=event_start, end=record_count + 1)
+                    event_start = record_count + 2
                 if parts[0] == "show":
                     named_args = build_parser().parse_args(gl + parts)
                     if named_args.ids:
@@ -2851,7 +2929,7 @@ def run_batch(args):
                 if args.delta and parts[0] == "show":
                     # dispatch already enforced the seat boundary for this exact show.
                     show_args = build_parser().parse_args(gl + parts)
-                    view_key = (show_args.hand, show_args.flat, show_args.next_oid, show_args.ids)
+                    view_key = (show_args.hand, show_args.flat, show_args.next_oid, show_args.ids, show_args.packed)
                     if baseline is not None and baseline_view in (None, view_key):
                         with contextlib.redirect_stdout(io.StringIO()) as prior:
                             cmd_show(show_args, baseline)
@@ -2863,10 +2941,13 @@ def run_batch(args):
                 else:
                     print(compact_output.compact(raw_output, parts), end="")
             else:
-                dispatch(gl + parts)
+                parts = input_files.substitute(source_parts, aliases)
+                result = dispatch(gl + parts, batch_label=kind)
+                if label:
+                    aliases[label] = result
             done += 1
-        except SystemExit as e:
-            code = e.code
+        except (SystemExit, ValueError) as e:
+            code = e.code if isinstance(e, SystemExit) else str(e)
             if code in (0, None):
                 done += 1
                 continue
@@ -2896,6 +2977,18 @@ def parse_command(argv, parser=None):
     if args.cmd == "pending" and args.op == "resolve":
         if not args.value or not args.part or not args.part.strip() or not (args.file or args.commands):
             parser.error("pending resolveにはID・--part・--fileまたは--doが必要です。")
+    if args.cmd == "card" and args.op != "show" and args.more_names:
+        parser.error("複数カード名はcard showのみ使用できます。")
+    if args.cmd == "token":
+        if args.preset:
+            if any(getattr(args, k) is not None for k in
+                   ("name", "types", "subtypes", "colors", "power", "toughness", "oracle")):
+                parser.error("--presetは名前・タイプ・P/T・色・本文の個別指定と併用できません。")
+        elif not args.name:
+            parser.error("tokenには名前または--presetが必要です。")
+    if args.cmd == "note" and args.event:
+        if not re.fullmatch(r"E[0-9]+", args.event) or args.private:
+            parser.error("--eventは公開メモのE01等のIDのみ指定できます。")
     if args.cmd == "turn" and args.draw and (not args.to or args.to not in PHASES or PHASES.index(args.to) < PHASES.index("beginning.draw")):
         parser.error("--drawにはドロー以降の--toが必要: turn next --to precombat_main --draw")
     return args
@@ -2925,8 +3018,10 @@ def command_handlers():
     }
 
 
-def dispatch(argv):
+def dispatch(argv, *, batch_label=None, event_context=False):
     args = parse_command(input_files.expand(argv))
+    if args.cmd == "note" and args.event and not event_context:
+        sys.exit("note --eventはrun --compact内で使用してください。")
     if args.cmd == "session":
         input_files.register(args)
         return
@@ -2970,12 +3065,31 @@ def dispatch(argv):
     if st is None and args.cmd == "card" and (args.local or args.oid):
         sys.exit("--local / --oid はこの対局の盤面に対する上書きなので、対局中にのみ使えます。")
     bookkeeping.guard(args, st)
-    command_handlers()[args.cmd](args, st)
+    before_tokens = set(st["objects"]) if batch_label == "token" else None
+    # Do not announce a completed resolution if its binding validation fails.
+    bound_output = io.StringIO() if batch_label == 'token' else None
+    with contextlib.redirect_stdout(bound_output) if bound_output is not None else contextlib.nullcontext():
+        command_handlers()[args.cmd](args, st)
+    result = None
+    if batch_label == "pending":
+        result = st["pending"][-1]["id"]
+    elif batch_label == "token":
+        tokens = [o["oid"] for key, o in st["objects"].items()
+                  if key not in before_tokens and o.get("token")]
+        if len(tokens) != 1:
+            sys.exit("--labelにはトークンをちょうど1個生成する操作が必要です（状態変更なし）。")
+        result = str(tokens[0])
+    elif args.cmd == "note" and args.event:
+        result = dict(id=args.event, text=" ".join(args.text), turn=st["turn"],
+                      active=st["active"], phase=st["phase"], seed=st.get('seed'))
     if args.cmd not in readonly and st is not None:
         turn_start = st.pop("_turn_start_view", None)
         save(args, st)
         if turn_start is not None:
             append_turn_history(args, st, "ターン開始（アンタップ後・ドロー前）", text=turn_start)
+    if bound_output is not None:
+        print(bound_output.getvalue(), end='')
+    return result
 
 
 def main():

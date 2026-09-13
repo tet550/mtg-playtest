@@ -238,6 +238,8 @@ def resolve_part(api, args, st, p):
                 raise ValueError("fxはadd/set/removeのみ使用できます")
             if a.cmd == "linked" and a.op != "exile":
                 raise ValueError("linkedはexileのみ使用できます")
+            if a.cmd == "note" and getattr(a, "event", None):
+                raise ValueError("note --eventは解決用区間ではなくrun --compactの直下に置いてください")
             api.enforce_seat(a)
             prepared.append((n, line, a))
         except (ValueError, SystemExit) as error:

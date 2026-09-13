@@ -18,7 +18,7 @@
 | 目的 | コマンド |
 |---|---|
 | 対戦開始・事前キャッシュ | `init --deck1 piza --deck2 boros-dwarves --seed 101 --first P1`。両デッキのメイン・サイドボードの不足・未解決カードを自動取得し、全件確認後に保存。取得失敗は状態未保存で停止。`--offline`はキャッシュ完備時のみ開始可。`--prefetch`は互換用で省略可 |
-| OID中心の盤面表示 | `show --ids --hand both`（手札共有時）。カード名を省略し状態を保持。初手・再開・対応確認には`show --hand both`。`--flat`・`--next-oid`・`run --compact --delta`と併用可。能力の説明と裁定メモは省略しない |
+| OID中心の盤面表示 | `show --ids --hand both`（手札共有時）。カード名を省略し状態を保持。初手・再開・対応確認には`show --hand both`。`--packed`で手札を3枚ずつ表示（コスト・タイプ・P/Tを保持）。`--flat`・`--next-oid`・`run --compact --delta`と併用可。能力の説明と裁定メモは省略しない |
 | 人向けターン開始履歴 | `init --deck1 piza --deck2 boros-dwarves --seed 101 --history-hand both`。`output/<state名>/turn-starts.md`へ名前付きshowを自動追記。手札の既定はnone、P1/P2/bothを指定可。初回はT1のアンタップ・ステップを初めて進める直前（初手・マリガン後）、以降はturn進行のアンタップ後・ドロー前。成功した操作だけ記録し、undoは訂正を追記する。対人・席分離はnoneまたは自分の席だけを選ぶ |
 | 登録デッキのメイン確認 | `deck show boros-tokens --brief` |
 
@@ -26,7 +26,7 @@
 
 | 目的 | コマンド |
 |---|---|
-| カード全文の確認 | `card show <名前>`。**未キャッシュの名前は `[missing]` と出して終了コード0で終わる**（取得しない）ので、その場合は `card fetch <名前>` で取り直す。`cards/` は.gitignore対象なのでクローン直後は全カードが未キャッシュ |
+| カード全文の確認 | `card show "<名前1>" "<名前2>" ...`（各名前を引用、showのみ複数可）。**未キャッシュの名前は `[missing]` と出して終了コード0で終わる**（取得しない）ので、その場合は `card fetch <名前>` で取り直す。`cards/` は.gitignore対象なのでクローン直後は全カードが未キャッシュ |
 | 残りライブラリーの確認 | `zone P1:library`（P2なら `zone P2:library`。投了判断でのアウト確認用） |
 | ライブラリーの上からN枚を見る | `look P1 4`（上から4枚。移動しない。効果などで見る必要があるときだけ） |
 | 見た残りを無作為順で一番下へ | 例：残りが24・3・51なら`pick 24 3 51`の結果を読み、そのoidを`move <oid> library`。未選択の2枚で再度pickして同様に移し、最後の1枚も移す。対局のseed付き乱数を使い、ライブラリー全体をshuffleしない。解決中はpickを区間末尾に置いて`--pause`し、結果を読むたび別partで続ける |
@@ -44,6 +44,7 @@
 | 台帳の能力を取消し | `pending cancel T1 --reason "打ち消し"`（理由必須。解決途中はundoで戻す） |
 | 確認メモ | `remind add "果敢を確認" --on cast --player P1 --src <oid>`（on必須：cast/enter/turn。player・src省略可。自動誘発なし）／`remind list`／`remind remove R1` |
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
+| 両者パスの短縮 | バッチ内の `pass-both P1`（P1→P2）／`pass-both P2`（P2→P1）。席制限なし専用。AIが両席の応答なしを確認してから指定。証跡・保存は既存pass2行のまま |
 | 応答なしの解決 | `pass P1` → `pass P2` → 通常は`stack resolve` → 効果適用 → カードは`move`、能力は`stack pop`。台帳の能力は`pending resolve`、帰還能力は`linked resolve`で完了まで処理 |
 
 ## 装備と継続効果
@@ -78,7 +79,7 @@
 | 目的 | コマンド |
 |---|---|
 | クリーチャーへのダメージ | `damage <oid> <点数>`（**発生源を渡すオプションは無い**。格闘・火力の発生源や絆魂・接死の判定は`note`と手動処理で補う） |
-| 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。警戒は`--no-tap`。**カード固有の速攻は召喚酔い警告に反映されない**ため、`Haste`表示がある場合も本文で適法性を確認する（付与された速攻だけを警告判定に使用）） |
+| 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。警戒は`--no-tap`。固有の無条件の速攻と付与された速攻は警告判定に反映する。条件付きの速攻や他者に与える速攻は本文で確認する） |
 | 戦闘ダメージ | 応答・誘発・ブロックを確認し`combat.damage`へ進めてから`combat damage`。別ステップや非空スタックでは停止する。先制・二段攻撃は`combat damage --step first --trample`→`sba --apply-deaths`→未決着なら`combat damage --step regular --trample`。ブロック済みでブロッカー不在なら非トランプルは0点、トランプルは全点を自動適用。`combat show`でもブロック済みと表示する。超過があるのに`--trample`を省略すると全体未適用で停止 |
 | 接死と軽減 | 接死は割り振りと実被ダメージを自動記録→`sba --apply-deaths`。全軽減は`combat damage --trample --prevent <発生源oid>:<受け手oid/P1/P2>`。プロテクション非適用・軽減禁止の裁定は`--unprevented <発生源oid>:<受け手>`。複数組は繰り返す。検出されたプロテクションの判定未指定・矛盾・割り振りにない組は全体未適用で停止。各ステップで指定し直す。部分軽減・置換は手動 |
 | 攻撃中のノーム | `token P1 Gnome --types Artifact/Creature --subtypes Gnome --power 1 --toughness 1 --attacking -n 2` |
@@ -98,7 +99,11 @@
 | 土地を置く | `move <oid> battlefield`（タップインは`--tapped`。`play P1`ではない） |
 | ライフ変更 | `life P2 -2`（`--reason`はない。必要な理由だけnote） |
 | 次ターン | `turn next --to precombat_main --draw`（途中の誘発があるならそこで区切る） |
-| トークンのoid | 採番は生成時の出力（`トークン生成: 英雄(125)`）でしか分からない。**生成行の直後でバッチを区切り**、oidを読んでから`attach`／`fx add`／`stack push --src`を書く（推測すると`oid ... は存在しません`で停止する） |
+| 定型トークン | `token P2 --preset clue`／`--preset treasure`／`--preset lander`。名前・タイプ・本文を既定義し、個別定義との併用不可。`-n`・`--tapped`は併用可。能力の起動や誘発は別途記帳 |
+| バッチ内の別名 | `pending add "ETB" --controller P2 --label etb` → `pending stack $etb`。`token P2 --preset clue --label clue` → `tap $clue`。`pending resolve $etb --do "token P2 --preset clue" --part create --label clue`でも生成1個に命名可。別名は同じrun内のみ、定義後の独立した`$name`トークンと`--do`内で使用。`--src=$name`や`--file`内の置換は不可。undo/initとの同一バッチ併用不可。シェルの展開を防ぐ引用付きheredoc等で渡す |
+| イベントの証跡 | 席制限なしの`run --compact`内で `note "重要な行動と結果" --event E01`。同じゲームのID重複・秘匿指定は不可。解決用の`--do`／`--file`内では使わず、runの直下に置く。現在のバッチの先頭（前のeventがあればその直後）〜当該noteの物理行範囲を証跡へ保存。通常noteは従来どおり |
+| 報告草稿 | `python .claude/skills/mtg-playtest/scripts/report_draft.py playtest/<対局> --game g01 --seed 123`。`report-draft.md`を新規作成。`--out`は同じ対局フォルダ直下の未使用パスのみ。明示的なevent・結果・現在のログを照合し、undo/init入り証跡や不整合は停止。裁定・所見・キープ枚数は記入後check_reportで検査 |
+| トークンのoid | 採番は生成時の出力（`トークン生成: 英雄(125)`）でしか分からない。生成結果で判断が変わる場合は**生成行の直後でバッチを区切り**、oidを読んでから`attach`／`fx add`／`stack push --src`を書く（推測すると`oid ... は存在しません`で停止する）。生成1個で後続操作が確定している場合は上記`--label`を使える |
 | 可変収支のピザ反復 | 1周検証後だけ [pizza-recipe.md](pizza-recipe.md) を読む。現行生成器の末尾は手札なしの`show`なので、軽量方式では生成ファイル末尾を実行前に`show --hand both`へ変更する（対人・席分離には適用しない）。生成器は誘発を旧式のstack操作で記帳し、pending台帳と発生源参照は作らない |
 | 決着後の消化ターンを畳む | `concede P2 --reason "勝ち手順・アウト枚数・間に合わない根拠" --tag T`（[投了条件](concede.md)を先に確認） |
 

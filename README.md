@@ -66,8 +66,12 @@ python .claude/skills/mtg-playtest/scripts/mtg.py --state playtest/demo/g01.json
 無い場合は `scripts/mtg.ps1` が同じ引数を受け取ります。
 
 通常の `show` は名前付き、`show --ids --hand both` はカード名を省略した表示です。
+`show --ids --packed --hand both`では、手札の情報を保ったまま3枚ずつ表示します。
 OID表示でもP/T・タップ・カウンター・能力・装着先は残ります。初登場の対応はドローや
 トークン生成の出力で確認し、再開時は名前付き `show` を使います。
+
+バッチでは`--label`と`$name`で生成した誘発・トークンを後続操作から参照でき、`pass-both`で両者のパスを短縮できます。定型トークンは`token P2 --preset clue`など、複数カードの確認は`card show "カード名1" "カード名2"`で行います。
+具体的な入力・制限は[バッチ実行](.claude/skills/mtg-playtest/references/ai-batches.md#採番待ちを減らす入力)を参照してください。
 
 各ターン開始時の名前付き盤面を `output/<状態名>/turn-starts.md` に自動保存します。
 初回は初手・マリガン後のステップ進行時、以降はアンタップ後・通常ドロー前です。

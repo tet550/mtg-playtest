@@ -2,6 +2,64 @@
 import json
 import pathlib
 import re
+import shlex
+
+
+TOKEN_PRESETS = {
+    'clue': ('Clue', '{2}, Sacrifice this artifact: Draw a card.'),
+    'treasure': ('Treasure', '{T}, Sacrifice this artifact: Add one mana of any color.'),
+    'lander': ('Lander', '{2}, {T}, Sacrifice this artifact: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.'),
+}
+
+
+def take_label(words):
+    """Labels belong to run, never to saved state or global --as seat options."""
+    words = list(words)
+    label = None
+    for i in range(len(words) - 1, -1, -1):
+        if words[i] == '--label' or words[i].startswith('--label='):
+            if label is not None:
+                raise ValueError('--labelは1回だけ指定してください')
+            if words[i] == '--label':
+                if i + 1 == len(words):
+                    raise ValueError('--labelには名前が必要です')
+                label = words[i + 1]
+                del words[i:i+2]
+            else:
+                label = words.pop(i).split('=', 1)[1]
+            if not re.fullmatch(r'[a-z][a-z0-9_]*', label):
+                raise ValueError('別名は英小文字から始まる英小文字・数字・_で指定してください')
+    return words, label
+
+
+def substitute(words, aliases):
+    """Only whole $name reference tokens are expanded, including inline --do.
+
+    No shell evaluation, free-text interpolation, or file-content substitution.
+    """
+    result = []
+    for i, word in enumerate(words):
+        if i and words[i-1] == '--do':
+            result.append(shlex.join(substitute(shlex.split(word), aliases)))
+        elif word.startswith('--do='):
+            result.append('--do=' + shlex.join(substitute(shlex.split(word[5:]), aliases)))
+        elif re.fullmatch(r'\$[a-z][a-z0-9_]*', word):
+            if word[1:] not in aliases:
+                raise ValueError('未定義のバッチ別名: ' + word)
+            result.append(aliases[word[1:]])
+        else:
+            result.append(word)
+    return result
+
+
+def label_kind(parsed):
+    if parsed.cmd == 'pending' and parsed.op == 'add':
+        return 'pending'
+    if parsed.cmd == 'token' and parsed.n == 1:
+        return 'token'
+    if parsed.cmd == 'pending' and parsed.op == 'resolve':
+        return 'token'
+    raise ValueError('--labelはpending add、token -n 1、またはトークン1個を生成するpending resolve専用です')
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[4]

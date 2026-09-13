@@ -47,3 +47,23 @@ Windows / Codex desktop では `& .claude/skills/mtg-playtest/scripts/mtg.ps1 <�
 プロジェクト直下の `& ./mtg.ps1 <引数>` は同じ入口の短縮で、標準入力もそのまま渡す。
 
 毎回の `--state` / `--results` は `session` で短縮名に登録できる。`python $mtg --state <state> --results <results> session g01green` の後は `python $mtg --session g01green show` のように書く。**`--session` とパス指定（`--state` など）は併用できず、同じ名前の再登録もできない**（既存の登録を黙って上書きしないため）。登録は `playtest/.sessions/<名前>.json` に残る。`run` の中では `session` を使えない。
+
+## 採番待ちを減らす入力
+
+両席の応答なしを確認した区間は、既存の`pass-both P1`（P1→P2）または`pass-both P2`を使う。席制限付きでは使用しない。新しい能力やトークンのIDは、同じバッチ内なら`--label`で別名へ結び付けられる。事前にIDを推測しない。
+
+```text
+pending add "Clue生成" --controller P2 --label etb
+pending stack $etb
+pass-both P2
+pending resolve $etb --do "token P2 --preset clue" --part create --label clue
+sba --apply-deaths
+note "ETBでClueを生成" --event E01
+show --ids --packed --hand both
+```
+
+`--label`はrunが処理する指定で、直接CLIや解決用ファイル内には書かない。使用できる生成行はpending add、token（1個）、トークンをちょうど1個作るpending resolve。別名は英小文字から始まる英小文字・数字・_。同じrun内で重複・先行参照は不可。別runへは実際のT番号・OIDを引き継ぐ。解決区間が0個または複数個のトークンを生成すると、その区間の状態を保存せず停止する。
+
+`$clue`のような独立した語を参照として使い、`--do "tap $clue"`内も展開できる。`--src=$clue`のようなオプションとの結合や、`--file`で読むファイル内は展開しない。別名入りバッチでundo/initを使わず、復旧は別バッチで行う。証跡には入力・展開後コマンド・実際のIDを残す。
+
+zsh/bashでは`<<'EOF'`、PowerShellでは単一引用符のhere-string（`@'`〜`'@`）等で渡し、シェルによる`$name`の展開を防ぐ。乱数・ドロー・探索等の結果で判断が変わる境界は、別名があっても必ず区切る。
