@@ -1,0 +1,446 @@
+{
+ "created_at": "2026-09-13T00:56:09Z",
+ "description": "ジャンドサクリファイス",
+ "format": "standard",
+ "key": "jund-sacrifice",
+ "legal": true,
+ "main": [
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 4,
+   "mana_value": 1,
+   "name": "Greedy Freebooter",
+   "oracle_id": "d4a9d63a-5a8a-4f51-9e49-43d6dc3234b1",
+   "printed": null,
+   "source_name": "Greedy Freebooter",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G",
+    "R"
+   ],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Biotech Specialist",
+   "oracle_id": "78de77ef-c325-4342-869f-042921229577",
+   "printed": null,
+   "source_name": "Biotech Specialist",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Charming Scoundrel",
+   "oracle_id": "9eec304d-ffcb-4287-b877-280ac1e4f496",
+   "printed": null,
+   "source_name": "Charming Scoundrel",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Mutagen Man, Living Ooze",
+   "oracle_id": "472d9a18-19a0-46c0-a4bf-328ebec7ce41",
+   "printed": null,
+   "source_name": "Mutagen Man, Living Ooze",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 4,
+   "mana_value": 2,
+   "name": "The Sackville-Bagginses",
+   "oracle_id": "e3a665f9-6e51-4e0d-923b-e9552d5978a4",
+   "printed": null,
+   "source_name": "The Sackville-Bagginses",
+   "status": "ok",
+   "supertypes": [
+    "Legendary"
+   ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Umbral Collar Zealot",
+   "oracle_id": "12db6263-75c2-442f-a1a5-7af7915f8f9f",
+   "printed": null,
+   "source_name": "Umbral Collar Zealot",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 3,
+   "mana_value": 6,
+   "name": "Rottenmouth Viper",
+   "oracle_id": "2c75623c-59f4-4449-ab43-9d1225185ad9",
+   "printed": null,
+   "source_name": "Rottenmouth Viper",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Duress",
+   "oracle_id": "33d405ea-7a9a-4970-b70f-9c05d90dd6f0",
+   "printed": null,
+   "source_name": "Duress",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Tragic Trajectory",
+   "oracle_id": "e5e19326-3e90-439c-a3b2-749d43a1af0c",
+   "printed": null,
+   "source_name": "Tragic Trajectory",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Lively Dirge",
+   "oracle_id": "0b23d9aa-d4ed-4ccf-8810-4a4d11d6fb9c",
+   "printed": null,
+   "source_name": "Lively Dirge",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 4,
+   "mana_value": 2,
+   "name": "Obsessive Pursuit",
+   "oracle_id": "7e7abb44-47b0-4d80-b8a1-36f0c1032aa3",
+   "printed": null,
+   "source_name": "Obsessive Pursuit",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Enchantment"
+   ]
+  },
+  {
+   "colors": [
+    "B",
+    "G"
+   ],
+   "count": 3,
+   "mana_value": 2,
+   "name": "Witherbloom Charm",
+   "oracle_id": "ee1db746-f5c1-4dce-82eb-24b273cc9507",
+   "printed": null,
+   "source_name": "Witherbloom Charm",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Blazemire Verge",
+   "oracle_id": "977c2f33-b622-4172-9efb-7f523becd32b",
+   "printed": null,
+   "source_name": "Blazemire Verge",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Blood Crypt",
+   "oracle_id": "43985bbc-a0f6-4812-984e-392bc8562633",
+   "printed": null,
+   "source_name": "Blood Crypt",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Forest",
+   "oracle_id": "b34bb2dc-c1af-4d77-b0b3-a0fb342a5fc6",
+   "printed": null,
+   "source_name": "Forest",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Starting Town",
+   "oracle_id": "d04e0975-f401-41b8-a9db-9bcf9cbbce66",
+   "printed": null,
+   "source_name": "Starting Town",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Stomping Ground",
+   "oracle_id": "16052b52-ade1-406f-a06b-ce7ea607fb63",
+   "printed": null,
+   "source_name": "Stomping Ground",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 2,
+   "mana_value": 0,
+   "name": "Swamp",
+   "oracle_id": "56719f6a-1a6c-4c0a-8d21-18f7d7350b68",
+   "printed": null,
+   "source_name": "Swamp",
+   "status": "ok",
+   "supertypes": [
+    "Basic"
+   ],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 4,
+   "mana_value": 0,
+   "name": "Wastewood Verge",
+   "oracle_id": "c6e0574c-3e2b-4c40-b17a-05bce3d49309",
+   "printed": null,
+   "source_name": "Wastewood Verge",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  }
+ ],
+ "main_total": 60,
+ "name": "jund-sacrifice",
+ "problems": [],
+ "schema": "mtg-playtest/deck@2",
+ "sideboard": [
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Intimidation Tactics",
+   "oracle_id": "121bd1af-da21-4937-a911-377c5b430796",
+   "printed": null,
+   "source_name": "Intimidation Tactics",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 2,
+   "mana_value": 1,
+   "name": "Requiting Hex",
+   "oracle_id": "eda16b31-33db-4ad2-901a-80fbe6273733",
+   "printed": null,
+   "source_name": "Requiting Hex",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 3,
+   "mana_value": 1,
+   "name": "Soul-Guide Lantern",
+   "oracle_id": "1b5e6560-ff2e-4475-96cb-63f64c8a86db",
+   "printed": null,
+   "source_name": "Soul-Guide Lantern",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Tragic Trajectory",
+   "oracle_id": "e5e19326-3e90-439c-a3b2-749d43a1af0c",
+   "printed": null,
+   "source_name": "Tragic Trajectory",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Heritage Reclamation",
+   "oracle_id": "09955b4b-6052-4c27-8b63-9548482b3c5c",
+   "printed": null,
+   "source_name": "Heritage Reclamation",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Pawpatch Formation",
+   "oracle_id": "fa99cf82-ebf1-4526-ab9c-b24eb2970f2a",
+   "printed": null,
+   "source_name": "Pawpatch Formation",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Instant"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 1,
+   "mana_value": 4,
+   "name": "Ancient Vendetta",
+   "oracle_id": "6f053f0d-c9c7-4fcd-b218-a29d1d080104",
+   "printed": null,
+   "source_name": "Ancient Vendetta",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Sorcery"
+   ]
+  },
+  {
+   "colors": [
+    "B"
+   ],
+   "count": 1,
+   "mana_value": 4,
+   "name": "Phoenix Fleet Airship",
+   "oracle_id": "6ffe71c0-acb5-4ba9-8c2f-719330e1ea69",
+   "printed": null,
+   "source_name": "Phoenix Fleet Airship",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact"
+   ]
+  }
+ ],
+ "sideboard_total": 15,
+ "source_file": "decklists/jund-sacrifice.txt",
+ "source_text": "# jund-sacrifice — ジャンドサクリファイス\n\nDeck\n4 Greedy Freebooter\n4 Biotech Specialist\n3 Charming Scoundrel\n2 Mutagen Man, Living Ooze\n4 The Sackville-Bagginses\n1 Umbral Collar Zealot\n3 Rottenmouth Viper\n\n3 Duress\n3 Tragic Trajectory\n3 Lively Dirge\n4 Obsessive Pursuit\n3 Witherbloom Charm\n\n4 Blazemire Verge\n4 Blood Crypt\n1 Forest\n4 Starting Town\n4 Stomping Ground\n2 Swamp\n4 Wastewood Verge\n\nSideboard\n3 Intimidation Tactics\n2 Requiting Hex\n3 Soul-Guide Lantern\n1 Tragic Trajectory\n2 Heritage Reclamation\n2 Pawpatch Formation\n1 Ancient Vendetta\n1 Phoenix Fleet Airship\n",
+ "updated_at": "2026-09-13T00:56:09Z",
+ "warnings": []
+}

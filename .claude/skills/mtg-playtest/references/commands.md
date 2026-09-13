@@ -78,7 +78,7 @@
 | 目的 | コマンド |
 |---|---|
 | クリーチャーへのダメージ | `damage <oid> <点数>`（**発生源を渡すオプションは無い**。格闘・火力の発生源や絆魂・接死の判定は`note`と手動処理で補う） |
-| 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。警戒は`--no-tap`） |
+| 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。警戒は`--no-tap`。**カード固有の速攻は召喚酔い警告に反映されない**ため、`Haste`表示がある場合も本文で適法性を確認する（付与された速攻だけを警告判定に使用）） |
 | 戦闘ダメージ | 応答・誘発・ブロックを確認し`combat.damage`へ進めてから`combat damage`。別ステップや非空スタックでは停止する。先制・二段攻撃は`combat damage --step first --trample`→`sba --apply-deaths`→未決着なら`combat damage --step regular --trample`。ブロック済みでブロッカー不在なら非トランプルは0点、トランプルは全点を自動適用。`combat show`でもブロック済みと表示する。超過があるのに`--trample`を省略すると全体未適用で停止 |
 | 接死と軽減 | 接死は割り振りと実被ダメージを自動記録→`sba --apply-deaths`。全軽減は`combat damage --trample --prevent <発生源oid>:<受け手oid/P1/P2>`。プロテクション非適用・軽減禁止の裁定は`--unprevented <発生源oid>:<受け手>`。複数組は繰り返す。検出されたプロテクションの判定未指定・矛盾・割り振りにない組は全体未適用で停止。各ステップで指定し直す。部分軽減・置換は手動 |
 | 攻撃中のノーム | `token P1 Gnome --types Artifact/Creature --subtypes Gnome --power 1 --toughness 1 --attacking -n 2` |

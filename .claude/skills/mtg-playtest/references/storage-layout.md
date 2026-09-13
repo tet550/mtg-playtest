@@ -41,6 +41,7 @@ seed・実行モード・デッキ版・勝敗はreport.mdに記録し、フォ�
 | boros-tokens | tokens |
 | mono-green-landfall | green |
 | piza | piza |
+| jund-sacrifice | jund |
 
 新しいデッキは初回に短く一意な英小文字の略称を決め、この表へ追記して以後固定する。デッキの登録名とデッキリストの命名は`decklists/README.md`の規約に従う。登録ファイル末尾のハッシュや、その場限りの略し方を使わない。サイド後の派生登録は同じデッキ略称を使い、正確な登録名・版はreport.mdで区別する。
 
