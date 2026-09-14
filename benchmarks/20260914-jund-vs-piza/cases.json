@@ -2,8 +2,27 @@
   {
     "seed": 9141,
     "first": "P1",
+    "opening_hands": {
+      "P1": [
+        "Blood Crypt",
+        "Wastewood Verge",
+        "Tragic Trajectory",
+        "Obsessive Pursuit",
+        "The Sackville-Bagginses",
+        "Biotech Specialist",
+        "Rottenmouth Viper"
+      ],
+      "P2": [
+        "Botanical Sanctum",
+        "Starting Town",
+        "Guac & Marshmallow Pizza",
+        "Rapid Rescue",
+        "Chrome Dome",
+        "Redshift, Rocketeer Chief",
+        "Mona Lisa, Science Geek"
+      ]
+    },
     "ai_both_seats": {
-      "folder": "20260914-0932-series-jund-vs-piza",
       "winner": "P1",
       "turn": 13,
       "concede": null,
@@ -17,7 +36,6 @@
       }
     },
     "human_piza": {
-      "folder": "20260914-1231-bo1-jund-vs-piza",
       "winner": "P2",
       "turn": 12,
       "concede": null,
@@ -34,8 +52,27 @@
   {
     "seed": 9142,
     "first": "P2",
+    "opening_hands": {
+      "P1": [
+        "Blazemire Verge",
+        "Swamp",
+        "Wastewood Verge",
+        "Duress",
+        "Lively Dirge",
+        "Obsessive Pursuit",
+        "Witherbloom Charm"
+      ],
+      "P2": [
+        "Botanical Sanctum",
+        "Breeding Pool",
+        "Forest",
+        "Multiversal Passage",
+        "Starting Town",
+        "Oblivious Bookworm",
+        "Mona Lisa, Science Geek"
+      ]
+    },
     "ai_both_seats": {
-      "folder": "20260914-0932-series-jund-vs-piza",
       "winner": "P1",
       "turn": 15,
       "concede": "P2",
@@ -49,7 +86,6 @@
       }
     },
     "human_piza": {
-      "folder": "20260914-1624-bo1-jund-vs-piza",
       "winner": "P2",
       "turn": 13,
       "concede": "P1",
@@ -66,8 +102,27 @@
   {
     "seed": 9143,
     "first": "P1",
+    "opening_hands": {
+      "P1": [
+        "Blood Crypt",
+        "Blood Crypt",
+        "Duress",
+        "Greedy Freebooter",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Rottenmouth Viper"
+      ],
+      "P2": [
+        "Breeding Pool",
+        "Spirebluff Canal",
+        "Patchwork Beastie",
+        "Rapid Rescue",
+        "Redshift, Rocketeer Chief",
+        "Redshift, Rocketeer Chief",
+        "Mona Lisa, Science Geek"
+      ]
+    },
     "ai_both_seats": {
-      "folder": "20260914-0932-series-jund-vs-piza",
       "winner": "P1",
       "turn": 14,
       "concede": "P2",
@@ -81,7 +136,6 @@
       }
     },
     "human_piza": {
-      "folder": "20260914-1710-bo1-jund-vs-piza",
       "winner": "P2",
       "turn": 10,
       "concede": "P1",
@@ -98,8 +152,27 @@
   {
     "seed": 9144,
     "first": "P2",
+    "opening_hands": {
+      "P1": [
+        "Blood Crypt",
+        "Forest",
+        "Swamp",
+        "Wastewood Verge",
+        "Wastewood Verge",
+        "The Sackville-Bagginses",
+        "Witherbloom Charm"
+      ],
+      "P2": [
+        "Forest",
+        "Starting Town",
+        "Starting Town",
+        "Guac & Marshmallow Pizza",
+        "Sewer-veillance Cam",
+        "Sewer-veillance Cam",
+        "Oblivious Bookworm"
+      ]
+    },
     "ai_both_seats": {
-      "folder": "20260914-0932-series-jund-vs-piza",
       "winner": "P2",
       "turn": 19,
       "concede": null,
@@ -113,7 +186,6 @@
       }
     },
     "human_piza": {
-      "folder": "20260914-1002-bo1-jund-vs-piza",
       "winner": "P2",
       "turn": 7,
       "concede": null,
@@ -130,8 +202,27 @@
   {
     "seed": 9145,
     "first": "P1",
+    "opening_hands": {
+      "P1": [
+        "Blazemire Verge",
+        "Stomping Ground",
+        "The Sackville-Bagginses",
+        "Witherbloom Charm",
+        "Biotech Specialist",
+        "Mutagen Man, Living Ooze",
+        "Rottenmouth Viper"
+      ],
+      "P2": [
+        "Botanical Sanctum",
+        "Breeding Pool",
+        "Patchwork Beastie",
+        "Sewer-veillance Cam",
+        "Courier of Comestibles",
+        "Oblivious Bookworm",
+        "Redshift, Rocketeer Chief"
+      ]
+    },
     "ai_both_seats": {
-      "folder": "20260914-0932-series-jund-vs-piza",
       "winner": "P1",
       "turn": 15,
       "concede": null,
@@ -145,7 +236,6 @@
       }
     },
     "human_piza": {
-      "folder": "20260914-1050-bo1-jund-vs-piza",
       "winner": "P2",
       "turn": 8,
       "concede": null,

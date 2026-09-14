@@ -1,9 +1,11 @@
 # jund-sacrifice vs piza ベンチマーク・テストケース
 
 作成: 2026-09-14 / デッキ: `decklists/jund-sacrifice.txt`・`decklists/piza.txt`（サイドボードなし、素の構築）
-機械可読版: [cases.json](cases.json)
+機械可読版: [cases.json](cases.json) / 検証スクリプト: [verify.py](verify.py)
 
-**対局データ（`playtest/` 配下）は .gitignore 対象でリポジトリに含まれない。** この文書は再実行時の期待値を残すためのもので、証跡そのものは各実行環境のローカルにある。
+**このベンチマークは単体で完結する。** 期待値はすべて `cases.json` に埋め込んであり、
+対局フォルダ（`playtest/` 配下、.gitignore 対象）を参照しない。A群は `verify.py` が
+一時領域で `init` をやり直して自動判定する。
 
 同一seedを「単一AIが両席」と「人間がpiza側／AIがjund側」で回した対の記録。AIのプレイ品質を測る基準として使う。
 **同じseedで固定されるのは初期シャッフルだけで、AIの選択は固定されない。** そのため期待値は3層に分ける。
@@ -24,12 +26,22 @@
 | 9144 | P2 | Wastewood Verge ×2 / Swamp / Witherbloom Charm / Blood Crypt / The Sackville-Bagginses / 森 | 始まりの町 ×2 / 監視亀ラ ×2 / 森 / ピザ / 不注意な読書家 |
 | 9145 | P1 | Biotech Specialist / Mutagen Man / 踏み鳴らされる地 / The Sackville-Bagginses / Witherbloom Charm / Blazemire Verge / Rottenmouth Viper | レッドシフト / 継ぎ接ぎのけだもの / 食料配達人 / 不注意な読書家 / 監視亀ラ / 繁殖池 / 植物の聖域 |
 
+検証は次で自動化されている（プロジェクト直下から実行。一時状態はOSの一時領域に作られ、実行後に削除される）。
+
+```bash
+python benchmarks/20260914-jund-vs-piza/verify.py
+```
+
+各seedで `init --deck1 jund-sacrifice --deck2 piza --seed <値> --first <席>` をやり直し、両席の初手7枚を
+`cases.json` の `opening_hands` と照合する。カード名は `--en` で英語名に固定しているため、表示言語の設定に影響されない。
+デッキリストやシャッフル実装を変更して期待値を作り直す場合は `--update` を付ける（差分はレビューすること）。
+
 9143でpiza方針のマリガン基準（アンタップ役もルーティングも無い手札は引き直しを検討）を適用した場合の2枚目は
 始まりの町 / モナリザ / レッドシフト / 島 / アガサの魂の大釜 / クロームドーム / ピザ（うち1枚をボトム）。
 
 ## B. プロセス回帰（機械判定）
 
-対象は `playtest/<対局>/output/<game>/run-*.jsonl` と連番 `.mtg`。期待値は全ケース共通。
+対象は**測定するその実行**の証跡（`<対局フォルダ>/output/<game>/run-*.jsonl` と連番 `.mtg`。既定では `playtest/` 配下に生成される）。保存済みの過去の対局を参照する必要はない。期待値は全ケース共通。
 
 | ID | 判定 | 期待 | 2026-09-14時点の実測 |
 |---|---|---|---|
@@ -79,14 +91,12 @@
 
 C群は確率的なので、条件ごとに5seed×1回を最小単位とし、差が出たseedだけ追試する。
 
-## 対局フォルダ
+## 出典と再現
 
-| seed | AI両席 | 人間piza |
-|---|---|---|
-| 9141 | `playtest/20260914-0932-series-jund-vs-piza/`（g01） | `playtest/20260914-1231-bo1-jund-vs-piza/` |
-| 9142 | 同上（g02） | `playtest/20260914-1624-bo1-jund-vs-piza/` |
-| 9143 | 同上（g03） | `playtest/20260914-1710-bo1-jund-vs-piza/` |
-| 9144 | 同上（g04） | `playtest/20260914-1002-bo1-jund-vs-piza/` |
-| 9145 | 同上（g05） | `playtest/20260914-1050-bo1-jund-vs-piza/` |
+この基準値は2026-09-14に実施した10ゲーム（5seed × {AI両席／人間piza}）の実測。
+その対局データは各実行環境の `playtest/` 配下に残るが、.gitignore 対象でリポジトリには入らないため、
+**このベンチマークはそれらを参照しない**。ベンチマークとして必要な値（初手・勝者・決着ターン・最終ライフ・
+マリガン回数・合否条件）はすべて `cases.json` と本文に転記済み。
 
-AI連戦の詳細は `playtest/20260914-0932-series-jund-vs-piza/report.md`。各対人戦の展開は各フォルダの `output/g01/run-*.jsonl` と `turn-starts.md` を参照。
+B群・C群を測り直すときは、新しい対局フォルダで5seedを回し、その結果を `cases.json` の
+`ai_both_seats` / `human_piza` と比較する。値を書き換えるのは、基準そのものを更新すると決めたときだけにする。
