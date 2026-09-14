@@ -1199,7 +1199,9 @@ def perm_bits(st, oid, ids=False):
         bits.append("(token)")
     keywords = granted(st, oid)
     if ids:
-        keywords = list(dict.fromkeys(card_of(st, o).get("keywords", []) + keywords))
+        native = native_keywords(st, oid)
+        if native:
+            bits.append("・".join(native))
     if keywords:
         bits.append("+" + "・".join(keywords))
     if o.get("attached_to"):
@@ -1979,12 +1981,12 @@ def cmd_attack(args, st):
             print("!! %s(%d): %s。攻撃可能にする能力を確認。"
                   % (o["name"], oid, "・".join(warn)))
         cb["attackers"][str(oid)] = args.target or defender
-        if not args.no_tap:
+        if not args.no_tap and not has_unconditional_keyword(st, oid, "vigilance", "警戒"):
             o["tapped"] = True
         log(st, "%s(%d) が %s に攻撃" % (o["name"], oid, args.target or defender))
     print("攻撃: " + ", ".join("%s(%s)→%s" % (obj(st, o)["name"], o, t)
                                for o, t in cb["attackers"].items()))
-    print("→ 警戒持ちは --no-tap を付ける。ブロックは `block <ブロッカー> <攻撃側>`")
+    print("→ 無条件・付与済みの警戒は自動で非タップ。条件付きの警戒は確認して --no-tap。ブロックは `block <ブロッカー> <攻撃側>`")
 
 
 def cmd_block(args, st):
@@ -2022,28 +2024,38 @@ def pairs(st):
     return out
 
 
-def has_unconditional_haste(st, oid):
-    """Only grant entries or an unconditional keyword line confer known haste.
+def native_keywords(st, oid):
+    """Recognize standalone keyword lists, never mentions or granted-to-others text.
 
-    Scryfall keywords also describe abilities granted to OTHER objects, so a
-    keyword-list hit or arbitrary Oracle substring is insufficient evidence.
+    Limit the text-free record fallback to known abilities: API keywords can
+    also contain token names and keyword actions such as Treasure and Mill.
     """
-    if any(g.casefold() in ("速攻", "haste") for g in granted(st, oid)):
-        return True
     c = card_of(st, obj(st, oid))
     oracle = c.get("oracle", "") or ""
+    known = {k.casefold() for k in KEYWORDS} | {
+        "haste", "速攻", "flying", "飛行", "vigilance", "警戒", "reach", "到達",
+        "defender", "防衛", "flash", "瞬速", "hexproof", "呪禁", "indestructible", "破壊不能",
+        "shroud", "被覆", "infect", "感染", "wither", "萎縮", "prowess", "果敢",
+        "persist", "頑強", "undying", "不死", "exalted", "賛美", "horsemanship", "馬術"}
+    if not oracle.strip():
+        return list(dict.fromkeys(k for k in c.get("keywords", []) if k.casefold() in known))
+    result = []
     for line in oracle.splitlines():
-        line = re.sub(r"\([^)]*\)|（[^）]*）", "", line).strip().rstrip(".")
-        # A standalone keyword list, not an ability granting haste conditionally.
-        pieces = [piece.strip().casefold() for piece in re.split(r"[,、・]", line)]
-        known = {k.casefold() for k in KEYWORDS} | {
-            "haste", "速攻", "flying", "飛行", "vigilance", "警戒", "reach", "到達",
-            "defender", "防衛", "flash", "瞬速", "hexproof", "呪禁", "indestructible", "破壊不能"}
-        if set(pieces) <= known and set(pieces) & {"haste", "速攻"}:
-            return True
-    # Manual records sometimes carry keywords without any Oracle text.
-    return not oracle.strip() and any(k.casefold() in ("haste", "速攻")
-                                      for k in c.get("keywords", []))
+        line = re.sub(r"\([^)]*\)|（[^）]*）", "", line).strip().rstrip(".。")
+        # A standalone keyword list, not a conditional or granted ability.
+        pieces = [piece.strip() for piece in re.split(r"[,、・]", line)]
+        if {piece.casefold() for piece in pieces} <= known:
+            result.extend(pieces)
+    return list(dict.fromkeys(result))
+
+
+def has_unconditional_keyword(st, oid, *names):
+    names = {name.casefold() for name in names}
+    return any(k.casefold() in names for k in native_keywords(st, oid) + granted(st, oid))
+
+
+def has_unconditional_haste(st, oid):
+    return has_unconditional_keyword(st, oid, "haste", "速攻")
 
 
 def has_kw(st, oid, *words):
@@ -2647,7 +2659,7 @@ def build_parser():
     s = sub.add_parser("attack", help="攻撃クリーチャーを指定（既定でタップ）")
     s.add_argument("refs", nargs="+")
     s.add_argument("--target", help="プレイヤーID か プレインズウォーカーの oid")
-    s.add_argument("--no-tap", action="store_true", help="警戒など")
+    s.add_argument("--no-tap", action="store_true", help="確認済みの条件付き警戒などでタップを省略。無条件・付与済みの警戒は自動考慮")
     s = sub.add_parser("block", help="block <ブロッカー> <攻撃側>")
     s.add_argument("blocker")
     s.add_argument("attacker")

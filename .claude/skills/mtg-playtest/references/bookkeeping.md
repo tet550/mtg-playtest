@@ -38,6 +38,15 @@ pending resolve T1 --file prowess.txt --part bonus
 
 打ち消しや誤登録の取消しは `pending cancel T1 --reason "打ち消された"`。途中まで解決した能力は取消せないので、訂正は `undo` を使う。台帳に結び付いた能力へ `stack pop` や `move` は使わない。
 
+取消済みIDは履歴として残り、再利用しない。新しい処理は`pending add`で登録する。事前にT番号を書いたバッチは取消しや追加登録で番号がずれるため、新規登録は次のように別名で参照する（同じrun内のみ）。別runでは実際の出力IDを使う。取消し自体が誤りなら[undoの復旧手順](cli-guide.md#undoによる復旧)で取消し前へ戻す。
+
+```text
+pending add "新しい誘発" --controller P1 --label trigger
+pending stack $trigger
+```
+
+シェルに`$trigger`を展開させないよう、バッチファイルまたは引用付きの入力を使う。詳細は[バッチの別名](ai-batches.md)。
+
 ## 結果を見て続ける解決
 
 ドロー・サーチ・look・乱数・pickはファイルの最後に置く。その結果から後続の処理を判断する場合は `--pause` を付ける。

@@ -175,7 +175,12 @@ def cmd_pending(api, args, st):
         print("%s: %s（誘発・対象・順序はAIが確認）" % (identity, args.value))
         return
     p = relations.find(st, "pending", args.value)
-    if p["status"] in ("done", "cancelled"):
+    if p["status"] == "cancelled":
+        raise SystemExit("%s は既にcancelledです。取消済みIDは再利用できません。"
+                         "新しい処理は pending add で登録し、バッチ内は --label trigger → "
+                         "pending stack $trigger で参照してください。"
+                         "取消し自体の訂正は保存単位を確認してundoしてください（状態変更なし）。" % p["id"])
+    if p["status"] == "done":
         raise SystemExit("%s は既に%sです。再適用できません。" % (p["id"], p["status"]))
     if args.op == "stack":
         if p["status"] != "pending":

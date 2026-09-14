@@ -62,6 +62,79 @@ class FollowupTests(unittest.TestCase):
         self.call('grant', '1', 'Haste', '--until', 'eot')
         self.assertNotIn('召喚酔い', self.call('attack', '1', '--target', 'P2'))
 
+    def test_vigilance_is_per_attacker_and_undo_restores_declaration(self):
+        self.creature('Flying, vigilance\nWhen this creature enters, create a Treasure token.',
+                      ['Flying', 'Vigilance', 'Treasure'])
+        self.call('token', 'P1', 'Ordinary', '--types', 'Creature', '--power', '2', '--toughness', '2')
+        before = self.read()
+        self.call('attack', '1', '2', '--target', 'P2')
+        state = self.read()
+        self.assertFalse(state['objects']['1']['tapped'])
+        self.assertTrue(state['objects']['2']['tapped'])
+        self.assertEqual(state['combat']['attackers'], {'1': 'P2', '2': 'P2'})
+        self.call('undo')
+        self.assertEqual(self.read(), before)
+
+    def test_japanese_and_granted_vigilance_and_expiry(self):
+        self.creature('警戒（攻撃してもタップしない。）')
+        self.call('attack', '1')
+        self.assertFalse(self.read()['objects']['1']['tapped'])
+        self.call('undo')
+        self.call('card', 'set', '--oid', '1', '--oracle', 'No keyword line.')
+        self.call('grant', '1', 'Vigilance', '--until', 'eot')
+        self.call('attack', '1')
+        self.assertFalse(self.read()['objects']['1']['tapped'])
+        self.call('undo')
+        self.call('turn', 'next')
+        self.assertFalse(mtg.has_unconditional_keyword(self.read(), 1, 'vigilance', '警戒'))
+
+    def test_conditional_or_other_creature_vigilance_requires_override(self):
+        self.creature('This creature has vigilance as long as you control a Mountain.', ['Vigilance'])
+        for oracle in ('This creature has vigilance as long as you control a Mountain.',
+                       'Other creatures you control have vigilance.',
+                       '{2}: Target creature gains vigilance until end of turn.'):
+            with self.subTest(oracle=oracle):
+                self.call('card', 'set', '--oid', '1', '--oracle', oracle)
+                self.call('attack', '1')
+                self.assertTrue(self.read()['objects']['1']['tapped'])
+                self.call('undo')
+                self.call('attack', '1', '--no-tap')
+                self.assertFalse(self.read()['objects']['1']['tapped'])
+                self.call('undo')
+
+    def test_ids_only_show_native_or_explicitly_granted_abilities(self):
+        self.creature('Flying, vigilance\nCreate a Treasure token.\n'
+                      'You may cast artifact spells as though they had flash.\nTarget player mills three cards.',
+                      ['Flying', 'Vigilance', 'Treasure', 'Flash', 'Mill'])
+        self.call('grant', '1', 'Haste', '--until', 'eot')
+        before = self.state.read_bytes()
+        out = self.call('show', '--ids')
+        self.assertIn('Flying・vigilance', out)
+        self.assertIn('+Haste', out)
+        for absent in ('Treasure', 'Flash', 'Mill', '+Flying', '+vigilance'):
+            self.assertNotIn(absent, out)
+        self.assertEqual(self.state.read_bytes(), before)
+        self.call('card', 'set', '--oid', '1', '--oracle', 'Flash')
+        self.assertIn('Flash', self.call('show', '--ids'))
+        self.call('card', 'set', '--oid', '1', '--oracle', '')
+        out = self.call('show', '--ids')
+        self.assertIn('Vigilance', out)
+        self.assertNotIn('Treasure', out)
+        self.assertNotIn('Mill', out)
+
+    def test_cancelled_pending_guidance_and_labels_avoid_reused_ids(self):
+        self.call('pending', 'add', 'Old trigger', '--controller', 'P1')
+        self.call('pending', 'cancel', 'T1', '--reason', 'Incorrect registration')
+        before = self.state.read_bytes()
+        with self.assertRaisesRegex(SystemExit, '--label trigger'):
+            self.call('pending', 'stack', 'T1')
+        self.assertEqual(self.state.read_bytes(), before)
+        self.batch('pending add "New trigger" --controller P1 --label trigger\n'
+                   'pending stack $trigger\n')
+        state = self.read()
+        self.assertEqual([p['status'] for p in state['pending']], ['cancelled', 'stack'])
+        self.assertEqual(state['objects'][str(state['zones']['stack'][-1])]['pending_id'], 'T2')
+
     def test_mentions_and_conditional_haste_do_not_bypass_warning(self):
         self.creature('This creature has haste as long as you control a Mountain.', ['Haste'])
         for oracle in ('This creature has haste as long as you control a Mountain.',

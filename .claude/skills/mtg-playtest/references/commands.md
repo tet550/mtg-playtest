@@ -42,7 +42,7 @@
 | 誘発の処理待ちを記帳 | `pending add "果敢" --controller P1 --src <oid>`（srcは省略可、1回につき1登録）→ 順序・対象確認後 `pending stack T1 --targets <oid>`（対象なしならtargets省略）。**自分の誘発が複数あるときは後に解決したいものを先に積む**（後入れ先出し）。積んだ後に順序を変える手段は無く`undo`で戻すしかないので、積む前に解決順を決める |
 | 処理待ちの一覧 | `pending list`／`pending list --all`（linkedの帰還も参照表示。重複登録しない） |
 | 台帳の能力を解決 | 応答確認後 `pending resolve T1 --file <実ファイル> --part bonus`、または1〜2行なら `pending resolve T1 --do "counter 3 +1/+1 1" --part bonus`（`--do` は繰り返し可。`--file` とは併用不可。成功時に連番`.mtg`へ自動保存）（効果と完了を一括保存。結果を見て続けるなら `--pause`、続きは別part。手順は [bookkeeping.md](bookkeeping.md)）。**解決用ファイルに`sba`は書けない**（「解決用ファイルで使用できないコマンドです」で停止）ので、格闘などの死亡確認は`pending resolve`の後に別途`sba --apply-deaths`を打つ |
-| 台帳の能力を取消し | `pending cancel T1 --reason "打ち消し"`（理由必須。解決途中はundoで戻す） |
+| 台帳の能力を取消し | `pending cancel T1 --reason "打ち消し"`（理由必須。解決途中はundoで戻す）。取消済みIDは再利用不可。新しい処理はaddで登録し、バッチでは下記`--label`で参照する。取消しの訂正は保存単位を確認してundo |
 | 確認メモ | `remind add "果敢を確認" --on cast --player P1 --src <oid>`（on必須：cast/enter/turn。player・src省略可。自動誘発なし）／`remind list`／`remind remove R1` |
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
 | 両者パスの短縮 | バッチ内の `pass-both P1`（P1→P2）／`pass-both P2`（P2→P1）。席制限なし専用。AIが両席の応答なしを確認してから指定。証跡・保存は既存pass2行のまま |
@@ -80,7 +80,7 @@
 | 目的 | コマンド |
 |---|---|
 | クリーチャーへのダメージ | `damage <oid> <点数>`（**発生源を渡すオプションは無い**。格闘・火力の発生源や絆魂・接死の判定は`note`と手動処理で補う） |
-| 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。警戒は`--no-tap`。固有の無条件の速攻と付与された速攻は警告判定に反映する。条件付きの速攻や他者に与える速攻は本文で確認する） |
+| 攻撃宣言 | `attack <oid...> --target <相手の席>`（P1が攻めるなら`--target P2`、P2が攻めるなら`--target P1`。**攻撃側自身の席を指定してもCLIは警告せず、自分にダメージが入る**。席を先頭に置かない。無条件・付与済みの警戒は個体ごとに自動で非タップ。条件付き警戒は本文と条件を確認して該当個体だけ`--no-tap`。固有の無条件の速攻と付与された速攻は警告判定に反映する。条件付きの速攻や他者に与える速攻は本文で確認する） |
 | 戦闘ダメージ | 応答・誘発・ブロックを確認し`combat.damage`へ進めてから`combat damage`。別ステップや非空スタックでは停止する。先制・二段攻撃は`combat damage --step first --trample`→`sba --apply-deaths`→未決着なら`combat damage --step regular --trample`。ブロック済みでブロッカー不在なら非トランプルは0点、トランプルは全点を自動適用。`combat show`でもブロック済みと表示する。超過があるのに`--trample`を省略すると全体未適用で停止 |
 | 接死と軽減 | 接死は割り振りと実被ダメージを自動記録→`sba --apply-deaths`。全軽減は`combat damage --trample --prevent <発生源oid>:<受け手oid/P1/P2>`。プロテクション非適用・軽減禁止の裁定は`--unprevented <発生源oid>:<受け手>`。複数組は繰り返す。検出されたプロテクションの判定未指定・矛盾・割り振りにない組は全体未適用で停止。各ステップで指定し直す。部分軽減・置換は手動 |
 | 攻撃中のノーム | `token P1 Gnome --types Artifact/Creature --subtypes Gnome --power 1 --toughness 1 --attacking -n 2` |
@@ -90,7 +90,7 @@
 | 目的 | コマンド |
 |---|---|
 | 使い捨てのバッチを標準入力から流す | `... run - --compact`（`-` は標準入力。構文検査を通った内容は状態ファイル横の `<state名>-NNN.mtg` に自動保存され、「操作ファイル: <パス>」と出る。既存の番号は上書きしない）。ファイルを自分で書く従来の手順もそのまま使える |
-| 複数手の復旧 | `undo 3`（3保存分。指定不足・超過は変更せず停止） |
+| 複数手の復旧 | `undo 3`（3保存分。指定不足・超過は変更せず停止）。回数はバッチ数・ターン数ではない。通常runは状態変更の各操作、pass-bothは2回、pending resolveは区間全体で1回保存。表示は数えず、noteは数える。ライフ・マナ・pending・スタックを含む状態全体を復元する。戻す数が不明なら`undo 1`ごとに`show`・`pending list --all`・`mana list`で確認し、推測で手動補正しない。詳しくは[復旧手順](cli-guide.md#undoによる復旧) |
 | Classレベルの記帳 | `effect add "[oid] Class level 2: 適用する能力"`（表示用メモ。カードの能力・支払いは別途確認） |
 | 土地をクリーチャー化（土の技・ミシュラランド） | `card set --oid <土地oid> --types Land/Creature --power 0 --toughness 0` → `counter <oid> +1/+1 N` → 説明を`effect add`。**P/Tを登録しないと攻撃・ブロック宣言は通り、`combat damage`で「P/T未登録」と出て全体停止する** |
 | 盤面の説明メモ | `effect add "現在の適用条件" --until eot`（showに常時表示。期限省略はpermanent）。場面ごとの確認はremind、確定した誘発はpending、数値効果はmod/grant/fxへ記帳 |
