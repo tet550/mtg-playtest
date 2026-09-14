@@ -1,0 +1,162 @@
+[
+  {
+    "seed": 9141,
+    "first": "P1",
+    "ai_both_seats": {
+      "folder": "20260914-0932-series-jund-vs-piza",
+      "winner": "P1",
+      "turn": 13,
+      "concede": null,
+      "life": {
+        "P1": 13,
+        "P2": -1
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "folder": "20260914-1231-bo1-jund-vs-piza",
+      "winner": "P2",
+      "turn": 12,
+      "concede": null,
+      "life": {
+        "P1": -2,
+        "P2": 7
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  },
+  {
+    "seed": 9142,
+    "first": "P2",
+    "ai_both_seats": {
+      "folder": "20260914-0932-series-jund-vs-piza",
+      "winner": "P1",
+      "turn": 15,
+      "concede": "P2",
+      "life": {
+        "P1": 26,
+        "P2": 7
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "folder": "20260914-1624-bo1-jund-vs-piza",
+      "winner": "P2",
+      "turn": 13,
+      "concede": "P1",
+      "life": {
+        "P1": 17,
+        "P2": 15
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  },
+  {
+    "seed": 9143,
+    "first": "P1",
+    "ai_both_seats": {
+      "folder": "20260914-0932-series-jund-vs-piza",
+      "winner": "P1",
+      "turn": 14,
+      "concede": "P2",
+      "life": {
+        "P1": 14,
+        "P2": 5
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 1
+      }
+    },
+    "human_piza": {
+      "folder": "20260914-1710-bo1-jund-vs-piza",
+      "winner": "P2",
+      "turn": 10,
+      "concede": "P1",
+      "life": {
+        "P1": 22,
+        "P2": 101
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  },
+  {
+    "seed": 9144,
+    "first": "P2",
+    "ai_both_seats": {
+      "folder": "20260914-0932-series-jund-vs-piza",
+      "winner": "P2",
+      "turn": 19,
+      "concede": null,
+      "life": {
+        "P1": -6,
+        "P2": 8
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "folder": "20260914-1002-bo1-jund-vs-piza",
+      "winner": "P2",
+      "turn": 7,
+      "concede": null,
+      "life": {
+        "P1": -1,
+        "P2": 19
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  },
+  {
+    "seed": 9145,
+    "first": "P1",
+    "ai_both_seats": {
+      "folder": "20260914-0932-series-jund-vs-piza",
+      "winner": "P1",
+      "turn": 15,
+      "concede": null,
+      "life": {
+        "P1": 17,
+        "P2": -8
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "folder": "20260914-1050-bo1-jund-vs-piza",
+      "winner": "P2",
+      "turn": 8,
+      "concede": null,
+      "life": {
+        "P1": -2,
+        "P2": 18
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  }
+]
