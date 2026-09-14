@@ -188,7 +188,9 @@ tap $clue
         packed = self.call('show', '--ids', '--packed', '--hand', 'P2')
         self.assertLess(len(packed), len(regular))
         for oid in range(1, 5):
-            self.assertIn(f'[{oid}] ／ アーティファクト/クリーチャー 2/3', packed)
+            self.assertIn(f'[{oid}]', packed)
+        self.assertNotIn('アーティファクト/クリーチャー', packed)
+        self.assertNotIn('コスト', packed)
         with self.assertRaisesRegex(SystemExit, '隠匿情報'):
             self.call('show', '--packed', '--hand', 'P2', seat='P1')
         self.assertNotIn('Hand1', self.call('show', '--packed', seat='P1'))

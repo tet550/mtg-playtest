@@ -356,7 +356,7 @@ def cmd_draw(args, st):
     for _ in range(min(n, len(lib))):
         oid = lib[0]
         relations.move_many(sys.modules[__name__], st, [(oid, "%s:hand" % pid, False)])
-        drawn.append("%s(%d)" % (disp_oid(st, oid), oid))
+        drawn.append("[%d]%s" % (oid, disp_oid(st, oid)))
     log(st, "%s が %d枚ドロー: %s" % (pid, n, ", ".join(drawn)),
         private=pid if args.quiet else None)
     if args.quiet:
@@ -1146,6 +1146,12 @@ def render_hand(st, pid, unsorted=False, indent="  ", ids=False, packed=False):
     """手札を桁の揃った表にして行のリストで返す。"""
     oids = st["zones"]["%s:hand" % pid]
     order = oids if unsorted else sorted(oids, key=lambda o: hand_key(st, o))
+    head = "手札(%d):" % len(oids)
+    if ids:
+        entries = ["[%d]" % oid for oid in order]
+        step = 3 if packed else 1
+        return [head] + ([indent + " | ".join(entries[i:i+step])
+                          for i in range(0, len(entries), step)] or [indent + "（なし）"])
     rows = []
     for oid in order:
         o = st["objects"][str(oid)]
@@ -1158,7 +1164,6 @@ def render_hand(st, pid, unsorted=False, indent="  ", ids=False, packed=False):
         # 桁揃えを挟むと、フォント次第でそこから右が全部ズレる。
         rows.append([c.get("cost", "") or "-",
                      "[%d]%s ／ %s" % (oid, "" if ids else disp_of(st, o), kind)])
-    head = "%s %s の手札 %d枚" % (pid, st["players"][pid]["name"], len(oids))
     if not rows:
         return [head, indent + "（なし）"]
     if packed:
@@ -2439,8 +2444,8 @@ def build_parser():
                    help="--compact時、showをバッチ開始時／前回showからの差分にする")
     s.epilog = "バッチ専用: pass-both P1|P2 / 生成行 --label name → 後続の $name / note --event E01（--compact必須）"
     s = sub.add_parser("show", help="盤面を表示")
-    s.add_argument("--packed", action="store_true", help="手札を3枚ずつ表示。コスト・タイプ・P/Tは保持")
-    s.add_argument("--ids", action="store_true", help="カード名を省略しoidと状態を表示。初登場はdraw/token、再確認は通常show。能力・裁定メモは残す")
+    s.add_argument("--packed", action="store_true", help="手札を3枚ずつ表示。--ids時はoidのみ、それ以外はコスト・タイプ・P/Tを保持")
+    s.add_argument("--ids", action="store_true", help="カード名を省略しoidと状態を表示。手札はoidのみでコスト・タイプ・列見出しを省略。初登場はdraw/token、再確認は通常show。能力・裁定メモは残す")
     s.add_argument("--next-oid", action="store_true", help="検証済み反復手順の生成用に次のoidを表示")
     s.add_argument("--flat", action="store_true",
                    help="同じ見た目のパーマネントをまとめず1個ずつ出す")

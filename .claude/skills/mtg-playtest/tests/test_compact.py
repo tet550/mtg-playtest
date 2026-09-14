@@ -111,7 +111,7 @@ class CompactTests(unittest.TestCase):
                                               "show\nshow --hand P1\n")
             self.assertFalse(failed)
             self.assertIn("=== Turn", out)
-            self.assertIn("の手札", out)
+            self.assertIn("手札(", out)
 
     def test_seat_restriction_survives_delta(self):
         with tempfile.TemporaryDirectory() as d:

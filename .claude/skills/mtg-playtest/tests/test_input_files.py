@@ -39,7 +39,7 @@ class InputTests(unittest.TestCase):
         out = self.call('run', '-', '--compact', text=body)
         self.assertEqual((self.root/'g01-001.mtg').read_text(encoding='utf-8'), body)
         self.assertIn('ライフ 18', out)
-        self.assertIn('P1 P1 の手札', out)
+        self.assertIn('手札(', out)
         self.assertNotIn('盤面差分', out)
         records = [json.loads(line) for line in next((self.root/'output/g01').glob('*.jsonl')).read_text(encoding='utf-8').splitlines()]
         self.assertEqual([r['source_line'] for r in records], [2, 3])

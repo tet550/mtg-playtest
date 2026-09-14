@@ -61,8 +61,10 @@ class ShowIdsHistoryTests(unittest.TestCase):
         self.assertIn('Long Named Flying Creature', full)
         for name in ('Long Named Flying Creature', 'Long Named Equipment', 'Private Hand Card', 'Graveyard Creature'):
             self.assertNotIn(name, ids)
-        for field in ('[1]3/4', 'dmg1', '+1/+1 x1', '(T)', '(酔)', 'Flying', '[2]→[1]', '[3]', '{2}{U}', '墓地(1): [5]'):
+        for field in ('[1]3/4', 'dmg1', '+1/+1 x1', '(T)', '(酔)', 'Flying', '[2]→[1]', '[3]', '手札(1):', '墓地(1): [5]'):
             self.assertIn(field, ids)
+        for field in ('{2}{U}', 'コスト', 'oid ／ タイプ', 'の手札'):
+            self.assertNotIn(field, ids)
         self.assertNotIn('Undrawn Library Secret', ids + full)
         self.assertEqual(before, self.state.read_bytes())
         self.assertLess(len(ids), len(full))
@@ -107,6 +109,7 @@ class ShowIdsHistoryTests(unittest.TestCase):
         self.assertIn('Turn 2 / P2 / beginning.untap', history)
         self.assertNotIn('Undrawn Library Secret', history)
         self.assertIn('Undrawn Library Secret', out)
+        self.assertIn('P2 ドロー: [4]Undrawn Library Secret  （残り0枚）', out)
         self.assertNotIn('_turn_start_view', self.state.read_text())
         self.call('show', '--ids')
         self.assertEqual(history, self.archive.read_text())
