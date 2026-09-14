@@ -36,6 +36,15 @@
 
 ## スタックと誘発
 
+タイミング候補の詳細は[bookkeeping.md](bookkeeping.md#タイミングの確認と予約)。未確認候補があると進行を停止する。
+
+| 目的 | コマンド |
+|---|---|
+| 自動検出候補を確認 | `pending list` → `pending confirm T1 --reason "成立の根拠"` → `pending stack T1`。不成立は`pending cancel T1 --reason "根拠"`。英雄譚の確認項目は伝承追加・章能力の別登録後にconfirmして完了 |
+| 遅延誘発を予約 | `pending schedule "対象と処理" --controller P1 --at ending.end`。`--controller`・`--at`必須。`--player P1`で到来ターンの席を限定、`--src 3`で発生源を記録。退場しても予約は残る。解決区間内でもschedule可 |
+| 進行の途中停止 | `turn next --to precombat_main --draw`・`phase to/set`・両者pass・攻撃への自動進行は候補のある地点で止まる。runの後続行は未実行。確認後に残りだけを新たに実行する。途中停止後にturn nextを重ねると次ターンなのでphaseで続ける |
+| ドロー開始時の候補 | `--draw`付きturnは通常ドロー後に停止。phase経由は`draw P1 1`（アクティブ席）を先に行う。置換・省略を適用済みならnote後に`draw P1 0`で確認完了 |
+
 | 目的 | コマンド |
 |---|---|
 | 呪文をスタックへ | `stack push <oid> --cast --controller P1`（詠唱を明示して回数記録・castメモ表示。`--cast`省略は詠唱扱いしない） |

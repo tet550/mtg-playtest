@@ -123,7 +123,7 @@ def report_entries(api, st, oids):
 
 
 def require_ready(st):
-    waiting = [p["id"] for p in st.get("pending", []) if p["status"] in ("pending", "resolving")]
+    waiting = [p["id"] for p in st.get("pending", []) if p["status"] in ("review", "pending", "resolving")]
     waiting += [p["id"] for p in st.get("links", []) if p["status"] == "pending"]
     if waiting:
         raise SystemExit("未処理: %s。pending listで確認し、登録・解決の続きを処理してください。" % ", ".join(waiting))
@@ -131,11 +131,19 @@ def require_ready(st):
 
 def guard(args, st):
     """A paused resolution allows inspection/registration, not unrelated actions."""
+    if st and st.get("timing_draw_due"):
+        if args.cmd == "draw" and args.player == st["active"] and args.n in (0, 1):
+            return
+        if args.cmd == "pending" and args.op in ("confirm", "cancel", "stack", "resolve"):
+            raise SystemExit("通常ドロー（または置換・省略の処理）を先に完了してください。")
+    if st and any(p["status"] == "review" for p in st.get("pending", [])):
+        if args.cmd in {"draw", "attack", "combat", "play"} or (args.cmd == "stack" and args.op == "push"):
+            raise SystemExit("タイミングの未確認項目があります。pending listで確認してください。")
     if not st or not any(p["status"] == "resolving" for p in st.get("pending", [])):
         return
     if args.cmd in {"show", "hand", "view", "zone", "look", "log", "undo", "note"}:
         return
-    if args.cmd == "pending" and args.op in {"add", "list", "resolve"}:
+    if args.cmd == "pending" and args.op in {"add", "schedule", "list", "resolve"}:
         return
     if args.cmd == "mana" and args.op == "list":
         return
@@ -153,7 +161,9 @@ def list_pending(st, all_items=False, include_links=True):
         if all_items or p["status"] not in ("done", "cancelled"):
             print("%s [%s] %s %s / stack=%s / 適用済み区間=%s" %
                   (p["id"], p["status"], p["controller"], p["text"],
-                   p.get("stack_oid"), ",".join(p["parts"]) or "なし"))
+                  p.get("stack_oid"), ",".join(p["parts"]) or "なし"))
+            if p["status"] == "scheduled":
+                print("  予約: T%s以降 %s / %s" % (p["due_turn"], p["at"], p.get("player") or "両席"))
     for link in st.get("links", []) if include_links else []:
         if link["status"] in ("pending", "stack"):
             print("%s [%s] 帰還誘発（linkedで処理。pendingへ重複登録しない）" % (link["id"], link["status"]))
@@ -163,18 +173,30 @@ def cmd_pending(api, args, st):
     if args.op == "list":
         list_pending(st, args.all)
         return
-    if args.op == "add":
+    if args.op in ("add", "schedule"):
         if not args.value or not args.controller:
             raise SystemExit("pending add \"説明\" --controller P1 [--src oid] が必要です。")
         source = relations.parse_ref(api, st, args.src, stale=True) if args.src else None
+        if args.op == "schedule" and not args.at:
+            raise SystemExit("pending scheduleには--at <フェイズ>が必要です。")
         identity = "T%d" % st.get("next_pending", 1)
         st.setdefault("pending", []).append(dict(id=identity, text=args.value, controller=args.controller,
                                                   source=source, status="pending", stack_oid=None, parts={}))
         st["next_pending"] = st.get("next_pending", 1) + 1
+        if args.op == "schedule":
+            st["pending"][-1].update(status="scheduled", at=args.at, player=args.player,
+                due_turn=st["turn"] + (api.PHASES.index(st["phase"]) >= api.PHASES.index(args.at)))
         api.log(st, "%s 処理待ち登録: %s" % (identity, args.value))
         print("%s: %s（誘発・対象・順序はAIが確認）" % (identity, args.value))
         return
     p = relations.find(st, "pending", args.value)
+    if args.op == "confirm":
+        if p["status"] != "review" or not args.reason or not args.reason.strip():
+            raise SystemExit("confirmは要確認項目に--reason <判断内容>を指定してください。")
+        p.update(status="done" if p.get("turn_action") else "pending", reason=args.reason)
+        api.log(st, "%s 確認: %s" % (p["id"], args.reason))
+        print("%s: %s（%s）" % (p["id"], p["status"], args.reason))
+        return
     if p["status"] == "cancelled":
         raise SystemExit("%s は既にcancelledです。取消済みIDは再利用できません。"
                          "新しい処理は pending add で登録し、バッチ内は --label trigger → "
@@ -208,7 +230,7 @@ def cmd_pending(api, args, st):
 
 # Only state-local effect operations. No phase/SBA, nested batches, cache edits,
 # result files, undo, or stack mutation. Draw/selection boundaries must be last.
-EFFECT_COMMANDS = {"move", "tap", "untap", "life", "counter", "damage", "mod", "grant",
+EFFECT_COMMANDS = {"move", "tap", "untap", "life", "counter", "damage", "mod", "grant", "pending",
                    "mana", "token", "attach", "pcounter", "draw", "mill", "search", "shuffle",
                    "bottom", "look", "roll", "coin", "pick", "note", "show", "hand"}
 OBSERVE_RESULT = {"draw", "search", "look", "roll", "coin", "pick"}
@@ -239,6 +261,8 @@ def resolve_part(api, args, st, p):
             if not words or words[0] not in EFFECT_COMMANDS | {"fx", "linked"}:
                 raise ValueError("解決用ファイルで使用できないコマンドです")
             a = api.parse_file_command(words, gl, parser)
+            if a.cmd == "pending" and a.op != "schedule":
+                raise ValueError("解決区間内のpendingはscheduleのみ使用できます")
             if a.cmd == "fx" and a.op not in ("add", "set", "remove"):
                 raise ValueError("fxはadd/set/removeのみ使用できます")
             if a.cmd == "linked" and a.op != "exile":
@@ -315,9 +339,11 @@ def cmd_remind(api, args, st):
 
 def add_parser(sub):
     s = sub.add_parser("pending", help="AIが判断した誘発の処理待ちと解決区間を管理")
-    s.add_argument("op", choices=["add", "list", "stack", "resolve", "cancel"])
-    s.add_argument("value", nargs="?", help="add:説明、他:T番号")
-    s.add_argument("--controller", choices=["P1", "P2"], help="add時必須")
+    s.add_argument("op", choices=["add", "schedule", "confirm", "list", "stack", "resolve", "cancel"])
+    s.add_argument("value", nargs="?", help="add/schedule:説明、他:T番号")
+    s.add_argument("--controller", choices=["P1", "P2"], help="add/schedule時必須")
+    s.add_argument("--at", choices=["beginning.upkeep", "beginning.draw", "precombat_main", "postcombat_main", "combat.begin", "combat.end", "ending.end"], help="schedule:次に到来する指定タイミング、必須")
+    s.add_argument("--player", choices=["P1", "P2"], help="schedule:到来するターンの席。省略は両席")
     s.add_argument("--src", help="任意の発生源oid/oid@世代。規則由来なら省略")
     s.add_argument("--targets", help="stack時の対象（AIが適正を確認）")
     source = s.add_mutually_exclusive_group()
@@ -326,7 +352,7 @@ def add_parser(sub):
                         help="resolve:短い操作を直接指定。複数操作は繰り返す。成功時に連番.mtgへ自動保存")
     s.add_argument("--part", help="resolve:再実行を防ぐ区間名、必須")
     s.add_argument("--pause", action="store_true", help="resolve:この区間を保存し、解決途中として続き待ち")
-    s.add_argument("--reason", help="cancel:取消し・打ち消し等の理由、必須")
+    s.add_argument("--reason", help="confirm/cancel:判断・完了・取消し等の理由、必須")
     s.add_argument("--all", action="store_true", help="list:完了・取消済みも表示")
     s = sub.add_parser("remind", help="指定した場面に短い確認事項を表示（自動誘発なし）")
     s.add_argument("op", choices=["add", "list", "remove"])

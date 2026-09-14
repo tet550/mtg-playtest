@@ -40,6 +40,7 @@ import input_files
 import combat_damage
 import relations
 import bookkeeping
+import step_checks
 import mana
 
 import cardcache
@@ -348,6 +349,8 @@ def cmd_init(args, _):
 
 def cmd_draw(args, st):
     pid, n = args.player, args.n
+    if st.get("timing_draw_due") and pid == st["active"]:
+        st.pop("timing_draw_due")
     lib = st["zones"]["%s:library" % pid]
     if len(lib) < n:
         print("!! %s のライブラリーは残り%d枚。空のライブラリーから引こうとした時点で敗北です。"
@@ -689,6 +692,9 @@ def advance_to(st, target, on_draw=None):
             return path
         if st["phase"] == "beginning.draw" and on_draw:
             on_draw()
+        step_checks.enter(sys.modules[__name__], st, draw_done=bool(on_draw))
+        if step_checks.waiting(st):
+            return path
         if st["phase"] == target:
             return path
     sys.exit("フェイズ名が不正です: %s" % target)
@@ -698,6 +704,9 @@ def cmd_phase(args, st):
     if st["zones"]["stack"]:
         sys.exit("スタックが空ではありません。効果適用後、カードはmove／能力はstack pop。")
     relations.require_resolved(sys.modules[__name__], st)
+    if args.op == "set" and args.value in PHASES and PHASES.index(args.value) > PHASES.index(st["phase"]):
+        relations.step_guard(sys.modules[__name__], st, args.value)
+        args.op = "to"
     if (st["turn"] == 1 and st["phase"] == "beginning.untap"
             and not (args.op in ("to", "set") and args.value == "beginning.untap")):
         queue_turn_start(st)
@@ -724,6 +733,7 @@ def cmd_phase(args, st):
             return cmd_turn(args, st)
         st["phase"] = PHASES[i + 1]
     relations.on_step(sys.modules[__name__], st)
+    step_checks.enter(sys.modules[__name__], st)
     for p in st["players"].values():
         mana.clear(p)   # マナ・プールはステップ／フェイズの終わりに空になる
     st["priority"] = st["active"]
@@ -742,6 +752,11 @@ def cmd_turn(args, st):
     if st["zones"]["stack"]:
         sys.exit("スタックが空ではありません。効果適用後、カードはmove／能力はstack pop。")
     relations.require_resolved(sys.modules[__name__], st)
+    stop = step_checks.ahead(sys.modules[__name__], st)
+    if stop:
+        advance_to(st, stop)
+        print("次ターンへ進まず %s で停止。pending listで確認してください。" % st["phase"])
+        return
     if any(x["return"] == "next-end" and x["status"] == "waiting" and x.get("due_turn", 0) <= st["turn"] for x in st.get("links", [])):
         sys.exit("帰還の遅延誘発があります。phase to ending.endで終了ステップを処理してください。")
     relations.cleanup(st)
@@ -1965,6 +1980,9 @@ def cmd_attack(args, st):
     if st["phase"] != "combat.attackers":
         if st["phase"] in ("precombat_main", "combat.begin"):
             advance_to(st, "combat.attackers")
+            if step_checks.waiting(st):
+                print("攻撃宣言前にタイミングの確認で停止しました。")
+                return
             print("→ 攻撃者を宣言するため combat.attackers へ進めました。")
         else:
             print("!! 現在%s。攻撃宣言はcombat.attackers。"
@@ -2963,6 +2981,9 @@ def run_batch(args):
                 if label:
                     aliases[label] = result
             done += 1
+            if parts[0] in ("turn", "phase", "pass", "attack") and step_checks.waiting(load(args)):
+                print("--- タイミングの確認待ちでバッチ停止。後続行は未実行です。")
+                break
         except (SystemExit, ValueError) as e:
             code = e.code if isinstance(e, SystemExit) else str(e)
             if code in (0, None):
@@ -2991,6 +3012,8 @@ def parse_command(argv, parser=None):
 
     parser = parser or build_parser()
     args = parser.parse_args(argv)
+    if args.cmd == "pending" and args.op == "schedule" and (not args.value or not args.controller or not args.at):
+        parser.error("pending scheduleには説明・--controller・--atが必要です。")
     if args.cmd == "pending" and args.op == "resolve":
         if not args.value or not args.part or not args.part.strip() or not (args.file or args.commands):
             parser.error("pending resolveにはID・--part・--fileまたは--doが必要です。")
