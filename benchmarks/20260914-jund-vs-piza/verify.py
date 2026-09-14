@@ -2,8 +2,10 @@
 """jund-sacrifice vs piza ベンチマークの再現性チェック（A群）。
 
 同じ seed で init し直したときに初手が cases.json と一致するかだけを見る。
-対局データ（playtest/ 配下）には依存しない。カード名は --en で英語名に固定する。一時状態は OS の一時領域に作り、
-実行後に削除する。プロジェクト直下から実行すること（cards/ の既定パスが相対のため）。
+対局データ（playtest/ 配下）にも、リポジトリの decklists/ にも依存しない
+（デッキは同梱の decklists/ スナップショットから読む）。カード名は --en で英語名に固定する。
+一時状態は OS の一時領域に作り、実行後に削除する。
+プロジェクト直下から実行すること（cards/ の既定パスが相対のため）。
 
     python benchmarks/20260914-jund-vs-piza/verify.py
     python benchmarks/20260914-jund-vs-piza/verify.py --update   # 期待値を作り直す
@@ -14,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MTG = ROOT / ".claude/skills/mtg-playtest/scripts/mtg.py"
 CASES = Path(__file__).with_name("cases.json")
+DECKS = Path(__file__).with_name("decklists")
 HAND_LINE = re.compile(r"\[(\d+)\](.+?)\s*／")
 
 
@@ -31,7 +34,9 @@ def opening(seed: int, first: str) -> dict:
     try:
         state = tmp / "g01.json"
         base = [sys.executable, str(MTG), "--state", str(state), "--offline", "--en"]
-        init = subprocess.run(base + ["init", "--deck1", "jund-sacrifice", "--deck2", "piza",
+        init = subprocess.run(base + ["init",
+                                      "--deck1", str(DECKS / "jund-sacrifice.txt"), "--deck1-name", "jund-sacrifice",
+                                      "--deck2", str(DECKS / "piza.txt"), "--deck2-name", "piza",
                                       "--seed", str(seed), "--first", first],
                               capture_output=True, text=True, encoding="utf-8", cwd=ROOT)
         if init.returncode != 0:
@@ -49,6 +54,11 @@ def main() -> int:
     args = ap.parse_args()
 
     cases = json.loads(CASES.read_text(encoding="utf-8"))
+    for name in ("jund-sacrifice.txt", "piza.txt"):
+        live = ROOT / "decklists" / name
+        if live.exists() and live.read_text(encoding="utf-8") != (DECKS / name).read_text(encoding="utf-8"):
+            print(f"注意: decklists/{name} は同梱のスナップショットと内容が異なる。"
+                  f"この検証は同梱版で行う（基準値を作った時点の構築）。")
     failed = 0
     for c in cases:
         got = opening(c["seed"], c["first"])

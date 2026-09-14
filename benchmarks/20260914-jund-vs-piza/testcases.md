@@ -1,11 +1,14 @@
 # jund-sacrifice vs piza ベンチマーク・テストケース
 
-作成: 2026-09-14 / デッキ: `decklists/jund-sacrifice.txt`・`decklists/piza.txt`（サイドボードなし、素の構築）
+作成: 2026-09-14 / デッキ: 同梱の [decklists/jund-sacrifice.txt](decklists/jund-sacrifice.txt)・[decklists/piza.txt](decklists/piza.txt)（サイドボードあり・メイン60枚、実施時点のスナップショット。登録は `decks/jund-sacrifice-9dfd66fd.json` / `decks/piza-33a9dbf6.json`）
 機械可読版: [cases.json](cases.json) / 検証スクリプト: [verify.py](verify.py)
 
-**このベンチマークは単体で完結する。** 期待値はすべて `cases.json` に埋め込んであり、
-対局フォルダ（`playtest/` 配下、.gitignore 対象）を参照しない。A群は `verify.py` が
-一時領域で `init` をやり直して自動判定する。
+**このベンチマークは単体で完結する。** 期待値はすべて `cases.json` に埋め込み、デッキは
+`decklists/` にスナップショットを同梱してある。対局フォルダ（`playtest/` 配下、.gitignore 対象）も、
+リポジトリの `decklists/` の現行版も参照しない。A群は `verify.py` が一時領域で `init` をやり直して自動判定する。
+
+リポジトリ側の構築を変更しても、この基準値は**実施時点の60枚**に対して有効なまま残る。`verify.py` は
+現行の `decklists/` と同梱スナップショットに差があれば実行時に知らせる（検証自体は同梱版で行う）。
 
 同一seedを「単一AIが両席」と「人間がpiza側／AIがjund側」で回した対の記録。AIのプレイ品質を測る基準として使う。
 **同じseedで固定されるのは初期シャッフルだけで、AIの選択は固定されない。** そのため期待値は3層に分ける。
@@ -32,7 +35,7 @@
 python benchmarks/20260914-jund-vs-piza/verify.py
 ```
 
-各seedで `init --deck1 jund-sacrifice --deck2 piza --seed <値> --first <席>` をやり直し、両席の初手7枚を
+各seedで同梱リストから `init --deck1 <同梱>/jund-sacrifice.txt --deck1-name jund-sacrifice --deck2 <同梱>/piza.txt --deck2-name piza --seed <値> --first <席>` をやり直し、両席の初手7枚を
 `cases.json` の `opening_hands` と照合する。カード名は `--en` で英語名に固定しているため、表示言語の設定に影響されない。
 デッキリストやシャッフル実装を変更して期待値を作り直す場合は `--update` を付ける（差分はレビューすること）。
 

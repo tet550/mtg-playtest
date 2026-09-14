@@ -1,0 +1,41 @@
+# piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）
+# 方針: decklists/strategy/piza.md
+
+
+
+Deck
+1 Patchwork Beastie
+1 Spectral Sailor
+4 Chrome Dome
+1 Courier of Comestibles
+3 Oblivious Bookworm
+4 Redshift, Rocketeer Chief
+4 Mona Lisa, Science Geek
+
+4 Guac & Marshmallow Pizza
+4 Rapid Rescue
+4 Sewer-veillance Cam
+4 Agatha's Soul Cauldron
+3 Does Machines
+1 Nature's Rhythm
+
+1 Ba Sing Se
+4 Botanical Sanctum
+3 Breeding Pool
+3 Forest
+1 Island
+1 Multiversal Passage
+2 Spirebluff Canal
+4 Starting Town
+1 Steam Vents
+1 Stomping Ground
+1 Training Compound
+
+Sideboard
+1 Annul
+2 Fire Magic
+3 Into the Flood Maw
+3 Snakeskin Veil
+2 Spell Pierce
+2 Flashfreeze
+2 Heritage Reclamation

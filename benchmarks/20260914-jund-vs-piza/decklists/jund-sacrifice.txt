@@ -1,0 +1,34 @@
+# jund-sacrifice — ジャンドサクリファイス
+
+Deck
+4 Greedy Freebooter
+4 Biotech Specialist
+3 Charming Scoundrel
+2 Mutagen Man, Living Ooze
+4 The Sackville-Bagginses
+1 Umbral Collar Zealot
+3 Rottenmouth Viper
+
+3 Duress
+3 Tragic Trajectory
+3 Lively Dirge
+4 Obsessive Pursuit
+3 Witherbloom Charm
+
+4 Blazemire Verge
+4 Blood Crypt
+1 Forest
+4 Starting Town
+4 Stomping Ground
+2 Swamp
+4 Wastewood Verge
+
+Sideboard
+3 Intimidation Tactics
+2 Requiting Hex
+3 Soul-Guide Lantern
+1 Tragic Trajectory
+2 Heritage Reclamation
+2 Pawpatch Formation
+1 Ancient Vendetta
+1 Phoenix Fleet Airship
