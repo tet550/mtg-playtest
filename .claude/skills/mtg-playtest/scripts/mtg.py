@@ -42,6 +42,7 @@ import relations
 import bookkeeping
 import step_checks
 import mana
+import goldfish
 
 import cardcache
 import decks
@@ -270,6 +271,15 @@ def cmd_init(args, _):
     # ゲーム1の先手はダイス／コインで決めるが、`coin` は状態ファイルが要るので
     # init より前には使えない。ここで seed から決められるようにして、
     # 「先手抽選だけ seed の外で振る」（＝再現できない）状態をなくす。
+    if args.goldfish:
+        if not args.deck1 or args.deck2:
+            sys.exit("--goldfish は --deck1 だけを指定します（P2は何もしない相手）。")
+        if args.reveal < 1:
+            sys.exit("--reveal は1以上を指定してください（公開行を消すなら show --no-reveal）。")
+        if args.p2 == "P2":
+            args.p2 = "goldfish"
+    elif args.reveal != goldfish.REVEAL or args.turn_history:
+        sys.exit("--reveal / --turn-history は --goldfish 専用です。")
     first = args.first
     if first == "random":
         first = random.Random("%s:first" % args.seed).choice(["P1", "P2"])
@@ -279,6 +289,11 @@ def cmd_init(args, _):
           "players": {}, "objects": {}, "cards": {}, "zones": {"stack": []},
           "log": [], "next_oid": 1, "seed": args.seed, "rng_seq": 0,
           "effects": [], "combat": {"attackers": {}, "blocks": {}}, "passed": []}
+    if args.goldfish:
+        st["goldfish"] = True
+        # 一人回しの測定値はリーサルターンだけ。人向けの盤面履歴は指定時だけ残す。
+        st["turn_history"] = args.turn_history
+        st["reveal"] = args.reveal
     cache_names = set()
     for pid, name, deck, as_name in (("P1", args.p1, args.deck1, args.deck1_name),
                                      ("P2", args.p2, args.deck2, args.deck2_name)):
@@ -344,6 +359,13 @@ def cmd_init(args, _):
     log(st, "ゲーム開始 seed=%s 先手=%s%s"
         % (args.seed, first, "（抽選）" if args.first == "random" else ""))
     save(args, st, snapshot=False)
+    if st.get("turn_history", True):
+        # 保存先は毎回同じなので、ターンごとには出さずここで一度だけ知らせる。
+        print("ターン履歴: %s（各ターン開始時に自動追記）" % turn_history_path(args))
+    if args.goldfish:
+        print("初期化しました → %s  （ゴールドフィッシュ・P1%s。初手は `draw P1 7`）"
+              % (state_path(args), "先手" if first == "P1" else "後手"))
+        return
     print("初期化しました → %s  （初手は `draw P1 7` `draw P2 7`）" % state_path(args))
 
 
@@ -746,19 +768,8 @@ def cmd_phase(args, st):
     print("T%s %s / %s %s" % (st["turn"], st["active"], st["phase"], tag))
 
 
-def cmd_turn(args, st):
-    if getattr(args, "draw", False) and (not getattr(args, "to", None) or args.to not in PHASES or PHASES.index(args.to) < PHASES.index("beginning.draw")):
-        sys.exit("--drawにはドロー以降の--toが必要: turn next --to precombat_main --draw（未実行）。")
-    if st["zones"]["stack"]:
-        sys.exit("スタックが空ではありません。効果適用後、カードはmove／能力はstack pop。")
-    relations.require_resolved(sys.modules[__name__], st)
-    stop = step_checks.ahead(sys.modules[__name__], st)
-    if stop:
-        advance_to(st, stop)
-        print("次ターンへ進まず %s で停止。pending listで確認してください。" % st["phase"])
-        return
-    if any(x["return"] == "next-end" and x["status"] == "waiting" and x.get("due_turn", 0) <= st["turn"] for x in st.get("links", [])):
-        sys.exit("帰還の遅延誘発があります。phase to ending.endで終了ステップを処理してください。")
+def begin_turn(st):
+    """現在のターンを終えて次のターンのアンタップ・ステップまで進める。"""
     relations.cleanup(st)
     st["combat"] = {"attackers": {}, "blocks": {}}
     st["passed"] = []
@@ -776,8 +787,39 @@ def cmd_turn(args, st):
         mana.clear(p)
     queue_turn_start(st)
     log(st, "ターン開始")
-    print("=== T%s %s のターン（アンタップ済み） ===" % (st["turn"], ap))
+    if not (goldfish.active(st) and ap == goldfish.DUMMY):   # 何もしない相手は呼び出し側が表示
+        print("=== T%s %s のターン（アンタップ済み）%s ==="
+              % (st["turn"], ap, goldfish.header(st) if goldfish.active(st) else ""))
     bookkeeping.notify(st, "turn", ap)
+    return ap
+
+
+def cmd_turn(args, st):
+    if getattr(args, "draw", False) and (not getattr(args, "to", None) or args.to not in PHASES or PHASES.index(args.to) < PHASES.index("beginning.draw")):
+        sys.exit("--drawにはドロー以降の--toが必要: turn next --to precombat_main --draw（未実行）。")
+    if st["zones"]["stack"]:
+        sys.exit("スタックが空ではありません。効果適用後、カードはmove／能力はstack pop。")
+    relations.require_resolved(sys.modules[__name__], st)
+    stop = step_checks.ahead(sys.modules[__name__], st)
+    if stop:
+        advance_to(st, stop)
+        print("次ターンへ進まず %s で停止。pending listで確認してください。" % st["phase"])
+        return
+    if any(x["return"] == "next-end" and x["status"] == "waiting" and x.get("due_turn", 0) <= st["turn"] for x in st.get("links", [])):
+        sys.exit("帰還の遅延誘発があります。phase to ending.endで終了ステップを処理してください。")
+    ap = begin_turn(st)
+    if goldfish.active(st) and ap == goldfish.DUMMY:
+        blockers = goldfish.opponent_turn_blockers(sys.modules[__name__], st)
+        if blockers:
+            print("=== T%s %s のターン（アンタップ済み） ===" % (st["turn"], ap))
+            print("!! 相手（何もしない）のターンに確認事項があるため省略しません:")
+            for b in blockers:
+                print("   " + b)
+            print("→ phase toで進めて処理し、終わったら turn next で自ターンへ。")
+            return
+        log(st, "%s のターン: 何もしない（省略）" % ap)
+        print("（T%s %s は何もしないため省略）" % (st["turn"], ap))
+        ap = begin_turn(st)
     target = getattr(args, "to", None)
     if not target:
         print("→ アンタップ済み。phaseで進行→未処理のドロー。turn nextの再実行は次ターン。")
@@ -1221,6 +1263,8 @@ def perm_bits(st, oid, ids=False):
         bits.append("dmg%d" % o["damage"])
     if o["counters"]:
         bits.append("+".join("%s x%d" % (k, n) for k, n in o["counters"].items()))
+    if o.get("class_level"):
+        bits.append("Lv%d" % o["class_level"])
     if o["tapped"]:
         bits.append("(T)")
     if o["sick"] and "creature" in [t.lower() for t in card_of(st, o).get("types", [])]:
@@ -1351,7 +1395,8 @@ def render_pile(st, key, label, indent="   ", ids=False):
 def cmd_show(args, st):
     ids = getattr(args, "ids", False)
     tag = "（優先権なし）" if st["phase"] in NO_PRIORITY else ""
-    print("=== Turn %s / %s / %s %s ===" % (st["turn"], st["active"], st["phase"], tag))
+    print("=== Turn %s / %s / %s %s%s ===" % (st["turn"], st["active"], st["phase"], tag,
+                                          goldfish.header(st) if goldfish.active(st) else ""))
     if getattr(args, "next_oid", False):
         print("次の生成oid: %d" % st["next_oid"])
     for pid in ("P1", "P2"):
@@ -1387,6 +1432,8 @@ def cmd_show(args, st):
     print("スタック: %s" % stack_str(st, ids=ids))
     relations.describe(sys.modules[__name__], st)
     bookkeeping.list_pending(st, include_links=False)
+    if goldfish.active(st) and not getattr(args, "no_reveal", False):
+        print(goldfish.reveal_line(sys.modules[__name__], st))
 
 
 def human_turn_view(st):
@@ -1399,7 +1446,7 @@ def human_turn_view(st):
     try:
         _CTX["offline"], _CTX["mem"] = True, dict(old_mem)
         with contextlib.redirect_stdout(io.StringIO()) as output:
-            cmd_show(_Args(hand=None if hand == "none" else hand, ids=False), view)
+            cmd_show(_Args(hand=None if hand == "none" else hand, ids=False, no_reveal=True), view)
         return output.getvalue()
     finally:
         _CTX["offline"], _CTX["mem"] = old_offline, old_mem
@@ -1407,7 +1454,8 @@ def human_turn_view(st):
 
 def queue_turn_start(st):
     # Transient: dispatch removes this before saving and writes only after success.
-    st["_turn_start_view"] = human_turn_view(st)
+    if st.get("turn_history", True):
+        st["_turn_start_view"] = human_turn_view(st)
 
 
 def turn_history_path(args):
@@ -1423,7 +1471,6 @@ def append_turn_history(args, st, label, text=None):
     with path.open("a", encoding="utf-8") as output:
         output.write("\n## %s\n\n" % label)
         output.write("".join("    " + line + "\n" for line in text.splitlines()))
-    print("ターン履歴: " + str(path))
 
 
 def cmd_zone(args, st):
@@ -1450,6 +1497,12 @@ def cmd_zone(args, st):
     if key not in st["zones"]:
         sys.exit("不明なゾーン: %s\n指定できるのは %s（stack も可）"
                  % (key, ", ".join(sorted(k for k in st["zones"] if k != "stack"))))
+    if zname == "library" and goldfish.active(st) and pid == goldfish.SEAT:
+        lib = st["zones"][key]
+        print("%s の山札 %d枚（上から。ゴールドフィッシュで公開。先読みで判断しない）" % (pid, len(lib)))
+        for i, oid in enumerate(lib, 1):
+            print("  %2d. [%d] %s" % (i, oid, disp_oid(st, oid)))
+        return
     if zname == "library":
         sys.exit("ライブラリーの中身は隠匿情報です。上から N 枚だけ見るなら "
                  "`look %s N` を使ってください。" % pid)
@@ -1946,6 +1999,16 @@ def cmd_attach(args, st):
         print("!! 装着効果のfx定義がありません。カードテキストを確認して登録してください（旧mod/grantとの重複に注意）。")
 
 
+def cmd_level(args, st):
+    """クラスのレベルを記帳する。支払い・ソーサリー制限・レベル誘発は呼び出し側が処理する。"""
+    o = obj(st, args.oid)
+    if "class" not in [s.lower() for s in card_of(st, o).get("subtypes", [])]:
+        sys.exit("[%s] はクラスではありません。" % args.oid)
+    o["class_level"] = args.n
+    log(st, "%s(%s) クラスのレベル %d" % (disp_of(st, o), args.oid, args.n))
+    print("%s(%s) Lv%d（レベルアップ時の誘発は別途 pending で記帳）" % (disp_of(st, o), args.oid, args.n))
+
+
 def cmd_pcounter(args, st):
     p = st["players"][args.player]
     if args.kind == "poison":
@@ -2275,6 +2338,8 @@ def record_result(args, st, result, reason, concede_by=None):
            "decks": {p: st["players"][p].get("deck") for p in st["players"]},
            "deck_sources": {p: st["players"][p].get("deck_source")
                             for p in st["players"]}}
+    if goldfish.active(st):
+        rec["goldfish"] = goldfish.result_fields(st, result)
     path = results_path(args)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
@@ -2288,12 +2353,20 @@ def record_result(args, st, result, reason, concede_by=None):
     print("記録しました → %s" % path)
     print("  %s / %dターン / ライフ %s / マリガン %s"
           % (label, rec["turn"], rec["life"], rec["mulligans"]))
+    if rec.get("goldfish"):
+        g = rec["goldfish"]
+        print("  リーサル: %s" % ("自ターン%d（%s）" % (g["lethal_turn"], "先手" if g["on"] == "play" else "後手")
+                                  if g["lethal_turn"] else "なし"))
     return rec
 
 
 def cmd_end(args, st):
     if bool(args.winner) == bool(args.draw):
         sys.exit("--winner か --draw のどちらか一方を指定してください。")
+    # 見込みで末尾に書いた end が、リーサル未到達のまま測定値を記録しないようにする。
+    if goldfish.active(st) and args.winner == goldfish.SEAT and not goldfish.lethal(st):
+        sys.exit("リーサル未到達です（%s ライフ %d）。記録していません。上限ターンで打ち切るなら end --draw。"
+                 % (goldfish.DUMMY, st["players"][goldfish.DUMMY]["life"]))
     record_result(args, st, "draw" if args.draw else args.winner, args.reason)
 
 
@@ -2408,6 +2481,15 @@ def cmd_stats(args, _):
                 if args.deck in ((r.get("decks") or {}).get(p) or "" for p in ("P1", "P2"))]
     if not recs:
         sys.exit("条件に合うゲームがありません。")
+    solo = [r for r in recs if goldfish.is_record(r)]
+    recs = [r for r in recs if not goldfish.is_record(r)]
+    solo_groups = {}
+    for r in solo:
+        solo_groups.setdefault(goldfish.group_key(r), []).append(r)
+    for k in sorted(solo_groups):
+        print(chr(10).join(goldfish.render_group(k, solo_groups[k])))
+    if not recs:
+        return
     groups = {}
     for r in recs:
         groups.setdefault(group_key(r), []).append(r)
@@ -2473,6 +2555,14 @@ def build_parser():
     s.add_argument("--deck2-name", help="同上（P2側）")
     s.add_argument("--seed", type=int, default=random.randrange(2 ** 32))
     s.add_argument("--life", type=int, default=20)
+    s.add_argument("--goldfish", action="store_true",
+                   help="一人回し。--deck1だけを読み、P2は何もしない相手（ライブラリーなし）。"
+                        "相手ターンは確認事項がなければ省略し、P1の山札順を公開する")
+    s.add_argument("--reveal", type=int, default=goldfish.REVEAL, metavar="N",
+                   help="--goldfish の show・バッチ停止時に公開する山札上の枚数（既定%d）。"
+                        "1ターンに掘る枚数が多いデッキは増やす" % goldfish.REVEAL)
+    s.add_argument("--turn-history", action="store_true",
+                   help="--goldfish でも人向けターン開始履歴を残す（対戦では常に残す）")
     s.add_argument("--first", choices=["P1", "P2", "random"], default="P1",
                    help="先手プレイヤー（既定 P1）。random は seed から抽選する"
                         "（ゲーム1の先手決め。後から同じ seed で再現できる）。"
@@ -2496,6 +2586,7 @@ def build_parser():
                    help="同じ見た目のパーマネントをまとめず1個ずつ出す")
     s.add_argument("--hand", choices=["P1", "P2", "both"],
                    help="そのプレイヤーの手札も並べて出す（対人モードでは自分側だけ）")
+    s.add_argument("--no-reveal", action="store_true", help="ゴールドフィッシュの山札上の公開行を出さない")
     s = sub.add_parser("view", help="プレイヤー役に渡す1画面（盤面＋自分の手札＋全オラクル）")
     s.add_argument("player", choices=["P1", "P2"])
     s.add_argument("--flat", action="store_true",
@@ -2681,6 +2772,9 @@ def build_parser():
     s.add_argument("ref")
     s.add_argument("--to")
     s.add_argument("--detach", action="store_true")
+    s = sub.add_parser("level", help="クラスのレベルを記帳（level 3 2）。未到達レベルの能力はタイミング候補に出さない")
+    s.add_argument("oid")
+    s.add_argument("n", type=int, choices=[1, 2, 3])
     s = sub.add_parser("pcounter", help="プレイヤーのカウンター（poison/energy など）")
     s.add_argument("player")
     s.add_argument("kind")
@@ -2728,7 +2822,7 @@ def build_parser():
     s.add_argument("--winner", choices=["P1", "P2"])
     s.add_argument("--draw", action="store_true",
                    help="引き分けとして記録する（選択の余地のない無限ループ CR 104.4b、"
-                        "同時に敗北条件を満たした場合など）")
+                        "同時に敗北条件を満たした場合など）。ゴールドフィッシュでは上限ターンまでリーサルなし")
     s.add_argument("--reason")
     s.add_argument("--tag", help="集計の単位にする札。同じマッチの連戦に同じ名前を付ける"
                                  "（サイド後を別名で登録していても1つにまとまる）")
@@ -2933,16 +3027,23 @@ def run_batch(args):
     record_count = 0
     event_start = 1
     aliases = {}
+    # ゴールドフィッシュだけ各行の前後を比べる（乱数・相手ターン・リーサルで止める）。
+    solo = state_path(args).exists() and goldfish.active(load(args))
     def record_output(record):
         nonlocal record_count
         record_count += 1
         record["source_line"] = source_line
         with transcript.open("a", encoding="utf-8") as output_file:
             output_file.write(json.dumps(record, ensure_ascii=False) + "\n")
-    for source_line, line, source_parts, label, kind in prepared:
+    for position, (source_line, line, source_parts, label, kind) in enumerate(prepared):
         if not (args.quiet or args.compact):
             print("» " + line)
         sys.stdout.flush()       # エラーは stderr に出るので、順序が入れ替わらないよう流す
+        before = load(args) if solo else None
+        if (goldfish.active(before) and goldfish.lethal(before)
+                and source_parts[0] not in goldfish.AFTER_LETHAL):
+            print("--- リーサル到達後のためバッチ停止（%s 以降は未実行）。end --winner P1 で記録してください。" % line)
+            break
         try:
             if args.compact:
                 captured = io.StringIO()
@@ -2998,8 +3099,15 @@ def run_batch(args):
                 if label:
                     aliases[label] = result
             done += 1
-            if parts[0] in ("turn", "phase", "pass", "attack") and step_checks.waiting(load(args)):
+            after = load(args) if solo or parts[0] in ("turn", "phase", "pass", "attack") else None
+            if (parts[0] in ("turn", "phase", "pass", "attack") and step_checks.waiting(after)
+                    and not (solo and goldfish.answers_review(prepared[position + 1:]))):
                 print("--- タイミングの確認待ちでバッチ停止。後続行は未実行です。")
+                break
+            why = goldfish.stop_reason(before, after) if before else None
+            if why:
+                print("--- " + why)
+                print(goldfish.reveal_line(sys.modules[__name__], after))
                 break
         except (SystemExit, ValueError) as e:
             code = e.code if isinstance(e, SystemExit) else str(e)
@@ -3063,7 +3171,7 @@ def command_handlers():
         "shuffle": cmd_shuffle, "roll": cmd_roll, "coin": cmd_coin, "pick": cmd_pick,
         "search": cmd_search, "look": cmd_look, "mill": cmd_mill,
         "mulligan": cmd_mulligan, "bottom": cmd_bottom, "token": cmd_token,
-        "attach": cmd_attach, "grant": cmd_grant, "pcounter": cmd_pcounter, "effect": cmd_effect,
+        "attach": cmd_attach, "grant": cmd_grant, "pcounter": cmd_pcounter, "level": cmd_level, "effect": cmd_effect,
         "attack": cmd_attack, "block": cmd_block, "combat": cmd_combat,
         "pass": cmd_pass, "end": cmd_end, "concede": cmd_concede,
         "stats": cmd_stats, "deck": cmd_deck,
@@ -3139,6 +3247,11 @@ def dispatch(argv, *, batch_label=None, event_context=False):
     elif args.cmd == "note" and args.event:
         result = dict(id=args.event, text=" ".join(args.text), turn=st["turn"],
                       active=st["active"], phase=st["phase"], seed=st.get('seed'))
+    if (args.cmd not in readonly and goldfish.active(st) and goldfish.lethal(st)
+            and not st.get("result") and not st.get("lethal_notified")):
+        st["lethal_notified"] = True
+        print("!! リーサル到達: %s。end --winner P1 --reason ... で記録。"
+              % goldfish.header(st).strip("（）"))
     if args.cmd not in readonly and st is not None:
         turn_start = st.pop("_turn_start_view", None)
         save(args, st)

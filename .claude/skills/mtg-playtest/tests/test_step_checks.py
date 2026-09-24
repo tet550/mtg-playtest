@@ -63,6 +63,26 @@ class StepTests(unittest.TestCase):
         self.call('phase', 'to', 'precombat_main')
         self.assertEqual(len(self.read()['pending']), 1)
 
+    def test_class_abilities_above_recorded_level_are_not_candidates(self):
+        self.text('このクラスが戦場に出たとき、カード２枚を引く。\n{1U}：レベル２\n'
+                  'このクラスがレベル２になったとき、カード１枚を引く。\n{4U}：レベル３\n'
+                  'あなたの戦闘の開始時に、アーティファクト１つを対象とする。', phase='precombat_main')
+        st = self.read()
+        st['cards']['fixture1']['types'] = ['Enchantment']
+        st['cards']['fixture1']['subtypes'] = ['Class']
+        self.write(st)
+        self.call('phase', 'to', 'combat.begin')
+        self.assertEqual(self.read().get('pending', []), [])
+        with self.assertRaises(SystemExit):
+            self.call('level', '2', '3')
+        out = self.call('level', '1', '3')
+        self.assertIn('Lv3', out)
+        self.assertIn('Lv3', self.call('show', '--ids'))
+        st = self.read()
+        st['phase'], st['checked_steps'] = 'precombat_main', []
+        self.write(st)
+        self.assertIn('T1 要確認', self.call('phase', 'to', 'combat.begin'))
+
     def test_draw_step_trigger_follows_normal_draw(self):
         self.text('At the beginning of your draw step, gain 1 life.')
         self.call('turn', 'next', '--to', 'precombat_main', '--draw')

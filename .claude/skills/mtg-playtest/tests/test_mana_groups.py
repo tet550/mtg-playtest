@@ -26,6 +26,11 @@ class ManaGroupsTests(unittest.TestCase):
     def read(self):
         return json.loads(self.path.read_text(encoding="utf-8"))
 
+    def test_generic_cost_keeps_earlier_floated_colour(self):
+        # G floated for a later {G} spell, then C and U tapped to pay {2}.
+        self.assertEqual(mana.spend({"G": 1, "C": 1, "U": 1}, "2"), {"G": 1})
+        self.assertEqual(mana.spend({"G": 1, "U": 2}, "2"), {"G": 1})
+
     def test_normal_and_noted_mana_never_pay_from_each_other(self):
         self.call("mana", "P1", "add", "G")
         self.call("mana", "P1", "add", "GGG", "--note", "能力の起動のみ")

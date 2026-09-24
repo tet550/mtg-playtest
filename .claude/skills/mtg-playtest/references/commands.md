@@ -19,7 +19,8 @@
 |---|---|
 | 対戦開始・事前キャッシュ | `init --deck1 piza --deck2 boros-dwarves --seed 101 --first P1`。両デッキのメイン・サイドボードの不足・未解決カードを自動取得し、全件確認後に保存。取得失敗は状態未保存で停止。`--offline`はキャッシュ完備時のみ開始可。`--prefetch`は互換用で省略可 |
 | OID中心の盤面表示 | `show --ids --hand both`（手札共有時）。カード名を省略し盤面の状態を保持。手札の見出しは`手札(N):`、`--ids`時の手札は`[oid]`のみ（コスト・タイプ・列見出しを省略）。初手・再開・対応確認には`show --hand both`。`--packed`で手札を3枚ずつ表示（名前付き表示ではコスト・タイプ・P/Tを保持）。`--flat`・`--next-oid`・`run --compact --delta`と併用可。能力の説明と裁定メモは省略しない |
-| 人向けターン開始履歴 | `init --deck1 piza --deck2 boros-dwarves --seed 101 --history-hand both`。`output/<state名>/turn-starts.md`へ名前付きshowを自動追記。手札の既定はnone、P1/P2/bothを指定可。初回はT1のアンタップ・ステップを初めて進める直前（初手・マリガン後）、以降はturn進行のアンタップ後・ドロー前。成功した操作だけ記録し、undoは訂正を追記する。対人・席分離はnoneまたは自分の席だけを選ぶ |
+| 人向けターン開始履歴 | `init --deck1 piza --deck2 boros-dwarves --seed 101 --history-hand both`。`output/<state名>/turn-starts.md`へ名前付きshowを自動追記（保存先は`init`時に一度だけ表示し、ターンごとには出さない。ゴールドフィッシュは`--turn-history`指定時だけ記録）。手札の既定はnone、P1/P2/bothを指定可。初回はT1のアンタップ・ステップを初めて進める直前（初手・マリガン後）、以降はturn進行のアンタップ後・ドロー前。成功した操作だけ記録し、undoは訂正を追記する。対人・席分離はnoneまたは自分の席だけを選ぶ |
+| 一人回し（ゴールドフィッシュ） | `init --goldfish --deck1 <登録名> --seed 101 --first P1`（測定は先手のみ。後手は比較を依頼されたときだけ同じseedで`--first P2`）。`--deck2`は指定不可。P2は名前`goldfish`・ライブラリーなしの何もしない相手。`turn next`は相手ターンを省略する（P1側に相手ターンの誘発・両席/P2向けの予約や`remind --on turn`・次の終了ステップの帰還があればP2のアンタップで停止）。`show`の見出しに`（自ターンN・先手）`、末尾に山札上N枚の公開行（`init --reveal N`で枚数指定、既定5・1以上。`show --no-reveal`で省略。`--reveal`／`--turn-history`は`--goldfish`専用）。`zone P1:library`で山札全体を上から表示。`run`は乱数を使った行・相手ターンでの停止の直後に止まり、リーサル到達後は`end`/`note`/`show`等だけ実行する。`end --winner P1`はリーサル未到達なら記録せず停止、打ち切りは`end --draw`。手順は[goldfish.md](goldfish.md) |
 | 登録デッキのメイン確認 | `deck show boros-tokens --brief` |
 
 ## 手札と探索
@@ -28,7 +29,7 @@
 |---|---|
 | ドロー | `draw P1 1`。`[oid]カード名`で表示。`--quiet`で内容を伏せる |
 | カード全文の確認 | `card show "<名前1>" "<名前2>" ...`（各名前を引用、showのみ複数可）。**未キャッシュの名前は `[missing]` と出して終了コード0で終わる**（取得しない）ので、その場合は `card fetch <名前>` で取り直す。`cards/` は.gitignore対象なのでクローン直後は全カードが未キャッシュ |
-| 残りライブラリーの確認 | `zone P1:library`（P2なら `zone P2:library`。投了判断でのアウト確認用） |
+| 残りライブラリーの確認 | 通常の対局では`zone P1:library`は隠匿情報として拒否される（残り枚数は`show`）。ゴールドフィッシュのP1だけ上から順に全体を表示する |
 | ライブラリーの上からN枚を見る | `look P1 4`（上から4枚。移動しない。効果などで見る必要があるときだけ） |
 | 見た残りを無作為順で一番下へ | 例：残りが24・3・51なら`pick 24 3 51`の結果を読み、そのoidを`move <oid> library`。未選択の2枚で再度pickして同様に移し、最後の1枚も移す。対局のseed付き乱数を使い、ライブラリー全体をshuffleしない。解決中はpickを区間末尾に置いて`--pause`し、結果を読むたび別partで続ける |
 | サーチ（カード名で探す） | `search P2 "Chrome Dome" --to battlefield`（名前は位置引数。`--name`は無い。候補が複数なら未完了で停止する）。**`--tapped`は無い**ので「タップ状態で戦場に出す」効果は`search`の次の行に`tap <oid>`を書く。寓話の小道のように直後にアンタップする効果なら、タップ行を省いてその旨を`note`に残す |
@@ -101,10 +102,10 @@
 |---|---|
 | 使い捨てのバッチを標準入力から流す | `... run - --compact`（`-` は標準入力。構文検査を通った内容は状態ファイル横の `<state名>-NNN.mtg` に自動保存され、「操作ファイル: <パス>」と出る。既存の番号は上書きしない）。ファイルを自分で書く従来の手順もそのまま使える |
 | 複数手の復旧 | `undo 3`（3保存分。指定不足・超過は変更せず停止）。回数はバッチ数・ターン数ではない。通常runは状態変更の各操作、pass-bothは2回、pending resolveは区間全体で1回保存。表示は数えず、noteは数える。ライフ・マナ・pending・スタックを含む状態全体を復元する。戻す数が不明なら`undo 1`ごとに`show`・`pending list --all`・`mana list`で確認し、推測で手動補正しない。詳しくは[復旧手順](cli-guide.md#undoによる復旧) |
-| Classレベルの記帳 | `effect add "[oid] Class level 2: 適用する能力"`（表示用メモ。カードの能力・支払いは別途確認） |
+| Classレベルの記帳 | `level <oid> 2`（1〜3。showに`Lv2`と出る。記帳したレベルより上の能力はタイミング候補に出さないので、レベルアップしたら必ず記帳する。支払い・ソーサリー制限・「レベルNになったとき」の誘発は別途`mana`／`pending`で処理） |
 | 土地をクリーチャー化（土の技・ミシュラランド） | `card set --oid <土地oid> --types Land/Creature --power 0 --toughness 0` → `counter <oid> +1/+1 N` → 説明を`effect add`。**P/Tを登録しないと攻撃・ブロック宣言は通り、`combat damage`で「P/T未登録」と出て全体停止する** |
 | 盤面の説明メモ | `effect add "現在の適用条件" --until eot`（showに常時表示。期限省略はpermanent）。場面ごとの確認はremind、確定した誘発はpending、数値効果はmod/grant/fxへ記帳 |
-| マナ | `tap <oid...>` → `mana P1 add WR` → `mana P1 spend WR`（生成色・量・用途制限は確認） |
+| マナ | `tap <oid...>` → `mana P1 add WR` → `mana P1 spend WR`（生成色・量・用途制限は確認）。汎用コスト（`spend 2`）は無色→後から加えた色の順に充てる。先に浮かせた色を後の呪文に残したいときも、確実を期すなら`spend CU`のように色で指定する |
 | SBA | `sba --apply`（トークン消滅・装着先のない通常オーラ）／裁定確認後の `sba --apply-deaths`（同時死亡後も再評価。授与・置換等は先に裁定） |
 | トークンを生け贄に捧げる | 置換効果がなければ`move <oid> graveyard`、解決完了後に`sba --apply`。追放へ置き換えない。死亡・戦場を離れる誘発を確認して個別にpendingへ登録する |
 | 土地を置く | `move <oid> battlefield`（タップインは`--tapped`。`play P1`ではない） |
@@ -116,6 +117,7 @@
 | 報告草稿 | `python .claude/skills/mtg-playtest/scripts/report_draft.py playtest/<対局> --game g01 --seed 123`。`report-draft.md`を新規作成。`--out`は同じ対局フォルダ直下の未使用パスのみで、**カレントディレクトリ基準**（例：`--out playtest/<対局>/report.md`。プロジェクト直下での`--out report.md`は不可）。明示的なevent・結果・現在のログを照合し、undo/init入り証跡や不整合は停止。裁定・所見・キープ枚数は記入後check_reportで検査 |
 | トークンのoid | 採番は生成時の出力（`トークン生成: 英雄(125)`）でしか分からない。生成結果で判断が変わる場合は**生成行の直後でバッチを区切り**、oidを読んでから`attach`／`fx add`／`stack push --src`を書く（推測すると`oid ... は存在しません`で停止する）。生成1個で後続操作が確定している場合は上記`--label`を使える |
 | 可変収支のピザ反復 | 1周検証後だけ [pizza-recipe.md](pizza-recipe.md) を読む。現行生成器の末尾は手札なしの`show`なので、軽量方式では生成ファイル末尾を実行前に`show --hand both`へ変更する（対人・席分離には適用しない）。生成器は誘発を旧式のstack操作で記帳し、pending台帳と発生源参照は作らない |
+| 結果の集計 | `stats --tag T`（`--deck 登録名`で絞り込み可）。ゴールドフィッシュの記録は対戦と混ぜず別表：自ターン単位の平均・中央値・最速・最遅・リーサルなし件数、ターン別件数と累計%、先手／後手別、マリガン平均 |
 | 決着後の消化ターンを畳む | `concede P2 --reason "勝ち手順・アウト枚数・間に合わない根拠" --tag T`（[投了条件](concede.md)を先に確認） |
 
 ## フェイズと再現性

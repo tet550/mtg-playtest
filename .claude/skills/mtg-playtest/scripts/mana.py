@@ -33,8 +33,9 @@ def spend(pool, text):
         remaining[color] -= 1
     if sum(remaining.values()) < generic:
         raise SystemExit("指定したグループのマナが足りません: %s / pool=%s" % (text, pool))
-    # Preserve the existing generic-payment order: colorless, then stored colors.
-    for color in ["C"] + [c for c in remaining if c != "C"]:
+    # Generic costs take colorless first, then the most recently added colors: mana tapped
+    # for this spell right before spending, not mana floated earlier for a later coloured cost.
+    for color in ["C"] + [c for c in reversed(list(remaining)) if c != "C"]:
         paid = min(generic, remaining.get(color, 0))
         if paid:
             remaining[color] -= paid

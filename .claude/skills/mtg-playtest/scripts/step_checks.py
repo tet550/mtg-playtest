@@ -12,6 +12,24 @@ TIMINGS = {
 }
 
 
+LEVEL_HEADER = re.compile(r"^\{[^}]*\}(?:\{[^}]*\})*\s*[：:]\s*(?:レベル|Level)\s*([0-9０-９])", re.I)
+
+
+def active_lines(card, o):
+    """クラスは記帳済みレベル（既定1）までの行だけ。未到達レベルの誘発を候補にしない。"""
+    lines = (card.get("oracle") or "").splitlines()
+    if "class" not in [s.lower() for s in card.get("subtypes", [])]:
+        return lines
+    current, level, kept = o.get("class_level", 1), 1, []
+    for line in lines:
+        m = LEVEL_HEADER.match(line.strip())
+        if m:
+            level = int(m.group(1).translate(str.maketrans("０１２３４５６７８９", "0123456789")))
+        elif level <= current:
+            kept.append(line)
+    return kept
+
+
 def candidates(api, st, phase):
     for pid in ("P1", "P2"):
         for oid in st["zones"].get(pid + ":battlefield", []):
@@ -20,7 +38,7 @@ def candidates(api, st, phase):
             if (phase == "precombat_main" and pid == st["active"]
                     and "saga" in [s.lower() for s in card.get("subtypes", [])]):
                 yield o, "英雄譚：伝承カウンター追加・章能力を確認", True
-            for line in (card.get("oracle") or "").splitlines():
+            for line in active_lines(card, o):
                 # Ignore quoted grants, reminder text, and delayed-effect instructions.
                 line = re.sub(r"\([^)]*\)|（[^）]*）", "", line).strip()
                 line = re.sub(r"^.*?[—–]\s*(?=At the beginning)", "", line, flags=re.I)
