@@ -783,6 +783,21 @@ def cmd_turn(args, st):
         print("→ アンタップ済み。phaseで進行→未処理のドロー。turn nextの再実行は次ターン。")
         return
 
+    # 恒久誘発の確認が出ている席で、アップキープを飛び越える --to は通さない。
+    # 飛ばすと誘発が黙って消え、気づいた時点では undo と手作業の補正でしか戻せない。
+    waiting = list(bookkeeping.reminder_messages(st, "turn", ap))
+    if (waiting and not getattr(args, "skip_remind", False)
+            and target in PHASES
+            and PHASES.index(target) > PHASES.index("beginning.upkeep")):
+        advance_to(st, "beginning.upkeep")
+        print("!! %s に恒久誘発の確認が%d件あります。--to %s は実行せず beginning.upkeep で停止しました。"
+              % (ap, len(waiting), target))
+        print("→ 誘発を処理してから phase to beginning.draw → draw %s 1 → phase to %s。"
+              % (ap, target))
+        print("→ 今ターンは確認不要だと判断済みなら turn next --to %s --draw --skip-remind。" % target)
+        print("T%s %s / %s" % (st["turn"], st["active"], st["phase"]))
+        return
+
     def do_draw():
         # ドロー・ステップを通るときに引く。先手の第1ターンは引かないので --draw で選ばせる。
         args.player, args.n, args.quiet = ap, 1, getattr(args, "quiet", False)
@@ -2557,6 +2572,8 @@ def build_parser():
     s.add_argument("op", nargs="?", default="next")
     s.add_argument("--to", metavar="PHASE",
                    help="ターン開始後、そのステップまで一気に進む（例: precombat_main）")
+    s.add_argument("--skip-remind", action="store_true",
+                   help="恒久誘発の確認が出ていてもアップキープで止めない（判断済みのときだけ）")
     s.add_argument("--draw", action="store_true",
                    help="--to の途中でドロー・ステップを通るとき1枚引く（先手第1ターンは付けない）")
     s.add_argument("--quiet", action="store_true", help="--draw のカード名を伏せる")

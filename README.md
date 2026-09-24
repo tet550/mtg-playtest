@@ -15,6 +15,7 @@ Magic: The Gathering の対戦をテキスト上で進行・検証するため�
 - カード情報の Scryfall からの取得とローカルキャッシュ
 - 装備・オーラ・期限付き効果・誘発の待ち行列など、忘れやすい状態の永続化
 - undo、seed 付き乱数による再現可能なシャッフル、対戦結果の集計
+- 固定の seed とデッキで回して基準値と突き合わせるベンチマーク（期待値を伏せたまま実行し、後から採点する）
 
 ## 必要なもの
 
@@ -83,6 +84,7 @@ undoでは旧記録を残し、復元点を訂正として追記します。
 ```text
 .claude/
   agents/                       サブエージェント定義（プレイヤー役・ルール検証役）
+  skills/mtg-benchmark/         ベンチマークの実行・採点スキル（目隠しと突き合わせ）
   skills/mtg-playtest/
     SKILL.md                    エントリポイント。ここから必要な資料だけ辿る
     references/                 進行手順・スキーマ・保存先規約・ログ書式
@@ -91,6 +93,7 @@ undoでは旧記録を残し、復元点を訂正として追記します。
 decklists/                      デッキリスト（Arena 形式のテキスト。人が書く正本）
   strategy/<登録名>.md          デッキごとのプレイ方針とサイドボード計画
                                 （あれば対局前に自動で案内される）
+benchmarks/                     基準値。run/（実行時に読む）と expected/（採点時だけ読む）に分ける
 decks/                          登録済みデッキ（decklists から生成。検証済みの定義）
 design/                         設計メモ（永続状態・誘発処理・効果の関連付けなど）
 cards/                          カードキャッシュ（Git 管理外。実行時に自動生成）
@@ -122,6 +125,25 @@ decklists/*.txt  ──deck add──▶  decks/*.json  ──init──▶  pla
 
 `cards/` と `playtest/` は `.gitignore` で除外しています。クローン直後には存在せず、
 初回の実行時に作られます。理由は [NOTICE.md](NOTICE.md) を参照してください。
+
+## ベンチマーク
+
+同じデッキ・同じ seed で回し、前回の基準値と比べる一式が `benchmarks/` にあります。準備・実行・採点は
+分かれていて、**回している間は期待値を見ない**（見ると合否条件がプレイの指針になり、比較に使えなくなる）。
+
+```bash
+python benchmarks/20260914-jund-vs-piza/run/setup.py --condition a
+```
+
+出力の `init` コマンドで5ゲームを AI 同士で回し、決着後に採点します。
+
+```bash
+python benchmarks/20260914-jund-vs-piza/score.py playtest/_checks/<実行フォルダ>
+```
+
+初手の再現性・進行の作法・勝敗と決着ターンを基準値と突き合わせた `score.md` が実行フォルダに出ます。
+手順は [`.claude/skills/mtg-benchmark/SKILL.md`](.claude/skills/mtg-benchmark/SKILL.md)、
+規約は [`benchmarks/README.md`](benchmarks/README.md)。
 
 ## テスト
 

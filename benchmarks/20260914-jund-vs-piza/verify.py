@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """jund-sacrifice vs piza ベンチマークの再現性チェック（A群）。
 
-同じ seed で init し直したときに初手が cases.json と一致するかだけを見る。
+同じ seed で init し直したときに初手が expected/cases.json と一致するかだけを見る。
+期待値（初手）を表示するので、対局の前ではなく採点フェーズで走らせる。
 対局データ（playtest/ 配下）にも、リポジトリの decklists/ にも依存しない
 （デッキは同梱の decklists/ スナップショットから読む）。カード名は --en で英語名に固定する。
 一時状態は OS の一時領域に作り、実行後に削除する。
@@ -15,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MTG = ROOT / ".claude/skills/mtg-playtest/scripts/mtg.py"
-CASES = Path(__file__).with_name("cases.json")
+CASES = Path(__file__).parent / "expected" / "cases.json"
 DECKS = Path(__file__).with_name("decklists")
 HAND_LINE = re.compile(r"\[(\d+)\](.+?)\s*／")
 

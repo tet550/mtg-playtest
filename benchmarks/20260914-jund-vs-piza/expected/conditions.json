@@ -1,0 +1,118 @@
+{
+  "note": "testcases.md の B群・C群の機械可読版。採点（score.py）専用で、実行フェーズからは読まない。",
+  "process": [
+    {
+      "id": "B1",
+      "metric": "correction_notes",
+      "expect": 0,
+      "desc": "note 本文に「訂正／補正／運用ミス」を含む件数",
+      "baseline_20260914": 25
+    },
+    {
+      "id": "B2",
+      "metric": "undo",
+      "expect": 0,
+      "desc": "undo の実行回数（証跡内の undo 行＋turn-starts.md の巻き戻し記録）",
+      "baseline_20260914": 6
+    },
+    {
+      "id": "B3",
+      "metric": "remind_late",
+      "expect": 0,
+      "desc": "remind add --src <oid> が、その oid が戦場に出たバッチより後のバッチに書かれた件数（着地と同バッチなら0）",
+      "baseline_20260914": "旧判定（手札表示を含む oid の初出を起点）での「全件が後付け」。着地起点に直したので比較不可、再測定が必要"
+    },
+    {
+      "id": "B4",
+      "metric": "turn_next_not_last",
+      "expect": 0,
+      "desc": "turn next がバッチ最終行以外にある件数",
+      "baseline_20260914": 12
+    },
+    {
+      "id": "B5",
+      "metric": "mixed_turn_batches",
+      "expect": 0,
+      "desc": "turn next の後に phase／attack／turn が続き、1バッチに両者のターンが混在するバッチ数",
+      "baseline_20260914": 4
+    },
+    {
+      "id": "B6",
+      "metric": "attack_not_batch_head",
+      "expect": 0,
+      "desc": "attack 宣言の前に、同じバッチ内でフェーズ移行以外の状態変更が行われている件数（フェーズ移行だけ先行している場合は B8）",
+      "baseline_20260914": "3（旧定義。フェーズ移行のみの先行を含むため新定義では再測定が必要）"
+    },
+    {
+      "id": "B7",
+      "metric": "oid_without_candidates",
+      "expect": 0,
+      "desc": "search --oid を、同じ席の候補提示（--oid 無しの search）より前、または同一バッチ内に書いた件数",
+      "baseline_20260914": 2
+    },
+    {
+      "id": "B8",
+      "metric": "attack_without_begin_step",
+      "expect": 0,
+      "desc": "attack 宣言と同じバッチでフェーズ移行だけが先行し、直前のバッチも combat.begin で終わっていない件数（戦闘開始時の応答窓が独立したバッチとして開いていない）",
+      "baseline_20260914": "未測定（B6から分離した新項目）"
+    }
+  ],
+  "play": [
+    {
+      "id": "C6",
+      "seat": "P2",
+      "deck": "piza",
+      "condition": "アガサの魂の大釜をルーティング／捨て札で切らない。マナ役・反復役の冗長化パーツとして扱う",
+      "baseline_20260914": "3回捨てた"
+    },
+    {
+      "id": "C7",
+      "seat": "P2",
+      "deck": "piza",
+      "condition": "迅速な救助を土地待ちで温存せず、序盤の掘り札として使う",
+      "baseline_20260914": "温存・捨て札"
+    },
+    {
+      "id": "C8",
+      "seat": "P2",
+      "deck": "piza",
+      "condition": "始動ターンに「必要打点＝相手ライフ」「必要な亀ラのコピー数＝相手のアンタップ・ブロッカー数」を先に算出してから回す",
+      "baseline_20260914": "未実施"
+    },
+    {
+      "id": "C9",
+      "seat": "P2",
+      "deck": "piza",
+      "condition": "監視亀ラのコピーは ETB と離場で2回アンタップできる（1周＝支出9・収入10で黒字）ことを収支に入れる",
+      "baseline_20260914": "見落とし"
+    },
+    {
+      "id": "C10",
+      "seat": "P1",
+      "deck": "jund-sacrifice",
+      "condition": "大釜による墓地からの再建が可能で、手持ちの除去が大釜とクリーチャーの両方を対象にできる局面では、大釜を優先候補として直近の始動阻止と比較する。Tragic Trajectoryは非クリーチャーの大釜を対象にできない。比較機会がなければNA",
+      "baseline_20260914": "旧条件ではクロームドームを優先し3seedで再建を許したと記録。除去の適正対象と実際の比較機会は要再評価"
+    },
+    {
+      "id": "C11",
+      "seat": "P1",
+      "deck": "jund-sacrifice",
+      "condition": "相手の始動にWitherbloom Charmで有効に介入できる局面では、展開と比較して黒緑を残すか判断する。Tragic Trajectoryはソーサリーなので構えとして数えず、自分のメインでの対象・虚空成立・支払いを評価する。該当する選択機会がなければNA",
+      "baseline_20260914": "旧条件では対人2戦とも違反と記録。ソーサリーを構えに含めていたため、新条件での判定は要再評価"
+    }
+  ],
+  "combo": {
+    "definition": "piza側がクロームドームの {5}（または大釜経由で同能力を得たクリーチャーの起動）を初めて解決したターン",
+    "line": {
+      "9141": 14,
+      "9142": 15,
+      "9143": 12,
+      "9144": 11,
+      "9145": 12
+    }
+  },
+  "regression": {
+    "9145": "jund側が勝利を維持すること（人間pizaに落とした seed の回帰確認）"
+  }
+}

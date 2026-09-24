@@ -218,6 +218,20 @@ class BookkeepingTests(unittest.TestCase):
         self.call("remind", "add", "開始時の確認", "--on", "turn", "--player", "P2")
         self.assertIn("確認 R2", self.call("turn", "next"))
 
+    def test_turn_reminder_blocks_skipping_upkeep_until_waived(self):
+        self.call("remind", "add", "アップキープに1点", "--on", "turn", "--player", "P2")
+        out = self.call("turn", "next", "--to", "precombat_main", "--draw")
+        self.assertIn("beginning.upkeep", out)
+        self.assertEqual(self.read()["phase"], "beginning.upkeep")
+        self.assertEqual(self.read()["active"], "P2")
+
+        self.call("phase", "to", "precombat_main")
+        out = self.call("turn", "next", "--to", "precombat_main", "--draw")
+        self.assertEqual(self.read()["phase"], "precombat_main")   # P1 には確認が無い
+        self.call("phase", "to", "precombat_main")
+        self.call("turn", "next", "--to", "precombat_main", "--draw", "--skip-remind")
+        self.assertEqual(self.read()["phase"], "precombat_main")   # 判断済みなら通す
+
     def test_linked_pending_shown_without_duplicate_record(self):
         self.call("linked", "exile", "4", "--src", "1", "--ability", "blink", "--return", "next-end", "--to", "battlefield")
         self.call("phase", "to", "ending.end")

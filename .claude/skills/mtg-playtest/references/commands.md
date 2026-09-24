@@ -48,9 +48,9 @@
 | 目的 | コマンド |
 |---|---|
 | 呪文をスタックへ | `stack push <oid> --cast --controller P1`（詠唱を明示して回数記録・castメモ表示。`--cast`省略は詠唱扱いしない） |
-| 誘発の処理待ちを記帳 | `pending add "果敢" --controller P1 --src <oid>`（srcは省略可、1回につき1登録）→ 順序・対象確認後 `pending stack T1 --targets <oid>`（対象なしならtargets省略）。**自分の誘発が複数あるときは後に解決したいものを先に積む**（後入れ先出し）。積んだ後に順序を変える手段は無く`undo`で戻すしかないので、積む前に解決順を決める |
+| 誘発の処理待ちを記帳 | `pending add "果敢" --controller P1 --src <oid>`（srcは省略可、1回につき1登録）→ 順序・対象確認後 `pending stack T1 --targets <oid>`（対象なしならtargets省略）。複数対象は `--targets "69 74"` のように**1引数に引用する**。**自分の誘発が複数あるときは後に解決したいものを先に積む**（後入れ先出し）。積んだ後に順序を変える手段は無く`undo`で戻すしかないので、積む前に解決順を決める |
 | 処理待ちの一覧 | `pending list`／`pending list --all`（linkedの帰還も参照表示。重複登録しない） |
-| 台帳の能力を解決 | 応答確認後 `pending resolve T1 --file <実ファイル> --part bonus`、または1〜2行なら `pending resolve T1 --do "counter 3 +1/+1 1" --part bonus`（`--do` は繰り返し可。`--file` とは併用不可。成功時に連番`.mtg`へ自動保存）（効果と完了を一括保存。結果を見て続けるなら `--pause`、続きは別part。手順は [bookkeeping.md](bookkeeping.md)）。**解決用ファイルに`sba`は書けない**（「解決用ファイルで使用できないコマンドです」で停止）ので、格闘などの死亡確認は`pending resolve`の後に別途`sba --apply-deaths`を打つ |
+| 台帳の能力を解決 | 応答確認後 `pending resolve T1 --file <実ファイル> --part bonus`、または1〜2行なら `pending resolve T1 --do "counter 3 +1/+1 1" --part bonus`（`--do` は繰り返し可。`--file` とは併用不可。成功時に連番`.mtg`へ自動保存）（効果と完了を一括保存。結果を見て続けるなら `--pause`、続きは別part。手順は [bookkeeping.md](bookkeeping.md)）。**解決用ファイル・`--do`内に`sba`や`card set`は書けない**（「解決用ファイルで使用できないコマンドです」で区間未適用のまま停止）。タイプ変更を含む効果は許可された操作を解決し、直後に優先権・SBAを挟まず`card set --oid <oid> ...`で残りを記帳する。すべての効果の記帳後に、格闘などの死亡確認を別途`sba --apply-deaths`で行う |
 | 台帳の能力を取消し | `pending cancel T1 --reason "打ち消し"`（理由必須。解決途中はundoで戻す）。取消済みIDは再利用不可。新しい処理はaddで登録し、バッチでは下記`--label`で参照する。取消しの訂正は保存単位を確認してundo |
 | 確認メモ | `remind add "果敢を確認" --on cast --player P1 --src <oid>`（on必須：cast/enter/turn。player・src省略可。自動誘発なし）／`remind list`／`remind remove R1` |
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
@@ -81,6 +81,7 @@
 | 目的 | コマンド |
 |---|---|
 | 関連追放 | `linked exile 1 --src 5@1 --ability etb --return until-source-leaves`（発生源の世代はzoneで確認。スタックに記録済みなら `--src/--ability` の代わりに `--via <能力oid>`） |
+| 帰還しない関連追放（アガサの魂の大釜など） | `linked exile 1 --src 5 --ability exile --return none`。大釜が離れても追放カードは戻らない。カウンターを置く再帰誘発は別にpendingで処理し、能力付与は大釜の在場・追放したカード・カウンターの有無で判断する |
 | 帰還誘発・遅延帰還 | 追放時に `--return leave-trigger`／`--return next-end`。発生後 `linked trigger L1` → 応答確認 → `linked resolve L1`（打ち消しなら `linked counter L1`） |
 | 追放カードのプレイ許可 | 追放時に `--play-until eot --player P1` → `linked play L1 1 --player P1`（呪文は詠唱回数・castメモに反映、土地は含めない。支払い・対象・追加制限は別途確認） |
 
@@ -108,11 +109,11 @@
 | トークンを生け贄に捧げる | 置換効果がなければ`move <oid> graveyard`、解決完了後に`sba --apply`。追放へ置き換えない。死亡・戦場を離れる誘発を確認して個別にpendingへ登録する |
 | 土地を置く | `move <oid> battlefield`（タップインは`--tapped`。`play P1`ではない） |
 | ライフ変更 | `life P2 -2`（`--reason`はない。必要な理由だけnote） |
-| 次ターン | `turn next --to precombat_main --draw`（途中の誘発があるならそこで区切る） |
+| 次ターン | `turn next --to precombat_main --draw`（その席に `remind` の確認が出ていると `beginning.upkeep` で停止する。処理してから `phase to` で進める。今ターンは不要と判断済みなら `--skip-remind`） |
 | 定型トークン | `token P2 --preset clue`／`--preset treasure`／`--preset lander`。名前・タイプ・本文を既定義し、個別定義との併用不可。`-n`・`--tapped`は併用可。能力の起動や誘発は別途記帳 |
 | バッチ内の別名 | `pending add "ETB" --controller P2 --label etb` → `pending stack $etb`。`token P2 --preset clue --label clue` → `tap $clue`。`pending resolve $etb --do "token P2 --preset clue" --part create --label clue`でも生成1個に命名可。別名は同じrun内のみ、定義後の独立した`$name`トークンと`--do`内で使用。`--src=$name`や`--file`内の置換は不可。undo/initとの同一バッチ併用不可。シェルの展開を防ぐ引用付きheredoc等で渡す |
 | イベントの証跡 | 席制限なしの`run --compact`内で `note "重要な行動と結果" --event E01`。同じゲームのID重複・秘匿指定は不可。解決用の`--do`／`--file`内では使わず、runの直下に置く。現在のバッチの先頭（前のeventがあればその直後）〜当該noteの物理行範囲を証跡へ保存。通常noteは従来どおり |
-| 報告草稿 | `python .claude/skills/mtg-playtest/scripts/report_draft.py playtest/<対局> --game g01 --seed 123`。`report-draft.md`を新規作成。`--out`は同じ対局フォルダ直下の未使用パスのみ。明示的なevent・結果・現在のログを照合し、undo/init入り証跡や不整合は停止。裁定・所見・キープ枚数は記入後check_reportで検査 |
+| 報告草稿 | `python .claude/skills/mtg-playtest/scripts/report_draft.py playtest/<対局> --game g01 --seed 123`。`report-draft.md`を新規作成。`--out`は同じ対局フォルダ直下の未使用パスのみで、**カレントディレクトリ基準**（例：`--out playtest/<対局>/report.md`。プロジェクト直下での`--out report.md`は不可）。明示的なevent・結果・現在のログを照合し、undo/init入り証跡や不整合は停止。裁定・所見・キープ枚数は記入後check_reportで検査 |
 | トークンのoid | 採番は生成時の出力（`トークン生成: 英雄(125)`）でしか分からない。生成結果で判断が変わる場合は**生成行の直後でバッチを区切り**、oidを読んでから`attach`／`fx add`／`stack push --src`を書く（推測すると`oid ... は存在しません`で停止する）。生成1個で後続操作が確定している場合は上記`--label`を使える |
 | 可変収支のピザ反復 | 1周検証後だけ [pizza-recipe.md](pizza-recipe.md) を読む。現行生成器の末尾は手札なしの`show`なので、軽量方式では生成ファイル末尾を実行前に`show --hand both`へ変更する（対人・席分離には適用しない）。生成器は誘発を旧式のstack操作で記帳し、pending台帳と発生源参照は作らない |
 | 決着後の消化ターンを畳む | `concede P2 --reason "勝ち手順・アウト枚数・間に合わない根拠" --tag T`（[投了条件](concede.md)を先に確認） |

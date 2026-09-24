@@ -1,0 +1,352 @@
+[
+  {
+    "seed": 9141,
+    "first": "P1",
+    "opening_hands": {
+      "P1": [
+        "Blood Crypt",
+        "Wastewood Verge",
+        "Tragic Trajectory",
+        "Obsessive Pursuit",
+        "The Sackville-Bagginses",
+        "Biotech Specialist",
+        "Rottenmouth Viper"
+      ],
+      "P2": [
+        "Botanical Sanctum",
+        "Starting Town",
+        "Guac & Marshmallow Pizza",
+        "Rapid Rescue",
+        "Chrome Dome",
+        "Redshift, Rocketeer Chief",
+        "Mona Lisa, Science Geek"
+      ]
+    },
+    "ai_both_seats": {
+      "winner": "P1",
+      "turn": 13,
+      "concede": null,
+      "life": {
+        "P1": 13,
+        "P2": -1
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "winner": "P2",
+      "turn": 12,
+      "concede": null,
+      "life": {
+        "P1": -2,
+        "P2": 7
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "reviewed_reference": {
+      "date": "2026-09-15",
+      "mode": "single_ai_shared_hands",
+      "blind": false,
+      "scope": "conditional_line_not_global_optimum",
+      "documentation": "testcases.md#seed-9141-reviewed-reference",
+      "result": {
+        "winner": "P1",
+        "turn": 9,
+        "concede": null,
+        "life": {"P1": 14, "P2": 0},
+        "mulligans": {"P1": 0, "P2": 0}
+      },
+      "checkpoints": [
+        {"turn": 1, "action": "Blood Crypt tapped; keep seven"},
+        {"turn": 3, "action": "Wastewood Verge; Biotech Specialist with RG; create Lander"},
+        {"turn": 5, "action": "Second Wastewood Verge; Sackville sacrifices Lander, draws Pursuit and creates Treasure; three life reduction; Void Trajectory kills Bookworm; Biotech attacks for one"},
+        {"turn": 7, "action": "Shock Stomping Ground; cast two Pursuits; preserve Treasure; no attack into Redshift"},
+        {"turn": 9, "action": "Two upkeep Clues; draw and play Blazemire Verge; five land mana pays both Dirge modes; tutor and return second Biotech; create Lander"},
+        {"turn": 9, "action": "Treasure makes B and causes five life reduction; Viper sacrifices four Clues and Lander, costs B and creates fifteen separate triggers; eight resolve for lethal before Viper"}
+      ],
+      "checks": {"C10": "NA", "C11": "OK"},
+      "limits": [
+        "Reference construction after reading expectations, not a blind score or win-rate measurement",
+        "P2 response sequence and exact checkpoint prerequisites are documented; different legal lines are not automatically failures",
+        "Historical ai_both_seats and human_piza values are unchanged; score.py does not automatically grade reviewed_reference",
+        "C10 has no eligible choice; C11 evaluates main-phase Trajectory, not an unavailable Charm response",
+        "Potential T9 life reduction is 30; actual applied reduction is 18 because the game ends at P2 life zero"
+      ]
+    }
+  },
+  {
+    "seed": 9142,
+    "first": "P2",
+    "opening_hands": {
+      "P1": [
+        "Blazemire Verge",
+        "Swamp",
+        "Wastewood Verge",
+        "Duress",
+        "Lively Dirge",
+        "Obsessive Pursuit",
+        "Witherbloom Charm"
+      ],
+      "P2": [
+        "Botanical Sanctum",
+        "Breeding Pool",
+        "Forest",
+        "Multiversal Passage",
+        "Starting Town",
+        "Oblivious Bookworm",
+        "Mona Lisa, Science Geek"
+      ]
+    },
+    "ai_both_seats": {
+      "winner": "P1",
+      "turn": 15,
+      "concede": "P2",
+      "life": {
+        "P1": 26,
+        "P2": 7
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "winner": "P2",
+      "turn": 13,
+      "concede": "P1",
+      "life": {
+        "P1": 17,
+        "P2": 15
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "reviewed_reference": {
+      "date": "2026-09-15",
+      "mode": "single_ai_shared_hands",
+      "blind": false,
+      "scope": "conditional_line_not_global_optimum",
+      "documentation": "testcases.md#seed-9142-reviewed-reference",
+      "result": {
+        "winner": "P1",
+        "turn": 14,
+        "concede": null,
+        "life": {"P1": 19, "P2": 0},
+        "mulligans": {"P1": 0, "P2": 0}
+      },
+      "checkpoints": [
+        {"turn": 2, "action": "Blazemire Verge; Duress finds only lands and creatures, so no discard; do not judge using unrevealed initial hand"},
+        {"turn": 4, "action": "Draw Starting Town, play Wastewood Verge; Charm kills Bookworm before Cauldron can turn it into a mana creature; Pursuit-first alternative not disproven"},
+        {"turn": 6, "action": "Draw second Duress; Swamp; Duress takes Cauldron (Chrome is a creature); cast Pursuit with remaining BG"},
+        {"turn": 8, "action": "Second Swamp; spend two Swamps on Clue before Freebooter, draw Charm; remaining BG destroys tapped Cauldron rather than Chrome; Talent recovery remains possible"},
+        {"turn": 10, "action": "Starting Town tapped; Clue draws Sackville; Scoundrel makes Treasure, Treasure pays for Freebooter; two sacrifices grow Scoundrel to3/3 without lifelink"},
+        {"turn": 12, "action": "After Freebooter chump and scry, Crypt tapped; Sackville sacrifices Clue, draws land, creates Treasure; three lands and two Treasures pay Dirge both modes; tutor Biotech and return it with Freebooter; Scoundrel6/6 lifelink trades with blocking Bookworm, P1 reaches20"},
+        {"turn": 14, "action": "After second Freebooter chump and scry, draw and play Wastewood Verge; two Clues deal6 and draw Freebooter then Biotech; land RG casts second Biotech before Treasure sacrifice"},
+        {"turn": 14, "action": "Treasure makes B and causes5 life reduction; remaining Crypt B plus Treasure B activate Lander; three sacrifice triggers cause final5, P2 reaches0 before Lander search resolves"}
+      ],
+      "checks": {"C10": "OK", "C11": "OK"},
+      "limits": [
+        "Nonblind reference construction, not a benchmark measurement or proof of a forced win",
+        "C10 and C11 assess target comparison and mana sequencing, not a proof that Cauldron is always the best target; destroying Talent at T8 remains an untested alternative",
+        "P2 rebuilt Cauldron through Talent level2; destroying a Cauldron does not return its exiled cards or remove existing counters, and a new Cauldron does not inherit old exile links",
+        "P2 blocks T12 with Bookworm and misses an untap artifact with T13 Rescue; other P2 attacks, blocks, loot choices and lines were not exhaustively compared",
+        "Scry choices and T12 Dirge shuffle change later draws; exact T14 draw prerequisites must match before grading that lethal sequence",
+        "Six lifelink was explicitly applied after CLI reported it unapplied; command syntax and pending-resolution restrictions caused recorded stops without rewinding gameplay",
+        "Historical values and seed9141 reference remain unchanged; score.py does not automatically grade reviewed_reference",
+        "Retained as a conditional Jund comparison line; reviewed_human_reference is the adopted Pizza play exemplar for seed9142"
+      ]
+    },
+    "preferred_reference": "reviewed_human_reference",
+    "reviewed_human_reference": {
+      "date": "2026-09-15",
+      "mode": "human_piza_ai_jund",
+      "blind": false,
+      "scope": "adopted_piza_play_exemplar_not_global_optimum",
+      "documentation": "testcases.md#seed-9142-human-piza-reference",
+      "measurement_eligible": false,
+      "result": {
+        "winner": "P2",
+        "turn": 14,
+        "concede": "P1",
+        "life": {"P1": 21, "P2": 8},
+        "mulligans": {"P1": 0, "P2": 0}
+      },
+      "checkpoints": [
+        {"turn": 5, "action": "Play Starting Town, not Forest; cast Mona. T7 no land drop or Chrome; T8 Cauldron responds to Charm by exiling Bookworm and countering Mona"},
+        {"turn": 10, "action": "Block attacking Scoundrel with Chrome; Cauldron exiles Redshift and counters Chrome before damage, making it2/4; both creatures survive"},
+        {"turn": 11, "action": "Deploy Bookworm, exile Mona and counter own Mona, reach Talent level3; grow Chrome to5/7 and do not attack"},
+        {"turn": 12, "action": "Block Scoundrel6/6 with Chrome5/7, preserving Bookworm. Jund sacrifices Freebooter rather than Clue to Sackville and scries a land to top, then Dirge shuffles. At end step tap Chrome for G5, cast Rescue, recover milled Island and gain2"},
+        {"turn": 13, "action": "Play Island, put Talent counters on Chrome to8/10, do not attack; Bookworm end-step loot draws Cam and discards Training Compound"},
+        {"turn": 14, "action": "Jund draws different cards and cannot replay previous two-Biotech lethal: two Clues, Sackville sacrificing Lander, and Treasure reduce P2 from20 to8; all Jund lands tapped"},
+        {"turn": 14, "action": "Before attacks, Cam copies with Chrome's Mona-granted U8 generate mana and draw. Use ETB/LTB to tap all five Jund creatures; preserve original Cam and untapped Chrome; Jund does not attack"},
+        {"turn": 14, "action": "At Jund end step, first Cam-copy draw pair finds Pizza and Chrome, leaving U7 and library26. Cast Pizza using Chrome's G8 and copy it once: Chrome12/14, U2 G7; P1 concedes after finite next-turn lethal continuation is verified"}
+      ],
+      "concession_proof": "Not executed: four more Pizza-copy cycles from power12/pool9 yield power20/pool49; Cauldron-granted unused Redshift exhaust costs12 to deploy hand Chrome; spend30 on six Chrome copies. Copies created after this end step began survive until P2 next end step. After temporary buffs expire eight Chromes total71 power; P1 blockers remain tapped and no hand/board response is available before T15 attack. No additional library search or draw is needed to construct the line.",
+      "limits": [
+        "Adopted as a human play exemplar, not a blind benchmark result or proof of globally optimal play",
+        "A draw-until-Pizza stop-check failure executed thirteen excess rounds; native undo restored429 saves to the first pair (Pizza93, Chrome94), hand12/library26/U7. Excess revealed library information cannot be unlearned",
+        "Pre-error attack prevention and Cam engine are observed play; post-error Pizza continuation is a nonblind legal-line demonstration",
+        "T14 is concession time; hypothetical combat lethal is T15. Further loop iterations, exhaust, Chrome copies and attacks were not actually executed",
+        "Different land plays, blocks, scry decisions and pre-Dirge library contents change later draws even with the same seed; do not substitute the previous reference's T14 draw sequence",
+        "Historical ai_both_seats, human_piza and reviewed_reference result values remain intact; score.py does not consume preferred_reference or reviewed_human_reference"
+      ]
+    }
+  },
+  {
+    "seed": 9143,
+    "first": "P1",
+    "opening_hands": {
+      "P1": [
+        "Blood Crypt",
+        "Blood Crypt",
+        "Duress",
+        "Greedy Freebooter",
+        "Tragic Trajectory",
+        "Umbral Collar Zealot",
+        "Rottenmouth Viper"
+      ],
+      "P2": [
+        "Breeding Pool",
+        "Spirebluff Canal",
+        "Patchwork Beastie",
+        "Rapid Rescue",
+        "Redshift, Rocketeer Chief",
+        "Redshift, Rocketeer Chief",
+        "Mona Lisa, Science Geek"
+      ]
+    },
+    "ai_both_seats": {
+      "winner": "P1",
+      "turn": 14,
+      "concede": "P2",
+      "life": {
+        "P1": 14,
+        "P2": 5
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 1
+      }
+    },
+    "human_piza": {
+      "winner": "P2",
+      "turn": 10,
+      "concede": "P1",
+      "life": {
+        "P1": 22,
+        "P2": 101
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  },
+  {
+    "seed": 9144,
+    "first": "P2",
+    "opening_hands": {
+      "P1": [
+        "Blood Crypt",
+        "Forest",
+        "Swamp",
+        "Wastewood Verge",
+        "Wastewood Verge",
+        "The Sackville-Bagginses",
+        "Witherbloom Charm"
+      ],
+      "P2": [
+        "Forest",
+        "Starting Town",
+        "Starting Town",
+        "Guac & Marshmallow Pizza",
+        "Sewer-veillance Cam",
+        "Sewer-veillance Cam",
+        "Oblivious Bookworm"
+      ]
+    },
+    "ai_both_seats": {
+      "winner": "P2",
+      "turn": 19,
+      "concede": null,
+      "life": {
+        "P1": -6,
+        "P2": 8
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "winner": "P2",
+      "turn": 7,
+      "concede": null,
+      "life": {
+        "P1": -1,
+        "P2": 19
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  },
+  {
+    "seed": 9145,
+    "first": "P1",
+    "opening_hands": {
+      "P1": [
+        "Blazemire Verge",
+        "Stomping Ground",
+        "The Sackville-Bagginses",
+        "Witherbloom Charm",
+        "Biotech Specialist",
+        "Mutagen Man, Living Ooze",
+        "Rottenmouth Viper"
+      ],
+      "P2": [
+        "Botanical Sanctum",
+        "Breeding Pool",
+        "Patchwork Beastie",
+        "Sewer-veillance Cam",
+        "Courier of Comestibles",
+        "Oblivious Bookworm",
+        "Redshift, Rocketeer Chief"
+      ]
+    },
+    "ai_both_seats": {
+      "winner": "P1",
+      "turn": 15,
+      "concede": null,
+      "life": {
+        "P1": 17,
+        "P2": -8
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    },
+    "human_piza": {
+      "winner": "P2",
+      "turn": 8,
+      "concede": null,
+      "life": {
+        "P1": -2,
+        "P2": 18
+      },
+      "mulligans": {
+        "P1": 0,
+        "P2": 0
+      }
+    }
+  }
+]
