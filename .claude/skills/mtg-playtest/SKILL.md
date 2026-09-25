@@ -22,7 +22,7 @@ description: >-
 
 - **AI同士・自動シミュレート**：進行は [references/ai-vs-ai.md](references/ai-vs-ai.md) を読む。単一AIで両席を操作する軽量方式が既定。手札情報の影響はある程度許容し、席分離や検証サブエージェントは使わない。
 - **対人戦・盤面ジャッジ**：[references/play-modes.md](references/play-modes.md) の該当モードと必要箇所を読む。対人戦ではユーザーのマリガンと選択可能な優先権で止める。AIの手札は伏せる。
-- **一人回し・ゴールドフィッシュ（相手が何もしない前提のリーサルターン測定）**：[references/goldfish.md](references/goldfish.md) を読む。山札順は公開するが判断には使わず、乱数・相手ターンの確認・リーサルまで1バッチで進める。
+- **一人回し・ゴールドフィッシュ（相手が何もしない前提のリーサルターン測定）**：[references/goldfish.md](references/goldfish.md) を読む。山札順は公開するが判断には使わず、乱数・相手ターンの確認・リーサルまで1バッチで進める。サブエージェントに分けず、メインで1ゲームずつ回す。
 - **席分離を明示指定された場合のみ**：[references/ai-vs-ai-isolated.md](references/ai-vs-ai-isolated.md)。
 - **実行中の記録**：[references/log-format.md](references/log-format.md) を開始時に一度読む。保存版の書式は決着後に [references/report-format.md](references/report-format.md) を読む。
 - **新規対局の保存先を作るとき**：[references/storage-layout.md](references/storage-layout.md) の命名・採番・ファイル配置に従う。

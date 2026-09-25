@@ -4,13 +4,14 @@
 
 
 Deck
-1 Patchwork Beastie
-1 Spectral Sailor
 4 Chrome Dome
-1 Courier of Comestibles
-3 Oblivious Bookworm
 4 Redshift, Rocketeer Chief
 4 Mona Lisa, Science Geek
+2 Oblivious Bookworm
+1 Patchwork Beastie
+1 Spectral Sailor
+1 Courier of Comestibles
+1 Charming Scoundrel
 
 4 Guac & Marshmallow Pizza
 4 Rapid Rescue
@@ -19,14 +20,14 @@ Deck
 3 Does Machines
 1 Nature's Rhythm
 
-1 Ba Sing Se
 4 Botanical Sanctum
+4 Starting Town
 3 Breeding Pool
 3 Forest
+2 Spirebluff Canal
+1 Ba Sing Se
 1 Island
 1 Multiversal Passage
-2 Spirebluff Canal
-4 Starting Town
 1 Steam Vents
 1 Stomping Ground
 1 Training Compound

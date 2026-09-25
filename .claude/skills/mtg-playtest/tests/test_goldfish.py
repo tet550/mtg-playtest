@@ -177,6 +177,60 @@ class GoldfishTests(unittest.TestCase):
         self.assertEqual(st["players"]["P2"]["name"], "goldfish")
         self.assertEqual((st["goldfish"], st["reveal"], st["turn_history"]), (True, 7, False))
 
+    def fake_deck(self):
+        deck = {"legal": True, "name": "d", "main": [{"name": "Old", "count": 4}, {"name": "Filler", "count": 36}]}
+        return (patch.object(mtg.decks, "resolve_source", return_value=deck),
+                patch.object(mtg, "canonical_name", side_effect=lambda n: n),
+                patch.object(mtg.cardcache, "load", side_effect=lambda d, n, **_: {"name": n, "key": n, "types": ["Creature"]}))
+
+    def library_names(self, path):
+        st = json.loads(path.read_text(encoding="utf-8"))
+        return [st["objects"][str(o)]["name"] for o in st["zones"]["P1:library"]], st
+
+    def test_swap_keeps_every_other_card_in_place_for_the_same_seed(self):
+        a, b, c = self.fake_deck()
+        base, alt = self.root / "base.json", self.root / "alt.json"
+        with a, b, c, contextlib.redirect_stdout(io.StringIO()):
+            mtg.dispatch(["--state", str(base), "--offline", "init", "--goldfish", "--deck1", "d", "--seed", "5"])
+            mtg.dispatch(["--state", str(alt), "--offline", "init", "--goldfish", "--deck1", "d", "--seed", "5",
+                          "--swap", "Old=New", "--swap", "Old=New"])
+        (nb, sb), (na, sa) = self.library_names(base), self.library_names(alt)
+        self.assertEqual(sb["zones"]["P1:library"], sa["zones"]["P1:library"])
+        changed = [(x, y) for x, y in zip(nb, na) if x != y]
+        self.assertEqual(changed, [("Old", "New"), ("Old", "New")])
+        self.assertEqual((na.count("Old"), na.count("New")), (2, 2))
+        self.assertEqual(sa["players"]["P1"]["swaps"], ["Old→New", "Old→New"])
+        with self.assertRaises(SystemExit):
+            mtg.goldfish.apply_swaps(["Old"], [("Old", "New"), ("Old", "New")], lambda n: n)
+
+    def test_seeds_finds_opening_hands_with_the_swapped_slot(self):
+        names = ["Old"] * 4 + ["Filler"] * 36
+        swapped, slots, _ = mtg.goldfish.apply_swaps(names, [("Old", "New")], lambda n: n)
+        a, b, c = self.fake_deck()
+        with a, b, c:
+            out = self.call("seeds", "--deck1", "d", "--swap", "Old=New", "--count", "3")
+        seeds = [int(x) for x in out.split("seeds: ")[1].splitlines()[0].split()]
+        self.assertEqual(len(seeds), 3)
+        for seed in seeds:
+            self.assertTrue(mtg.goldfish.seed_hits(swapped, slots, seed, 7))
+        skipped = [s for s in range(1, seeds[-1]) if s not in seeds]
+        self.assertFalse(any(mtg.goldfish.seed_hits(swapped, slots, s, 7) for s in skipped))
+
+    def test_stats_pair_compares_the_same_seed_and_side(self):
+        rows = [("base", 1, 4), ("base", 2, 5), ("base", 3, None), ("alt", 1, 3), ("alt", 2, 5),
+                ("alt", 3, 6), ("alt", 4, 4)]
+        (self.root / "results.jsonl").write_text("".join(
+            json.dumps({"tag": t, "seed": s, "turn": 9, "goldfish": {"deck": "d", "on": "play", "lethal_turn": v,
+                        **({"swap": ["Old→New"]} if t == "alt" else {})}}) + "\n" for t, s, v in rows),
+            encoding="utf-8")
+        out = self.call("stats", "--pair", "base", "alt")
+        self.assertIn("3組", out)
+        self.assertIn("入れ替え: Old→New", out)
+        self.assertIn("平均差 -0.50", out)
+        self.assertIn("速い 1・同じ 1・遅い 0", out)
+        self.assertIn("リーサルなしを含む組 1", out)
+        self.assertIn("相手のいない記録 1件", out)
+
     def test_reveal_option_is_goldfish_only_and_positive(self):
         with self.assertRaises(SystemExit) as caught:
             self.call("init", "--seed", "1", "--reveal", "8")

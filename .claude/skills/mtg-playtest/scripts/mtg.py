@@ -266,6 +266,47 @@ def new_object(oid, name, owner):
 # ---------------------------------------------------------------- commands
 
 
+def canonical_name(name):
+    """英語名・日本語名・表記揺れを、キャッシュの英語の正規名にする（未取得なら取得）。"""
+    rec, _ = cardcache.get(name, _CTX["dir"], offline=_CTX["offline"])
+    if not rec or rec.get("unresolved") or not rec.get("name"):
+        sys.exit("カード名として解決できません: %s" % name)
+    return rec["name"]
+
+
+def cmd_seeds(args, _):
+    """入れ替える枠（または指定カード）が山札の上 within 枚に入る seed を探す。対局は作らない。"""
+    d = decks.resolve_source(args.deck1, args.decks_dir, _CTX["dir"], _CTX["offline"])
+    names = decks.card_names(d)
+    if bool(args.swap) == bool(args.card):
+        sys.exit("--swap か --card のどちらか一方を指定してください。")
+    if args.swap:
+        names, slots, labels = goldfish.apply_swaps(
+            names, [goldfish.parse_swap(x) for x in args.swap], canonical_name)
+        what = "入れ替え枠（%s）" % " / ".join(labels)
+    else:
+        key = canonical_name(args.card).casefold()
+        slots = [i for i, n in enumerate(names) if n.casefold() == key]
+        if not slots:
+            sys.exit("「%s」はデッキにありません。" % args.card)
+        what = "%s（%d枚）" % (args.card, len(slots))
+    within = args.within if args.by_turn is None else 7 + args.by_turn - (1 if args.first == "P1" else 0)
+    print("%s が山札の上%d枚（%s）に入る seed:" % (
+        what, within, "初手" if within == 7 else "%sの自ターン%dまでに引く範囲" % (
+            "先手" if args.first == "P1" else "後手", args.by_turn) if args.by_turn else "上%d枚" % within))
+    found, seed = [], args.start
+    while len(found) < args.count and seed < args.start + args.limit:
+        hits = goldfish.seed_hits(names, slots, seed, within)
+        if hits:
+            found.append(seed)
+            print("  seed %d: 上から%s枚目" % (seed, "・".join(map(str, hits))))
+        seed += 1
+    if len(found) < args.count:
+        print("!! %d件しか見つかりません（seed %d〜%d を確認）" % (len(found), args.start, seed - 1))
+    print("seeds: " + " ".join(map(str, found)))
+    print("→ マリガンすると初手は変わる。基準と入れ替えで同じ seed・同じ --first を使う。")
+
+
 def cmd_init(args, _):
     # 先手はゲーム2以降で切り替わる（直前のゲームの敗者が選ぶ）ので指定できるようにする。
     # ゲーム1の先手はダイス／コインで決めるが、`coin` は状態ファイルが要るので
@@ -278,8 +319,8 @@ def cmd_init(args, _):
             sys.exit("--reveal は1以上を指定してください（公開行を消すなら show --no-reveal）。")
         if args.p2 == "P2":
             args.p2 = "goldfish"
-    elif args.reveal != goldfish.REVEAL or args.turn_history:
-        sys.exit("--reveal / --turn-history は --goldfish 専用です。")
+    elif args.reveal != goldfish.REVEAL or args.turn_history or args.swap:
+        sys.exit("--reveal / --turn-history / --swap は --goldfish 専用です。")
     first = args.first
     if first == "random":
         first = random.Random("%s:first" % args.seed).choice(["P1", "P2"])
@@ -315,6 +356,17 @@ def cmd_init(args, _):
             st["players"][pid]["deck"] = as_name or d["name"]
             st["players"][pid]["deck_source"] = deck
             names = decks.card_names(d)
+            if pid == goldfish.SEAT and args.swap:
+                # シャッフル前の同じ枠を差し替える。並べ替えは枚数とseedだけで決まるので、
+                # 同じseedの基準デッキと比べると新カードが旧カードと同じ位置に来る。
+                names, _, labels = goldfish.apply_swaps(
+                    names, [goldfish.parse_swap(x) for x in args.swap], canonical_name)
+                st["players"][pid]["swaps"] = labels
+                print("入れ替え: %s（シャッフル前の同じ枠）" % " / ".join(labels))
+                over = sorted(n for n in set(names) if names.count(n) > 4
+                              and "basic" not in [t.lower() for t in card(st, n).get("supertypes", [])])
+                if over:
+                    print("!! 入れ替え後に5枚以上: %s" % ", ".join(over))
             cache_names.update(names)
             cache_names.update(e["name"] for e in d.get("sideboard", []) if e["count"] > 0)
         random.Random("%s:deck:%s" % (args.seed, pid)).shuffle(names)
@@ -2474,6 +2526,10 @@ def cmd_stats(args, _):
                  "（結果は状態ファイルと同じディレクトリに貯まります。"
                  "別の場所を見るなら --results で指定してください）" % path)
     recs = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if args.pair:
+        base, alt = ([r for r in recs if goldfish.is_record(r) and r.get("tag") == t] for t in args.pair)
+        print(chr(10).join(goldfish.render_pair(args.pair[0], base, args.pair[1], alt)))
+        return
     if args.tag:
         recs = [r for r in recs if r.get("tag") == args.tag]
     if args.deck:
@@ -2561,6 +2617,9 @@ def build_parser():
     s.add_argument("--reveal", type=int, default=goldfish.REVEAL, metavar="N",
                    help="--goldfish の show・バッチ停止時に公開する山札上の枚数（既定%d）。"
                         "1ターンに掘る枚数が多いデッキは増やす" % goldfish.REVEAL)
+    s.add_argument("--swap", action="append", metavar="旧=新",
+                   help="--goldfish のP1で、シャッフル前の旧カード1枚の枠を新カードにする（繰り返しで複数枚）。"
+                        "同じseedの基準デッキと山札順が一致する")
     s.add_argument("--turn-history", action="store_true",
                    help="--goldfish でも人向けターン開始履歴を残す（対戦では常に残す）")
     s.add_argument("--first", choices=["P1", "P2", "random"], default="P1",
@@ -2826,11 +2885,23 @@ def build_parser():
     s.add_argument("--reason")
     s.add_argument("--tag", help="集計の単位にする札。同じマッチの連戦に同じ名前を付ける"
                                  "（サイド後を別名で登録していても1つにまとまる）")
+    s = sub.add_parser("seeds", help="入れ替え枠や指定カードが初手に入るseedを探す（対局は作らない）")
+    s.add_argument("--deck1", required=True, help="登録名 または デッキリストのファイルパス")
+    s.add_argument("--swap", action="append", metavar="旧=新", help="init --swap と同じ指定。入れ替え枠を対象にする")
+    s.add_argument("--card", help="このカードのいずれかが入る seed（入れ替えなし）")
+    s.add_argument("--within", type=int, default=7, help="山札の上から何枚以内（既定7＝初手）")
+    s.add_argument("--by-turn", type=int, help="その自ターンまでに引く範囲で探す（--withinの代わり）")
+    s.add_argument("--first", choices=["P1", "P2"], default="P1", help="--by-turn の先後（既定P1）")
+    s.add_argument("--count", type=int, default=10, help="見つける件数（既定10）")
+    s.add_argument("--start", type=int, default=1, help="最初のseed（既定1）")
+    s.add_argument("--limit", type=int, default=10000, help="調べるseedの上限数")
     s = sub.add_parser("stats", help="results.jsonl を集計")
     s.add_argument("--tag", help="この札のゲームだけ集計する")
     s.add_argument("--deck", help="このデッキが関わったゲームだけ集計する")
     s.add_argument("--all-in-one", action="store_true",
                    help="マッチアップで分けずに1つにまとめる（意味を持つときだけ使う）")
+    s.add_argument("--pair", nargs=2, metavar=("基準タグ", "比較タグ"),
+                   help="ゴールドフィッシュの2つのタグを同じseed・先後どうしで並べ、自ターンの差を集計する")
     s = sub.add_parser("glossary", help="日英対応表を出す")
     s.add_argument("--deck", help="対局中でないときに対象デッキを指定")
     s.add_argument("--out", help="ファイルにも書き出す")
@@ -3174,7 +3245,7 @@ def command_handlers():
         "attach": cmd_attach, "grant": cmd_grant, "pcounter": cmd_pcounter, "level": cmd_level, "effect": cmd_effect,
         "attack": cmd_attack, "block": cmd_block, "combat": cmd_combat,
         "pass": cmd_pass, "end": cmd_end, "concede": cmd_concede,
-        "stats": cmd_stats, "deck": cmd_deck,
+        "stats": cmd_stats, "deck": cmd_deck, "seeds": cmd_seeds,
         "glossary": cmd_glossary,
         "fx": lambda a, s: relations.cmd_fx(sys.modules[__name__], a, s),
         "linked": lambda a, s: relations.cmd_linked(sys.modules[__name__], a, s),
@@ -3198,7 +3269,7 @@ def dispatch(argv, *, batch_label=None, event_context=False):
         run_batch(args)
         return
     readonly = {"show", "hand", "zone", "view", "sba", "log", "init", "undo",
-                "look", "stats", "deck", "glossary"}
+                "look", "stats", "deck", "glossary", "seeds"}
     if args.cmd == "sba" and (getattr(args, "apply", False)
                               or getattr(args, "apply_deaths", False)):
         readonly.discard("sba")     # 片付けをするときだけ書き戻す
@@ -3211,7 +3282,7 @@ def dispatch(argv, *, batch_label=None, event_context=False):
     if args.cmd == "mana" and args.op == "list":
         readonly.add("mana")
     # card はカード情報の管理なので、対局が始まっていなくても使える。
-    stateless = {"init", "undo", "stats", "deck"}
+    stateless = {"init", "undo", "stats", "deck", "seeds"}
     # roll / coin / pick は先手決めのように対局前にも要る。状態ファイルがあれば
     # 従来どおり seed+連番でログに残し、無ければ --seed から振る。
     if args.cmd in ("card", "glossary", "roll", "coin", "pick"):

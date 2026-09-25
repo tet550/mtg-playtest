@@ -1,43 +1,10 @@
 {
- "created_at": "2026-09-10T07:34:23Z",
- "description": "ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ",
+ "created_at": "2026-09-24T06:29:47Z",
+ "description": "",
  "format": "standard",
  "key": "piza",
  "legal": true,
  "main": [
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 1,
-   "mana_value": 1,
-   "name": "Patchwork Beastie",
-   "oracle_id": "6cf995e9-115a-4659-bace-9fbe75898b48",
-   "printed": "継ぎ接ぎのけだもの",
-   "source_name": "Patchwork Beastie",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Artifact",
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "U"
-   ],
-   "count": 1,
-   "mana_value": 1,
-   "name": "Spectral Sailor",
-   "oracle_id": "a8fdbcdf-479d-4582-9ad5-9fbd4c740c29",
-   "printed": "幽体の船乗り",
-   "source_name": "Spectral Sailor",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Creature"
-   ]
-  },
   {
    "colors": [],
    "count": 4,
@@ -50,39 +17,6 @@
    "supertypes": [],
    "types": [
     "Artifact",
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "G"
-   ],
-   "count": 1,
-   "mana_value": 2,
-   "name": "Courier of Comestibles",
-   "oracle_id": "049d8b06-db90-4b9c-8195-d987b3ef1005",
-   "printed": "食料配達人",
-   "source_name": "Courier of Comestibles",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Creature"
-   ]
-  },
-  {
-   "colors": [
-    "G",
-    "U"
-   ],
-   "count": 3,
-   "mana_value": 2,
-   "name": "Oblivious Bookworm",
-   "oracle_id": "300fd0a2-23e6-4da9-bfaa-ad626097d5b5",
-   "printed": "不注意な読書家",
-   "source_name": "Oblivious Bookworm",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
     "Creature"
    ]
   },
@@ -119,6 +53,88 @@
    "supertypes": [
     "Legendary"
    ],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G",
+    "U"
+   ],
+   "count": 2,
+   "mana_value": 2,
+   "name": "Oblivious Bookworm",
+   "oracle_id": "300fd0a2-23e6-4da9-bfaa-ad626097d5b5",
+   "printed": "不注意な読書家",
+   "source_name": "Oblivious Bookworm",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Patchwork Beastie",
+   "oracle_id": "6cf995e9-115a-4659-bace-9fbe75898b48",
+   "printed": "継ぎ接ぎのけだもの",
+   "source_name": "Patchwork Beastie",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Artifact",
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "U"
+   ],
+   "count": 1,
+   "mana_value": 1,
+   "name": "Spectral Sailor",
+   "oracle_id": "a8fdbcdf-479d-4582-9ad5-9fbd4c740c29",
+   "printed": "幽体の船乗り",
+   "source_name": "Spectral Sailor",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "G"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Courier of Comestibles",
+   "oracle_id": "049d8b06-db90-4b9c-8195-d987b3ef1005",
+   "printed": "食料配達人",
+   "source_name": "Courier of Comestibles",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Creature"
+   ]
+  },
+  {
+   "colors": [
+    "R"
+   ],
+   "count": 1,
+   "mana_value": 2,
+   "name": "Charming Scoundrel",
+   "oracle_id": "9eec304d-ffcb-4287-b877-280ac1e4f496",
+   "printed": null,
+   "source_name": "Charming Scoundrel",
+   "status": "ok",
+   "supertypes": [],
    "types": [
     "Creature"
    ]
@@ -221,12 +237,12 @@
   },
   {
    "colors": [],
-   "count": 1,
+   "count": 4,
    "mana_value": 0,
-   "name": "Ba Sing Se",
-   "oracle_id": "de1ae205-ca5b-4d26-8194-ca85f1406e53",
-   "printed": "バーシンセー",
-   "source_name": "Ba Sing Se",
+   "name": "Botanical Sanctum",
+   "oracle_id": "88f8f683-738e-48f3-afff-c8f73f1033a2",
+   "printed": "植物の聖域",
+   "source_name": "Botanical Sanctum",
    "status": "ok",
    "supertypes": [],
    "types": [
@@ -237,10 +253,10 @@
    "colors": [],
    "count": 4,
    "mana_value": 0,
-   "name": "Botanical Sanctum",
-   "oracle_id": "88f8f683-738e-48f3-afff-c8f73f1033a2",
-   "printed": "植物の聖域",
-   "source_name": "Botanical Sanctum",
+   "name": "Starting Town",
+   "oracle_id": "d04e0975-f401-41b8-a9db-9bcf9cbbce66",
+   "printed": "始まりの町",
+   "source_name": "Starting Town",
    "status": "ok",
    "supertypes": [],
    "types": [
@@ -279,6 +295,34 @@
   },
   {
    "colors": [],
+   "count": 2,
+   "mana_value": 0,
+   "name": "Spirebluff Canal",
+   "oracle_id": "eb0d8093-5f93-4b25-9384-08f9731bfb28",
+   "printed": "尖塔断の運河",
+   "source_name": "Spirebluff Canal",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
+   "count": 1,
+   "mana_value": 0,
+   "name": "Ba Sing Se",
+   "oracle_id": "de1ae205-ca5b-4d26-8194-ca85f1406e53",
+   "printed": "バーシンセー",
+   "source_name": "Ba Sing Se",
+   "status": "ok",
+   "supertypes": [],
+   "types": [
+    "Land"
+   ]
+  },
+  {
+   "colors": [],
    "count": 1,
    "mana_value": 0,
    "name": "Island",
@@ -301,34 +345,6 @@
    "oracle_id": "17770eeb-ecbf-4510-af2d-acececfbe146",
    "printed": "マルチバースへの通り道",
    "source_name": "Multiversal Passage",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Land"
-   ]
-  },
-  {
-   "colors": [],
-   "count": 2,
-   "mana_value": 0,
-   "name": "Spirebluff Canal",
-   "oracle_id": "eb0d8093-5f93-4b25-9384-08f9731bfb28",
-   "printed": "尖塔断の運河",
-   "source_name": "Spirebluff Canal",
-   "status": "ok",
-   "supertypes": [],
-   "types": [
-    "Land"
-   ]
-  },
-  {
-   "colors": [],
-   "count": 4,
-   "mana_value": 0,
-   "name": "Starting Town",
-   "oracle_id": "d04e0975-f401-41b8-a9db-9bcf9cbbce66",
-   "printed": "始まりの町",
-   "source_name": "Starting Town",
    "status": "ok",
    "supertypes": [],
    "types": [
@@ -498,7 +514,7 @@
  ],
  "sideboard_total": 15,
  "source_file": "decklists/piza.txt",
- "source_text": "# piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）\n# 方針: decklists/strategy/piza.md\n\n\n\nDeck\n1 Patchwork Beastie\n1 Spectral Sailor\n4 Chrome Dome\n1 Courier of Comestibles\n3 Oblivious Bookworm\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n\n4 Guac & Marshmallow Pizza\n4 Rapid Rescue\n4 Sewer-veillance Cam\n4 Agatha's Soul Cauldron\n3 Does Machines\n1 Nature's Rhythm\n\n1 Ba Sing Se\n4 Botanical Sanctum\n3 Breeding Pool\n3 Forest\n1 Island\n1 Multiversal Passage\n2 Spirebluff Canal\n4 Starting Town\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Annul\n2 Fire Magic\n3 Into the Flood Maw\n3 Snakeskin Veil\n2 Spell Pierce\n2 Flashfreeze\n2 Heritage Reclamation\n",
- "updated_at": "2026-09-10T07:34:30Z",
+ "source_text": "# piza — ワカモレとマシュマロのピザ ＋ アガサの魂の大釜のコンボ（スタンダード）\n# 方針: decklists/strategy/piza.md\n\n\n\nDeck\n4 Chrome Dome\n4 Redshift, Rocketeer Chief\n4 Mona Lisa, Science Geek\n2 Oblivious Bookworm\n1 Patchwork Beastie\n1 Spectral Sailor\n1 Courier of Comestibles\n1 Charming Scoundrel\n\n4 Guac & Marshmallow Pizza\n4 Rapid Rescue\n4 Sewer-veillance Cam\n4 Agatha's Soul Cauldron\n3 Does Machines\n1 Nature's Rhythm\n\n4 Botanical Sanctum\n4 Starting Town\n3 Breeding Pool\n3 Forest\n2 Spirebluff Canal\n1 Ba Sing Se\n1 Island\n1 Multiversal Passage\n1 Steam Vents\n1 Stomping Ground\n1 Training Compound\n\nSideboard\n1 Annul\n2 Fire Magic\n3 Into the Flood Maw\n3 Snakeskin Veil\n2 Spell Pierce\n2 Flashfreeze\n2 Heritage Reclamation\n",
+ "updated_at": "2026-09-24T06:29:52Z",
  "warnings": []
 }

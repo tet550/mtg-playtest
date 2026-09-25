@@ -21,6 +21,7 @@
 | OID中心の盤面表示 | `show --ids --hand both`（手札共有時）。カード名を省略し盤面の状態を保持。手札の見出しは`手札(N):`、`--ids`時の手札は`[oid]`のみ（コスト・タイプ・列見出しを省略）。初手・再開・対応確認には`show --hand both`。`--packed`で手札を3枚ずつ表示（名前付き表示ではコスト・タイプ・P/Tを保持）。`--flat`・`--next-oid`・`run --compact --delta`と併用可。能力の説明と裁定メモは省略しない |
 | 人向けターン開始履歴 | `init --deck1 piza --deck2 boros-dwarves --seed 101 --history-hand both`。`output/<state名>/turn-starts.md`へ名前付きshowを自動追記（保存先は`init`時に一度だけ表示し、ターンごとには出さない。ゴールドフィッシュは`--turn-history`指定時だけ記録）。手札の既定はnone、P1/P2/bothを指定可。初回はT1のアンタップ・ステップを初めて進める直前（初手・マリガン後）、以降はturn進行のアンタップ後・ドロー前。成功した操作だけ記録し、undoは訂正を追記する。対人・席分離はnoneまたは自分の席だけを選ぶ |
 | 一人回し（ゴールドフィッシュ） | `init --goldfish --deck1 <登録名> --seed 101 --first P1`（測定は先手のみ。後手は比較を依頼されたときだけ同じseedで`--first P2`）。`--deck2`は指定不可。P2は名前`goldfish`・ライブラリーなしの何もしない相手。`turn next`は相手ターンを省略する（P1側に相手ターンの誘発・両席/P2向けの予約や`remind --on turn`・次の終了ステップの帰還があればP2のアンタップで停止）。`show`の見出しに`（自ターンN・先手）`、末尾に山札上N枚の公開行（`init --reveal N`で枚数指定、既定5・1以上。`show --no-reveal`で省略。`--reveal`／`--turn-history`は`--goldfish`専用）。`zone P1:library`で山札全体を上から表示。`run`は乱数を使った行・相手ターンでの停止の直後に止まり、リーサル到達後は`end`/`note`/`show`等だけ実行する。`end --winner P1`はリーサル未到達なら記録せず停止、打ち切りは`end --draw`。手順は[goldfish.md](goldfish.md) |
+| カード入れ替えの対照比較 | `seeds --deck1 <登録名> --swap "旧=新" --count 10`（入れ替え枠が初手＝上7枚に入るseedを列挙。`--within K`で上K枚、`--by-turn T`で自ターンTまでに引く範囲（`--first`で先後）。`--card 名前`は入れ替えなしでそのカードのいずれか。`--swap`と`--card`はどちらか一方）→ 同じseedで`init --goldfish ...`（`end --tag A`で記録）と`init --goldfish ... --swap "旧=新"`（`end --tag B`）（`--swap`はgoldfish専用。シャッフル前の旧カード1枚の枠を差し替えるので同じseedなら山札順・OIDが一致。2枚は2回書く）→ `stats --pair A B`（同じseed・先後の組ごとの自ターンと差、平均差・速い/同じ/遅い）。手順は[goldfish.md](goldfish.md#カード入れ替えの比較) |
 | 登録デッキのメイン確認 | `deck show boros-tokens --brief` |
 
 ## 手札と探索
@@ -53,6 +54,7 @@
 | 処理待ちの一覧 | `pending list`／`pending list --all`（linkedの帰還も参照表示。重複登録しない） |
 | 台帳の能力を解決 | 応答確認後 `pending resolve T1 --file <実ファイル> --part bonus`、または1〜2行なら `pending resolve T1 --do "counter 3 +1/+1 1" --part bonus`（`--do` は繰り返し可。`--file` とは併用不可。成功時に連番`.mtg`へ自動保存）（効果と完了を一括保存。結果を見て続けるなら `--pause`、続きは別part。手順は [bookkeeping.md](bookkeeping.md)）。**解決用ファイル・`--do`内に`sba`や`card set`は書けない**（「解決用ファイルで使用できないコマンドです」で区間未適用のまま停止）。タイプ変更を含む効果は許可された操作を解決し、直後に優先権・SBAを挟まず`card set --oid <oid> ...`で残りを記帳する。すべての効果の記帳後に、格闘などの死亡確認を別途`sba --apply-deaths`で行う |
 | 台帳の能力を取消し | `pending cancel T1 --reason "打ち消し"`（理由必須。解決途中はundoで戻す）。取消済みIDは再利用不可。新しい処理はaddで登録し、バッチでは下記`--label`で参照する。取消しの訂正は保存単位を確認してundo |
+| ドロー後のディスカード | `pending resolve T1 --do "draw P1 1" --part draw --pause` → `pending resolve T1 --do "move <oid> graveyard" --part discard`。ドロー等は各解決区間の最後に置く。ゴールドフィッシュでも必須だが、公開順から結果が確定する場合は両行を同じrunに書ける（判断に先読みを使わない） |
 | 確認メモ | `remind add "果敢を確認" --on cast --player P1 --src <oid>`（on必須：cast/enter/turn。player・src省略可。自動誘発なし）／`remind list`／`remind remove R1` |
 | 能力をスタックへ | `stack push "説明" --ability --controller P1 --src <発生源oid> --ability-key etb --targets <oidまたはP2>`（発生源の世代を保存） |
 | 両者パスの短縮 | バッチ内の `pass-both P1`（P1→P2）／`pass-both P2`（P2→P1）。席制限なし専用。AIが両席の応答なしを確認してから指定。証跡・保存は既存pass2行のまま |
@@ -117,7 +119,7 @@
 | 報告草稿 | `python .claude/skills/mtg-playtest/scripts/report_draft.py playtest/<対局> --game g01 --seed 123`。`report-draft.md`を新規作成。`--out`は同じ対局フォルダ直下の未使用パスのみで、**カレントディレクトリ基準**（例：`--out playtest/<対局>/report.md`。プロジェクト直下での`--out report.md`は不可）。明示的なevent・結果・現在のログを照合し、undo/init入り証跡や不整合は停止。裁定・所見・キープ枚数は記入後check_reportで検査 |
 | トークンのoid | 採番は生成時の出力（`トークン生成: 英雄(125)`）でしか分からない。生成結果で判断が変わる場合は**生成行の直後でバッチを区切り**、oidを読んでから`attach`／`fx add`／`stack push --src`を書く（推測すると`oid ... は存在しません`で停止する）。生成1個で後続操作が確定している場合は上記`--label`を使える |
 | 可変収支のピザ反復 | 1周検証後だけ [pizza-recipe.md](pizza-recipe.md) を読む。現行生成器の末尾は手札なしの`show`なので、軽量方式では生成ファイル末尾を実行前に`show --hand both`へ変更する（対人・席分離には適用しない）。生成器は誘発を旧式のstack操作で記帳し、pending台帳と発生源参照は作らない |
-| 結果の集計 | `stats --tag T`（`--deck 登録名`で絞り込み可）。ゴールドフィッシュの記録は対戦と混ぜず別表：自ターン単位の平均・中央値・最速・最遅・リーサルなし件数、ターン別件数と累計%、先手／後手別、マリガン平均 |
+| 結果の集計 | `stats --tag T`（`--deck 登録名`で絞り込み可。`--pair 基準タグ 比較タグ`でゴールドフィッシュの対照比較）。ゴールドフィッシュの記録は対戦と混ぜず別表：自ターン単位の平均・中央値・最速・最遅・リーサルなし件数、ターン別件数と累計%、先手／後手別、マリガン平均 |
 | 決着後の消化ターンを畳む | `concede P2 --reason "勝ち手順・アウト枚数・間に合わない根拠" --tag T`（[投了条件](concede.md)を先に確認） |
 
 ## フェイズと再現性
