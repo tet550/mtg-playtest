@@ -4,7 +4,7 @@
 登録簿は決め打ちの手編集をせず、テキストを直してから登録し直す。
 
 ```bash
-python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --name piza --description "..."
+python .claude/skills/mtg-playtest/scripts/decks.py add decklists/piza.txt --name piza --description "..."
 ```
 
 ## ここに置くもの / 置かないもの
@@ -12,8 +12,8 @@ python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --
 **`decklists/` と `decks/` が持つのは素の構築（G1で使う75枚）だけ。**
 サイド後の構成はマッチごとの記録なので登録しない。計画は方針文書
 （`strategy/<登録名>.md` の「サイドボード」節）、実際に使った60枚は
-`playtest/<対局フォルダ>/g02-<略称>.txt`（規定は
-[`references/storage-layout.md`](../.claude/skills/mtg-playtest/references/storage-layout.md)）。
+`playtest/<対局フォルダ>/g02-<略称>.txt`（保存先は
+[スキルの始め方](../.claude/skills/mtg-playtest/SKILL.md#始め方)）。
 
 マッチアップごとに登録を増やすと、同じ物理デッキが `stats` で別デッキとして数えられ、
 2ゲームのマッチが「4デッキ・各50%」になって勝率が読めなくなる。
@@ -25,9 +25,7 @@ python .claude/skills/mtg-playtest/scripts/mtg.py deck add decklists/piza.txt --
 - `<デッキ名>` は半角英小文字・数字・ハイフン。そのまま登録名になる。
 - **登録名 = ファイル名の拡張子を除いた部分**。`deck add --name` にこれを渡すので、
   `decks/` 側のファイル名も `<登録名>-<ハッシュ>.json` になり、両者が一対一で対応する。
-- 短い略称（`dw` / `tokens` / `green` / `piza`）は
-  [`references/storage-layout.md`](../.claude/skills/mtg-playtest/references/storage-layout.md)
-  のデッキ略称表で固定する。playtest のフォルダ名と同じ語彙。
+- 対局フォルダ名などで使う短い略称は `dw` / `tokens` / `green` / `piza` / `jund`。
 
 ## 中身の書式
 
@@ -48,7 +46,7 @@ Sideboard
 ```
 
 - **カード名は英語名**（エンジンが内部で使う正規名）。日本語名は
-  `mtg.py glossary` で引ける。日本語の対戦ログと突き合わせるときはそちらを使う。
+  `python .claude/skills/mtg-playtest/scripts/cardcache.py --dir cards glossary` で引ける。日本語の対戦ログと突き合わせるときはそちらを使う。
   1ファイル内で日英が混ざらないよう、日本語印刷があるカードも英語名で書く。
 - セット記号とコレクター番号（`(DFT) 218`）は書かない。`deck add` が名前で解決するため
   参照されず、書いてあるファイルと無いファイルが混在するだけになる。

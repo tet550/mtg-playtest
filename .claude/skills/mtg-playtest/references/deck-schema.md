@@ -18,10 +18,10 @@
 ## 考え方
 
 **登録するのは素の構築（G1で使う75枚）だけ。** サイド後の構成はマッチごとの記録なので
-登録せず、対局フォルダに置く（[storage-layout.md](storage-layout.md)）。
+登録せず、対局フォルダ（`playtest/` 配下）に置く。
 マッチアップごとに登録を増やすと、同じ物理デッキが `stats` で別デッキとして数えられる。
 
-**プレイ方針は登録JSONに持たない。** `decklists/strategy/<登録名>.md` の有無で判断し、`deck show` と `init` がパスを表示する（`decks.strategy_path()`）。登録に書き写すと方針を直すたびに登録し直すことになり、古い写しが残る。
+**プレイ方針は登録JSONに持たない。** `decklists/strategy/<登録名>.md` の有無で判断し、`decks.py show` と `table.py init` がパスを表示する（`decks.strategy_path()`）。登録に書き写すと方針を直すたびに登録し直すことになり、古い写しが残る。
 
 **登録した時点でカード名を英語名に正規化する。** 内部の識別子はすべて英語名に揃え、
 デッキリストに書かれた表記は `source_name`、日本語名は `printed` に残す。
@@ -196,9 +196,10 @@ python $M init --deck1 burn --deck2 control --seed 5
 `schema` は `mtg-playtest/deck@<整数>`。フィールドの削除・意味の変更・型の変更で
 番号を上げる。追加だけなら上げない（読み手は未知のフィールドを無視する）。
 
-番号を上げた場合、旧レコードは読まれない。`deck verify` が `source_text` から
-**自動で作り直す**（`created_at` は引き継ぐ）。これが `source_text` を持っている理由。
+番号を上げた場合、旧レコードは読まれない。`decks.rebuild()` で `source_text` から
+作り直せる（`created_at` は引き継ぐ）。これが `source_text` を持っている理由。
 
 ```bash
-python scripts/mtg.py deck verify        # 古い形式のデッキも作り直される
+python scripts/decks.py verify           # 検証結果を表示するだけ（登録は書き換えない）
+python scripts/decks.py verify --write   # カード情報が揃っているときだけ書き込む
 ```

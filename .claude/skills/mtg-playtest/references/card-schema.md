@@ -249,9 +249,8 @@ Lightning Bolt          → Lightning_Bolt-4af10cb1.json
 内部が英語名なので、日本語で書かれたデッキリストや会話とつなぐには対応表が要る。
 
 ```bash
-python scripts/cardcache.py --dir cards glossary          # キャッシュ全体
-python scripts/mtg.py glossary                            # 対局中のカードだけ
-python scripts/mtg.py glossary --deck piza --out gl.txt
+python scripts/cardcache.py --dir cards glossary                    # キャッシュ全体
+python scripts/cardcache.py --dir cards glossary "Llanowar Elves"   # 指定したカードだけ
 ```
 
 日本語名は、正本の `printed_name` → 無ければ日本語を含む別名、の順に探す。
