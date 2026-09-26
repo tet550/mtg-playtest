@@ -11,7 +11,9 @@ P/Tの計算、コストの支払い方はすべて操作する側（AI）が判
 設計: design/paper-model.md
 """
 import argparse
+import contextlib
 import copy
+import io
 import json
 import os
 import pathlib
@@ -128,11 +130,24 @@ def seat_arg(value):
     return v
 
 
+TWO_SIDED = ("transform", "modal_dfc", "double_faced_token", "reversible_card", "meld")
+
+
 def card(st, o):
-    """カードとして印刷されている内容。トークン・能力・コピーは作成時の定義。"""
-    if o.get("def"):
-        return o["def"]
-    return st["cards"].get(o["card"], {"name": o["card"]})
+    """いま見えている面に印刷されている内容。トークン・能力・コピーは作成時の定義。
+
+    両面カードは表と裏で別の面が見えるので、反対の面にしてあれば裏面の内容を返す。
+    分割カードや出来事は1つの面に両方が印刷されているので、全体をそのまま返す。
+    """
+    c = o.get("def") or st["cards"].get(o["card"], {"name": o["card"]})
+    faces = c.get("faces") or []
+    if c.get("layout") in TWO_SIDED and len(faces) >= 2:
+        face = dict(faces[1] if o.get("flipped") else faces[0])
+        face["layout"] = c.get("layout")
+        face["faces"] = []
+        face["full_name"] = c.get("name")
+        return face
+    return c
 
 
 def name_of(st, o, viewer="all"):
@@ -204,7 +219,7 @@ def new_object(st, owner, card_name=None, definition=None, kind="card"):
 def clear_table_marks(st, o):
     """テーブルから離れたカードからは、乗っていたダイスや付箋を外す。"""
     o.update(tapped=False, counters={}, damage=0, notes=[], attacking=None, blocking=None,
-             face_down=False)
+             face_down=False, arrived=None)
     o["controller"] = o["owner"]
     for other_obj in st["objects"].values():
         if other_obj.get("under") == o["oid"]:
@@ -268,6 +283,8 @@ def perm_line(st, o, viewer, indent):
             bits.append("忠誠%s" % c["loyalty"])
     if o["tapped"]:
         bits.append("(タップ)")
+    if o.get("arrived") == st["tracker"]["turn"] and zone_of(st, o["oid"]).endswith(":battlefield"):
+        bits.append("(このターンに出た)")
     if o.get("face_down"):
         bits.append("(裏向き)")
     if o.get("flipped"):
@@ -288,6 +305,18 @@ def perm_line(st, o, viewer, indent):
     for n in o["notes"]:
         lines.append(indent + "   付箋%s「%s」%s" % (n["id"], n["text"], until_text(n)))
     return lines
+
+
+def plain_land(st, o, viewer):
+    """何も乗っていない土地は1行にまとめて表示する（紙でも奥に並べる）。"""
+    c = card(st, o)
+    if "Land" not in (c.get("types") or []) or not visible(st, o, viewer):
+        return False
+    if o["counters"] or o["damage"] or o["notes"] or o.get("attacking") or o.get("blocking") is not None:
+        return False
+    if o["controller"] != o["owner"] or o.get("kind") != "card":
+        return False
+    return not any(x.get("under") == o["oid"] for x in st["objects"].values())
 
 
 def until_text(item):
@@ -370,10 +399,16 @@ def render(st, viewer="all", hands=()):
         if pool:
             head += " マナ{%s}" % pool
         out.append(head)
+        plain_lands = []
         for oid in z("battlefield"):
             o = obj(st, oid)
+            if plain_land(st, o, viewer):
+                plain_lands.append(o)
+                continue
             out += perm_line(st, o, viewer, "   ")
             out += under_tree(st, o, viewer, "      ")
+        if plain_lands:
+            out.append("   土地: " + " / ".join(perm_line(st, o, viewer, "")[0] for o in plain_lands))
         for pile in ("graveyard", "exile", "command"):
             if z(pile):
                 out.append("   %s: %s" % (zone_ja(seat + ":" + pile)[2:],
@@ -538,6 +573,8 @@ def cmd_move(args, st):
                 o["controller"] = seat_arg(args.controller)
             elif dest != "stack":
                 o["controller"] = dest.split(":")[0]
+        if dest.endswith(":battlefield") and not (src or "").endswith(":battlefield"):
+            o["arrived"] = st["tracker"]["turn"]
         if dest.endswith(":battlefield"):
             if args.tapped:
                 o["tapped"] = True
@@ -566,11 +603,21 @@ def cmd_remove(args, st):
 
 
 def cmd_tap(args, st):
-    for ref in args.refs:
+    refs = list(args.refs)
+    if args.all:
+        if refs:
+            raise Stop("--all と oid は一緒に書きません。")
+        seat = seat_arg(args.all)
+        refs = [x for x in st["zones"][seat + ":battlefield"] if obj(st, x)["tapped"] != (args.cmd == "tap")]
+        if args.cmd == "tap":
+            raise Stop("--all はアンタップ専用です。")
+    elif not refs:
+        raise Stop("%s <oid...>%s" % (args.cmd, " / untap --all P1" if args.cmd == "untap" else ""))
+    for ref in refs:
         o = obj(st, ref)
         o["tapped"] = args.cmd == "tap"
     text = "%s: %s" % ("タップ" if args.cmd == "tap" else "アンタップ",
-                       ", ".join(label(st, obj(st, r)) for r in args.refs))
+                       ", ".join(label(st, obj(st, r)) for r in refs) or "なし")
     log(st, text)
     print(text)
 
@@ -704,6 +751,7 @@ def cmd_token(args, st):
         o = new_object(st, seat, definition=dict(definition), kind="token")
         o["controller"] = seat
         st["zones"][seat + ":battlefield"].append(o["oid"])
+        o["arrived"] = st["tracker"]["turn"]
         o["tapped"] = bool(args.tapped)
         made.append(o)
     text = "トークン生成: %s" % ", ".join(label(st, o) for o in made)
@@ -946,7 +994,9 @@ def cmd_say(args, st):
 
 
 def cmd_reveal(args, st):
-    text = "公開: %s" % ", ".join(label(st, obj(st, r)) for r in args.refs)
+    text = "公開: %s" % ", ".join("[%d] %s（%s）" % (obj(st, r)["oid"], name_of(st, obj(st, r)),
+                                                   zone_ja(zone_of(st, obj(st, r)["oid"])))
+                                   for r in args.refs)
     log(st, text)
     print(text)
 
@@ -1110,7 +1160,22 @@ FORBIDDEN_IN_RUN = {"init", "run", "undo", "end", "stats"}
 
 
 def cmd_run(args, st):
-    """行を上から実行し、全部成功したときだけ1回保存する（1手 = 1回の保存）。"""
+    """行を上から実行し、全部成功したときだけ1回保存する（1手 = 1回の保存）。
+
+    途中で止まったら出力も捨てる。適用していないドローや look の結果が見えると、
+    ライブラリーの中身を覗いたのと同じになる。
+    """
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffer):
+            result = _run_lines(args, st)
+    except Stop:
+        raise
+    print(buffer.getvalue(), end="")
+    return result
+
+
+def _run_lines(args, st):
     text = sys.stdin.read() if args.file == "-" else pathlib.Path(args.file).read_text(encoding="utf-8-sig")
     parser = build_parser()
     draft = copy.deepcopy(st)
@@ -1247,8 +1312,9 @@ def build_parser():
     s = sub.add_parser("remove", help="トークン・コピー・能力の目印をテーブルから取り除く")
     s.add_argument("refs", nargs="+")
     for name in ("tap", "untap"):
-        s = sub.add_parser(name)
-        s.add_argument("refs", nargs="+")
+        s = sub.add_parser(name, help="untap --all P1 でその席の戦場をまとめて起こす" if name == "untap" else None)
+        s.add_argument("refs", nargs="*")
+        s.add_argument("--all", metavar="SEAT")
     s = sub.add_parser("flip", help="裏向き・表向き・反対の面")
     s.add_argument("ref")
     s.add_argument("what", choices=["face-down", "face-up", "transform"])

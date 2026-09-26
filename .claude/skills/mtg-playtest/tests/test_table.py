@@ -113,6 +113,12 @@ class RunTest(TableCase):
         self.assertEqual(before, self.st())
         self.assertEqual(hist, self.history())
 
+    def test_failed_run_hides_what_it_drew(self):
+        self.start()
+        out = self.cli("run", "-", stdin="draw P1 1\nmana P1 pay G\n", ok=False)
+        self.assertNotIn("ドロー", out)
+        self.assertEqual(self.st()["zones"]["P1:hand"], [])
+
     def test_one_run_is_one_undo(self):
         self.start()
         self.cli("run", "-", stdin="draw P1 7\ndraw P2 7\n")
@@ -197,6 +203,22 @@ class ComponentTest(TableCase):
         self.assertEqual(st["zones"]["P1:hand"], [])              # turn next は引かない
 
 
+class DisplayTest(TableCase):
+    def test_untap_all_and_compact_lands(self):
+        self.start()
+        forest = self.find("Forest", "P1:library")
+        bear = self.find("Grizzly Bears", "P1:library")
+        self.cli("run", "-", stdin="move %d battlefield\nmove %d battlefield\ntap %d %d\n" % (forest, bear, forest, bear))
+        out = self.cli("show")
+        self.assertIn("土地: [%d] Forest (タップ)" % forest, out)
+        self.assertIn("(このターンに出た)", out)
+        self.cli("turn", "next")
+        self.cli("untap", "--all", "P1")
+        st = self.st()
+        self.assertFalse(st["objects"][str(forest)]["tapped"] or st["objects"][str(bear)]["tapped"])
+        self.assertNotIn("このターンに出た", self.cli("show"))
+
+
 class HiddenInfoTest(TableCase):
     def test_library_is_never_listed(self):
         self.start()
@@ -233,6 +255,23 @@ class ReminderTest(TableCase):
         self.assertEqual(len(self.st()["objects"][str(bear)]["notes"]), 1)   # 外すのはAI
         self.cli("run", "-", stdin="note rm N1\nmemo done M1 --reason 済\n")
         self.assertNotIn("!!", self.cli("show"))
+
+
+class FaceTest(TableCase):
+    def test_transformed_card_shows_back_face(self):
+        cardcache.save(str(self.cards), dict(cardcache.blank_record("Front // Back"), source="manual",
+                       unresolved=False, types=["Sorcery"], layout="transform", faces=[
+                           {"name": "Front", "types": ["Sorcery"], "oracle_text_en": "front text"},
+                           {"name": "Back", "types": ["Creature"], "power": "4", "toughness": "4",
+                            "oracle_text_en": "back text"}]))
+        self.deck.write_text("Deck\n60 Front // Back\n", encoding="utf-8")
+        self.cli("init", "--deck1", str(self.deck), "--goldfish", "--seed", "1")
+        oid = self.st()["zones"]["P1:library"][0]
+        self.assertIn("Front", self.cli("reveal", str(oid)))             # ライブラリーから公開しても名前が出る
+        self.cli("run", "-", stdin="move %d battlefield\nflip %d transform\n" % (oid, oid))
+        out = self.cli("show")
+        self.assertIn("Back 4/4", out)
+        self.assertIn("back text", self.cli("card", str(oid)))
 
 
 class AidTest(TableCase):
