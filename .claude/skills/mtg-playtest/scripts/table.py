@@ -347,6 +347,36 @@ def under_tree(st, host, viewer, indent, depth=0):
     return lines
 
 
+def oid_ranges(ids):
+    """[86, 87, 88, 90] → 86-88,90"""
+    ids = sorted(ids)
+    out, start, prev = [], ids[0], ids[0]
+    for x in ids[1:] + [None]:
+        if x is not None and x == prev + 1:
+            prev = x
+            continue
+        out.append(str(start) if start == prev else "%d-%d" % (start, prev))
+        if x is not None:
+            start = prev = x
+    return ",".join(out)
+
+
+def expand_refs(st, refs):
+    """86-91 のような範囲を、実在するオブジェクトの oid に広げる。"""
+    out = []
+    for ref in refs:
+        m = re.fullmatch(r"\[?(\d+)-(\d+)\]?", str(ref))
+        if m:
+            lo, hi = int(m.group(1)), int(m.group(2))
+            found = [x for x in range(lo, hi + 1) if str(x) in st["objects"]]
+            if not found:
+                raise Stop("%s の範囲にオブジェクトはありません。" % ref)
+            out += found
+        else:
+            out.append(ref)
+    return out
+
+
 def tucked(st, o):
     """戦場にある別のカードの下に重ねてあるか。"""
     host = o.get("under")
@@ -413,11 +443,11 @@ def render(st, viewer="all", hands=()):
             len(z("graveyard")), len(z("exile")))
         if p["counters"]:
             head += " " + " ".join("%s×%d" % kv for kv in sorted(p["counters"].items()))
-        pool = "".join(c * p["mana"].get(c, 0) for c in MANA)
+        pool = pool_text(p["mana"])
         if pool:
             head += " マナ{%s}" % pool
         out.append(head)
-        plain_lands = []
+        plain_lands, groups, order = [], {}, []
         for oid in z("battlefield"):
             o = obj(st, oid)
             if tucked(st, o):
@@ -425,8 +455,26 @@ def render(st, viewer="all", hands=()):
             if plain_land(st, o, viewer):
                 plain_lands.append(o)
                 continue
-            out += perm_line(st, o, viewer, "   ")
-            out += under_tree(st, o, viewer, "      ")
+            lines = perm_line(st, o, viewer, "   ")
+            children = under_tree(st, o, viewer, "      ")
+            if len(lines) == 1 and not children:
+                # 同じ状態の同名カードは紙でも重ねて置く。1行にまとめる。
+                key = lines[0].split("] ", 1)[-1]
+                if key not in groups:
+                    groups[key] = []
+                    order.append(("group", key))
+                groups[key].append(o["oid"])
+            else:
+                order.append(("lines", lines + children))
+        for kind, item in order:
+            if kind == "lines":
+                out += item
+            else:
+                ids = groups[item]
+                if len(ids) == 1:
+                    out.append("   [%d] %s" % (ids[0], item))
+                else:
+                    out.append("   [%s] %s ×%d" % (oid_ranges(ids), item, len(ids)))
         if plain_lands:
             out.append("   土地: " + " / ".join(perm_line(st, o, viewer, "")[0] for o in plain_lands))
         for pile in ("graveyard", "exile", "command"):
@@ -580,7 +628,7 @@ def cmd_mill(args, st):
 
 def cmd_move(args, st):
     moved = []
-    for ref in args.refs:
+    for ref in expand_refs(st, args.refs):
         o = obj(st, ref)
         dest = parse_zone(st, o, args.zone, args.controller and seat_arg(args.controller))
         if dest.endswith(":library") and not (args.top or args.bottom or args.index is not None):
@@ -609,7 +657,7 @@ def cmd_move(args, st):
 
 
 def cmd_remove(args, st):
-    for ref in args.refs:
+    for ref in expand_refs(st, args.refs):
         o = obj(st, ref)
         if o.get("kind") == "card":
             raise Stop("%s は実在のカードです。テーブルから消せません（move で領域を移します）。" % label(st, o))
@@ -623,7 +671,7 @@ def cmd_remove(args, st):
 
 
 def cmd_tap(args, st):
-    refs = list(args.refs)
+    refs = expand_refs(st, args.refs)
     if args.all:
         if refs:
             raise Stop("--all と oid は一緒に書きません。")
@@ -725,10 +773,12 @@ def cmd_mana(args, st):
             raise Stop("clear には色を書きません。")
         pool.clear()
     else:
-        if not args.symbols or not re.fullmatch("[%s]+" % MANA, args.symbols):
-            raise Stop("mana %s %s <色>。色は WUBRGC で書きます（不特定コストも払う色で書く）。" % (seat, args.op))
+        colors = mana_symbols(args.symbols)
+        if not colors:
+            raise Stop("mana %s %s <色>。色は WUBRGC で書き、多いときは G:12 のように個数を添える"
+                       "（不特定コストも払う色で書く）。" % (seat, args.op))
         after = dict(pool)
-        for c in args.symbols:
+        for c in colors:
             if args.op == "add":
                 after[c] = after.get(c, 0) + 1
             elif after.get(c, 0) <= 0:
@@ -737,13 +787,29 @@ def cmd_mana(args, st):
                 after[c] -= 1
         pool.clear()
         pool.update({c: n for c, n in after.items() if n})
-    text = "%s マナ %s %s → {%s}" % (seat, args.op, args.symbols or "", pool_text(pool))
+    text = "%s マナ %s %s → {%s}" % (seat, args.op, " ".join(args.symbols), pool_text(pool))
     log(st, text)
     print(text)
 
 
+def mana_symbols(words):
+    """「RRG」「G:12」「G:12 C」を色の並びにする。不正なら空。"""
+    out = []
+    for w in words:
+        m = re.fullmatch(r"([%s]):(\d+)" % MANA, w)
+        if m:
+            out += [m.group(1)] * int(m.group(2))
+        elif re.fullmatch("[%s]+" % MANA, w):
+            out += list(w)
+        else:
+            return []
+    return out
+
+
 def pool_text(pool):
-    return "".join(c * pool.get(c, 0) for c in MANA)
+    """浮いているマナ。多い色は G×12 のように数で書く。"""
+    return "".join((c * pool[c]) if pool[c] <= 5 else "%s×%d" % (c, pool[c])
+                   for c in MANA if pool.get(c))
 
 
 def cmd_token(args, st):
@@ -783,15 +849,19 @@ def cmd_token(args, st):
 def cmd_copy(args, st):
     seat = seat_arg(args.seat)
     src = obj(st, args.ref)
-    definition = dict(card(st, src))
-    o = new_object(st, seat, definition=definition, kind="copy")
-    o["controller"] = seat
     dest = "stack" if args.to == "stack" else seat + ":battlefield"
-    st["zones"][dest].append(o["oid"])
-    text = "コピー生成: %s ← %s（%s）" % (label(st, o), label(st, src), zone_ja(dest))
+    made = []
+    for _ in range(args.n):
+        o = new_object(st, seat, definition=dict(card(st, src)), kind="copy")
+        o["controller"] = seat
+        st["zones"][dest].append(o["oid"])
+        if dest != "stack":
+            o["arrived"] = st["tracker"]["turn"]
+        made.append(o)
+    text = "コピー生成: %s ← %s（%s）" % (", ".join(label(st, o) for o in made), label(st, src), zone_ja(dest))
     log(st, text)
     print(text)
-    return [o["oid"]]
+    return [o["oid"] for o in made]
 
 
 def cmd_ability(args, st):
@@ -809,6 +879,22 @@ def cmd_ability(args, st):
 
 
 def cmd_note(args, st):
+    if args.ref == "set":
+        if len(args.args) != 2:
+            raise Stop('note set N1 "新しい内容" [--until ...]')
+        nid, text = args.args
+        for o in st["objects"].values():
+            for n in o["notes"]:
+                if n["id"] == nid:
+                    before = n["text"]
+                    n["text"] = text
+                    if args.until:
+                        n["until"], n["turn"] = args.until, st["tracker"]["turn"]
+                    line = "付箋%s を書き直した: %s「%s」→「%s」" % (nid, label(st, o), before, text)
+                    log(st, line)
+                    print(line)
+                    return
+        raise Stop("付箋 %s はありません。" % nid)
     if args.ref == "rm":
         ids = set(args.args)
         found = False
@@ -912,6 +998,7 @@ def cmd_attach(args, st):
 
 
 def cmd_attack(args, st):
+    args.refs = expand_refs(st, args.refs)
     target = args.target.upper() if args.target.upper() in SEATS else "[%d]" % obj(st, args.target)["oid"]
     for ref in args.refs:
         obj(st, ref)["attacking"] = target
@@ -1018,6 +1105,7 @@ def cmd_say(args, st):
 
 
 def cmd_reveal(args, st):
+    args.refs = expand_refs(st, args.refs)
     text = "公開: %s" % ", ".join("[%d] %s（%s）" % (obj(st, r)["oid"], name_of(st, obj(st, r)),
                                                    zone_ja(zone_of(st, obj(st, r)["oid"])))
                                    for r in args.refs)
@@ -1355,7 +1443,7 @@ def build_parser():
     s = sub.add_parser("mana", help="マナ・ダイス mana P1 add RG / pay R / clear")
     s.add_argument("seat")
     s.add_argument("op", choices=["add", "pay", "clear"])
-    s.add_argument("symbols", nargs="?")
+    s.add_argument("symbols", nargs="*", help="RRG / G:12 / G:12 C")
     s = sub.add_parser("token", help="トークンを置く")
     s.add_argument("seat")
     s.add_argument("name", nargs="?")
@@ -1371,13 +1459,14 @@ def build_parser():
     s.add_argument("seat")
     s.add_argument("ref")
     s.add_argument("--to", default="stack", choices=["stack", "battlefield"])
+    s.add_argument("-n", type=int, default=1)
     s.add_argument("--label")
     s = sub.add_parser("ability", help="スタックに能力の目印を置く")
     s.add_argument("seat")
     s.add_argument("text")
     s.add_argument("--src")
     s.add_argument("--label")
-    s = sub.add_parser("note", help='付箋 note <oid> "内容" [--until eot] / note rm N1')
+    s = sub.add_parser("note", help='付箋 note <oid> "内容" [--until eot] / note set N1 "内容" / note rm N1')
     s.add_argument("ref")
     s.add_argument("args", nargs="*")
     s.add_argument("--until")

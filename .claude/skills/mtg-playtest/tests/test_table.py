@@ -221,6 +221,20 @@ class DisplayTest(TableCase):
         self.assertNotIn("このターンに出た", self.cli("show"))
 
 
+class GroupTest(TableCase):
+    def test_identical_objects_fold_and_ranges_expand(self):
+        self.start()
+        self.cli("token", "P1", "Goblin", "--pt", "1/1", "--types", "Creature Goblin", "-n", "4")
+        ids = self.st()["zones"]["P1:battlefield"]
+        self.cli("tap", "%d-%d" % (ids[0], ids[1]))
+        out = self.cli("show")
+        self.assertIn("[%d-%d] Goblin 1/1 (タップ)" % (ids[0], ids[1]), out)
+        self.assertIn("×2", out)
+        self.cli("remove", "%d-%d" % (ids[0], ids[-1]))
+        self.assertEqual(self.st()["zones"]["P1:battlefield"], [])
+        self.assertIn("範囲にオブジェクトはありません", self.cli("remove", "900-905", ok=False))
+
+
 class TuckedDisplayTest(TableCase):
     def test_attached_card_is_shown_once_under_its_host(self):
         self.start()
@@ -342,6 +356,20 @@ class ResultTest(TableCase):
         self.assertEqual(rec["own_turn"], 3)
         self.assertIn("記録済み", self.cli("end", "--winner", "P1", "--reason", "x", ok=False))
         self.assertIn("自ターン 平均3.00", self.cli("stats", str(results)))
+
+    def test_mana_counts_and_notes_rewrite_and_copies(self):
+        self.start()
+        self.cli("run", "-", stdin="mana P1 add G:12 C\nmana P1 pay G:5\n")
+        self.assertEqual(self.st()["players"]["P1"]["mana"], {"G": 7, "C": 1})
+        self.assertIn("{G×7C}", self.cli("show"))
+        bear = self.find("Grizzly Bears", "P1:library")
+        self.cli("run", "-", stdin='move %d battlefield\nnote %d "+2/+2" --until eot\n'
+                                   'note set N1 "+8/+8（4周）"\ncopy P1 %d --to battlefield -n 3\n' % (bear, bear, bear))
+        st = self.st()
+        self.assertEqual(st["objects"][str(bear)]["notes"][0]["text"], "+8/+8（4周）")
+        copies = [o for o in st["objects"].values() if o["kind"] == "copy"]
+        self.assertEqual(len(copies), 3)
+        self.assertTrue(all(o["arrived"] == st["tracker"]["turn"] for o in copies))
 
     def test_mana_dice(self):
         self.start()
