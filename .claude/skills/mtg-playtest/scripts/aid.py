@@ -102,16 +102,20 @@ def creatures(st, table, args):
             parts = ["%s %s 印刷%s/%s" % (seat, table.label(st, o), c.get("power"), c.get("toughness"))]
             if plus:
                 parts.append("カウンター%+d/%+d" % (plus, plus))
+            tucked = [x for x in st["objects"].values() if x.get("under") == o["oid"]
+                      and (table.zone_of(st, x["oid"]) or "").endswith(":battlefield")]
             if base:
-                parts.append("＝%d/%d（付箋は含まない）" % (base[0] + plus, base[1] + plus))
+                parts.append("＝%d/%d（付箋%sは含まない）" % (base[0] + plus, base[1] + plus,
+                                                        "・重ねた%d枚" % len(tucked) if tucked else ""))
             if o["damage"]:
                 parts.append("ダメージ%d" % o["damage"])
             if o["notes"]:
                 parts.append("付箋 " + " / ".join("%s「%s」" % (n["id"], n["text"]) for n in o["notes"]))
+            caveat = "（装備・オーラの修整を足して確かめる）" if tucked else ""
             if base and base[1] + plus <= 0:
-                parts.append("← タフネスが0以下に見える")
+                parts.append("← タフネスが0以下に見える" + caveat)
             elif base and o["damage"] and o["damage"] >= base[1] + plus:
-                parts.append("← ダメージがタフネス以上に見える")
+                parts.append("← ダメージがタフネス以上に見える" + caveat)
             print(" ".join(parts))
             rows += 1
     if not rows:
@@ -170,7 +174,9 @@ def check(st, table, args):
                 continue
             plus = o["counters"].get("+1/+1", 0) - o["counters"].get("-1/-1", 0)
             if base[1] + plus <= 0 or (o["damage"] and o["damage"] >= base[1] + plus):
-                creatures_hint.append(table.label(st, o))
+                tucked = any(x.get("under") == o["oid"] and (table.zone_of(st, x["oid"]) or "").endswith(":battlefield")
+                             for x in st["objects"].values())
+                creatures_hint.append(table.label(st, o) + ("（装備・オーラあり）" if tucked else ""))
     if creatures_hint:
         print("- 印刷値とカウンターだけで見ると、タフネスを超えるダメージ等がありそうなもの: %s"
               "（付箋の修整は含まない）" % ", ".join(creatures_hint))

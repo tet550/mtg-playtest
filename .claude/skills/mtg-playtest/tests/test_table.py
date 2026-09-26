@@ -233,6 +233,16 @@ class TuckedDisplayTest(TableCase):
         self.assertIn("└ 下: [%d] Pacifism (このターンに出た) 〔P1がコントロール〕" % aura, out)
 
 
+class AttackNoteTest(TableCase):
+    def test_attacking_own_seat_is_annotated_not_stopped(self):
+        self.start()
+        bear = self.find("Grizzly Bears", "P1:library")
+        self.cli("move", str(bear), "battlefield")
+        out = self.cli("attack", str(bear), "--target", "P1")
+        self.assertIn("P1 自身の席", out)
+        self.assertIn("攻撃中→P1（自分の席）", self.cli("show"))
+
+
 class HiddenInfoTest(TableCase):
     def test_library_is_never_listed(self):
         self.start()

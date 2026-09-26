@@ -65,7 +65,7 @@ oid は `[12]` の数字。`[12]` と書いても `12` と書いてもよい。
 
 | 目的 | コマンド | 補足 |
 |---|---|---|
-| 攻撃 | `attack <oid...> --target P2`（またはプレインズウォーカー等の oid） | タップはしない。必要なら `tap` を別に書く |
+| 攻撃 | `attack <oid...> --target P2`（またはプレインズウォーカー等の oid） | タップはしない。必要なら `tap` を別に書く。自分の席を指定すると「（P1 自身の席）」と注記される（止めはしない） |
 | ブロック | `block <ブロッカー> <攻撃クリーチャー>` | |
 | 位置を戻す | `combat-clear` | |
 
@@ -87,6 +87,6 @@ oid は `[12]` の数字。`[12]` と書いても `12` と書いてもよい。
 | 記録に残す | `say "内容" [--private P1]` | |
 | まとめて実行 | `run -`（標準入力）または `run <ファイル>` | 全行成功で1回保存。途中で止まれば何も適用しない。`$x` で同じ run 内の `--label x` を参照。`init` `run` `undo` `end` `stats` は中に書けない |
 | 戻す | `undo [N]` | 保存N回分。`run` 1回が1回分 |
-| 補助 | `aid triggers [--phase <名前>]` / `aid creatures` / `aid check` / `aid mana` / `aid pregame` | 読むだけのヒント。`mana` は席ごとのアンタップのマナ源、`pregame` は開始時の手札で確かめるカード |
+| 補助 | `aid triggers [--phase <名前>]` / `aid creatures` / `aid check` / `aid mana` / `aid pregame` | 読むだけのヒント。`mana` は席ごとのアンタップのマナ源、`pregame` は開始時の手札で確かめるカード。P/Tは印刷値＋カウンターだけで計算し、付箋・重ねた装備やオーラの修整は含まない（含まないものがあれば注記する） |
 | 決着 | `end --winner P1\|P2\|draw --reason "..." [--tag T] [--results <パス>]` | 既定は状態ファイルと同じフォルダの `results.jsonl`。同じ対局は2回記録できない |
 | 集計 | `stats <results.jsonl> [--tag T]` | 一人回しは自ターンの分布、対戦は勝ち数 |

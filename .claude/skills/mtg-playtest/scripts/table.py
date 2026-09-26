@@ -296,7 +296,7 @@ def perm_line(st, o, viewer, indent):
     if o["damage"]:
         bits.append("ダメージ%d" % o["damage"])
     if o.get("attacking"):
-        bits.append("攻撃中→%s" % o["attacking"])
+        bits.append("攻撃中→%s%s" % (o["attacking"], "（自分の席）" if o["attacking"] == o["controller"] else ""))
     if o.get("blocking") is not None:
         bits.append("ブロック中→[%d]" % o["blocking"])
     if o["controller"] != o["owner"]:
@@ -916,6 +916,10 @@ def cmd_attack(args, st):
     for ref in args.refs:
         obj(st, ref)["attacking"] = target
     text = "攻撃の位置: %s → %s" % (", ".join(label(st, obj(st, r)) for r in args.refs), target)
+    own = sorted({obj(st, r)["controller"] for r in args.refs if obj(st, r)["controller"] == target})
+    if own:
+        # ルールの判定ではなく事実の注記。自分の席に向けた指定は打ち間違いが多い。
+        text += "（%s 自身の席）" % "・".join(own)
     log(st, text)
     print(text)
 
