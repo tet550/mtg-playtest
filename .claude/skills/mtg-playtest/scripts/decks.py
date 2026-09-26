@@ -424,8 +424,10 @@ def main():
     sub.add_parser("list")
     s = sub.add_parser("show")
     s.add_argument("name")
-    s = sub.add_parser("verify", help="登録済みデッキを再検証")
+    s = sub.add_parser("verify", help="登録済みデッキを再検証（既定は表示だけ）")
     s.add_argument("name", nargs="?")
+    s.add_argument("--write", action="store_true",
+                   help="検証結果を登録ファイルに書き込む（カード情報が揃っているときだけ）")
     s = sub.add_parser("rm")
     s.add_argument("name")
     args = ap.parse_args()
@@ -453,8 +455,17 @@ def main():
             resolve_entries(deck["sideboard"], args.cards_dir, args.offline)
             deck["problems"] = validate(deck)
             deck["legal"] = not deck["problems"]
-            save(args.dir, deck)
             print(render(deck))
+            if not args.write:
+                continue
+            # カード情報が取れていないまま書くと、タイプやマナ総量が空の登録で上書きされる。
+            unresolved = [e["name"] for e in deck["main"] + deck["sideboard"]
+                          if e.get("status") not in ("ok", "corrected")]
+            if unresolved:
+                print("!! %s はカード情報が揃っていないので書き込みません: %s"
+                      % (n, ", ".join(unresolved)))
+                continue
+            print("→ %s" % save(args.dir, deck))
     elif args.op == "rm":
         p = path_for(args.dir, args.name)
         if not p.exists():
