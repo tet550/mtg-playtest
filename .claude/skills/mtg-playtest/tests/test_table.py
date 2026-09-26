@@ -24,6 +24,8 @@ CARDS = {
     "Watcher": dict(types=["Creature"], mana_cost="{2}{G}", power="1", toughness="1",
                     oracle_text_en="At the beginning of your upkeep, put a +1/+1 counter on this creature.\n"
                                    "Whenever another creature you control enters, you gain 1 life."),
+    "Leyline of Testing": dict(types=["Enchantment"], mana_cost="{2}{G}{G}",
+                               oracle_text_en="If this card is in your opening hand, you may begin the game with it on the battlefield."),
     "Pacifism": dict(types=["Enchantment"], subtypes=["Aura"], mana_cost="{1}{W}",
                      oracle_text_en="Enchant creature\nEnchanted creature can't attack or block."),
 }
@@ -219,6 +221,18 @@ class DisplayTest(TableCase):
         self.assertNotIn("このターンに出た", self.cli("show"))
 
 
+class TuckedDisplayTest(TableCase):
+    def test_attached_card_is_shown_once_under_its_host(self):
+        self.start()
+        bear = self.find("Grizzly Bears", "P1:library")
+        aura = self.find("Pacifism", "P1:library")
+        self.cli("run", "-", stdin="move %d P2:battlefield\nmove %d battlefield\nattach %d --to %d\n"
+                                   % (bear, aura, aura, bear))
+        out = self.cli("show")
+        self.assertEqual(out.count("[%d] Pacifism" % aura), 1)
+        self.assertIn("└ 下: [%d] Pacifism (このターンに出た) 〔P1がコントロール〕" % aura, out)
+
+
 class HiddenInfoTest(TableCase):
     def test_library_is_never_listed(self):
         self.start()
@@ -289,6 +303,23 @@ class AidTest(TableCase):
         self.assertIn("タフネスを超える", self.cli("aid", "check"))
         self.assertEqual(before, self.state.read_text(encoding="utf-8"))
         self.assertEqual(hist, self.history())
+
+
+class AidMoreTest(TableCase):
+    def test_mana_sources_and_pregame(self):
+        self.deck.write_text(DECK.replace("4 Pacifism", "4 Leyline of Testing"), encoding="utf-8")
+        self.start()
+        forest = self.find("Forest", "P1:library")
+        other = [o for o in self.st()["zones"]["P1:library"] if self.st()["objects"][str(o)]["card"] == "Forest"][1]
+        self.cli("run", "-", stdin="move %d %d battlefield\ntap %d\n" % (forest, other, other))
+        out = self.cli("aid", "mana")
+        self.assertIn("P1: アンタップのマナ源 1", out)
+        self.assertIn("[%d] Forest" % forest, out)
+        self.assertNotIn("[%d] Forest" % other, out)
+        leyline = self.find("Leyline of Testing", "P1:library")
+        self.cli("move", str(leyline), "hand")
+        self.assertIn("opening hand", self.cli("aid", "pregame"))
+        self.assertNotIn("Leyline", self.cli("--as", "P2", "aid", "pregame"))
 
 
 class ResultTest(TableCase):

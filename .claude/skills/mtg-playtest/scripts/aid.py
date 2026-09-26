@@ -9,7 +9,7 @@
 """
 import re
 
-TOPICS = ("triggers", "creatures", "check")
+TOPICS = ("triggers", "creatures", "check", "mana", "pregame")
 
 # 誘発型能力らしい行。英語オラクルと日本語の印刷文の両方を見る。
 TRIGGER_RE = re.compile(
@@ -57,7 +57,8 @@ def trigger_lines(card):
 
 def run(topic, st, table, args):
     print("（補助: 判定ではありません。最後はカードを読んで決めてください）")
-    {"triggers": triggers, "creatures": creatures, "check": check}[topic](st, table, args)
+    {"triggers": triggers, "creatures": creatures, "check": check, "mana": mana,
+     "pregame": pregame}[topic](st, table, args)
 
 
 def triggers(st, table, args):
@@ -173,3 +174,49 @@ def check(st, table, args):
     if creatures_hint:
         print("- 印刷値とカウンターだけで見ると、タフネスを超えるダメージ等がありそうなもの: %s"
               "（付箋の修整は含まない）" % ", ".join(creatures_hint))
+
+
+MANA_ABILITY_RE = re.compile(r"\{T\}[^:：]*[:：][^.。]*(?:Add|加える)", re.I)
+OPENING_HAND_RE = re.compile(r"opening hand|開始時の手札", re.I)
+
+
+def mana(st, table, args):
+    """席ごとに、アンタップ状態でマナ能力を持つパーマネントと、浮いているマナを並べる。
+
+    相手が応答できるかを数えるときの材料。能力の条件（用途制限・召喚酔い）は判定しない。
+    """
+    for seat in ("P1", "P2"):
+        rows = []
+        for oid in st["zones"][seat + ":battlefield"]:
+            o = table.obj(st, oid)
+            if o["tapped"] or o.get("face_down"):
+                continue
+            abilities = [strip_reminder(l) or l for l in texts(table.card(st, o)) if MANA_ABILITY_RE.search(l)]
+            c = table.card(st, o)
+            if not abilities and "Land" in (c.get("types") or []):
+                abilities = ["（土地。本文を確認）"]
+            if abilities:
+                sick = " (このターンに出た)" if o.get("arrived") == st["tracker"]["turn"] and "Land" not in (c.get("types") or []) else ""
+                rows.append("  %s%s: %s" % (table.label(st, o), sick, " / ".join(abilities)))
+        pool = table.pool_text(st["players"][seat]["mana"])
+        hand = len(st["zones"][seat + ":hand"])
+        print("%s: アンタップのマナ源 %d / 浮いているマナ {%s} / 手札 %d" % (seat, len(rows), pool, hand))
+        for r in rows:
+            print(r)
+
+
+def pregame(st, table, args):
+    """開始時の手札で確かめるカード（「開始時の手札にあれば」など）を示す。"""
+    found = 0
+    viewer = getattr(args, "as_", None)
+    for seat in ("P1", "P2"):
+        if viewer and viewer != seat:
+            continue
+        for oid in st["zones"][seat + ":hand"]:
+            o = table.obj(st, oid)
+            for line in texts(table.card(st, o)):
+                if OPENING_HAND_RE.search(line):
+                    print("%s %s: %s" % (seat, table.label(st, o), strip_reminder(line)))
+                    found += 1
+    if not found:
+        print("開始時の手札で確かめるカードはありません。")

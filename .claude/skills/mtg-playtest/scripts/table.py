@@ -328,13 +328,31 @@ def until_text(item):
     return "（%s）" % u
 
 
-def under_tree(st, host, viewer, indent):
+def under_tree(st, host, viewer, indent, depth=0):
+    """重ねたカードは重ねた先の下にだけ出す。戦場のものは状態も出す。"""
     lines = []
     for o in sorted(st["objects"].values(), key=lambda x: x["oid"]):
-        if o.get("under") == host["oid"]:
-            z = zone_of(st, o["oid"])
+        if o.get("under") != host["oid"]:
+            continue
+        z = zone_of(st, o["oid"]) or ""
+        if z.endswith(":battlefield") and depth < 5:
+            sub = perm_line(st, o, viewer, indent + "   ")
+            sub[0] = indent + "└ 下: " + sub[0].strip()
+            if o["controller"] != host["controller"]:
+                sub[0] += " 〔%sがコントロール〕" % o["controller"]
+            lines += sub
+            lines += under_tree(st, o, viewer, indent + "   ", depth + 1)
+        else:
             lines.append(indent + "└ 下: %s（%s）" % (label(st, o, viewer), zone_ja(z)))
     return lines
+
+
+def tucked(st, o):
+    """戦場にある別のカードの下に重ねてあるか。"""
+    host = o.get("under")
+    return host is not None and str(host) in st["objects"] and \
+        (zone_of(st, host) or "").endswith(":battlefield") and \
+        (zone_of(st, o["oid"]) or "").endswith(":battlefield")
 
 
 def zone_ja(z):
@@ -402,6 +420,8 @@ def render(st, viewer="all", hands=()):
         plain_lands = []
         for oid in z("battlefield"):
             o = obj(st, oid)
+            if tucked(st, o):
+                continue
             if plain_land(st, o, viewer):
                 plain_lands.append(o)
                 continue

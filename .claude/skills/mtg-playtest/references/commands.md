@@ -49,7 +49,7 @@ oid は `[12]` の数字。`[12]` と書いても `12` と書いてもよい。
 | ダメージ用ダイス | `damage <oid> +3` / `-1` / `=0` ／ `damage clear` | 破壊の判定はしない。`clear` は全部外す |
 | ライフ | `life P1 -3` / `+2` / `=20` | 0以下でも何もしない |
 | マナ・ダイス | `mana P1 add RRG` / `mana P1 pay RG` / `mana P1 clear` | 色は WUBRGC。不特定コストも払う色で書く（`{1}{G}` を GG で払うなら `pay GG`） |
-| 下に重ねる | `attach <oid> --to <oid>` / `attach <oid> --off` | オーラ・装備・「これで追放した」カード |
+| 下に重ねる | `attach <oid> --to <oid>` / `attach <oid> --off` | オーラ・装備・「これで追放した」カード。戦場で重ねたカードは、重ねた先の下にだけ表示される |
 | 付箋 | `note <oid> "+2/+2" [--until eot\|"説明"]` / `note rm N1 N2` | 計算しない。`eot` はトラッカーがそのターンを過ぎると「期限切れ」と表示するだけ |
 
 ## スタック・トークン・コピー
@@ -87,6 +87,6 @@ oid は `[12]` の数字。`[12]` と書いても `12` と書いてもよい。
 | 記録に残す | `say "内容" [--private P1]` | |
 | まとめて実行 | `run -`（標準入力）または `run <ファイル>` | 全行成功で1回保存。途中で止まれば何も適用しない。`$x` で同じ run 内の `--label x` を参照。`init` `run` `undo` `end` `stats` は中に書けない |
 | 戻す | `undo [N]` | 保存N回分。`run` 1回が1回分 |
-| 補助 | `aid triggers [--phase <名前>]` / `aid creatures` / `aid check` | 読むだけのヒント |
+| 補助 | `aid triggers [--phase <名前>]` / `aid creatures` / `aid check` / `aid mana` / `aid pregame` | 読むだけのヒント。`mana` は席ごとのアンタップのマナ源、`pregame` は開始時の手札で確かめるカード |
 | 決着 | `end --winner P1\|P2\|draw --reason "..." [--tag T] [--results <パス>]` | 既定は状態ファイルと同じフォルダの `results.jsonl`。同じ対局は2回記録できない |
 | 集計 | `stats <results.jsonl> [--tag T]` | 一人回しは自ターンの分布、対戦は勝ち数 |

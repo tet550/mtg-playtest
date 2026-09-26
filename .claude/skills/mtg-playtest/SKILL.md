@@ -35,7 +35,7 @@ python $T init --deck1 piza --goldfish --seed 101                 # 一人回し
 - `--deck1`/`--deck2` は登録名（`decks/`）かデッキリストのパス。足りないカード情報は Scryfall から取得し、取れなければ保存せずに止まる。
 - `init` が方針文書（`decklists/strategy/<登録名>.md`）のパスを出したら、最初のプレイ判断より前に読む。
 - 保存先は `playtest/<YYYYMMDD-HHMM>-<内容>/g01.json`。1ゲーム1ファイル。`playtest/` は Git 管理外。
-- 初手は `draw P1 7` と `draw P2 7`。マリガンは `mulligan P1`（手札を戻してシャッフルし7枚引く）→ ボトムに送るカードを `move <oid> library --bottom`。
+- 初手は `draw P1 7` と `draw P2 7`。キープを決めたら `aid pregame` で「開始時の手札にあれば」のカード（Leyline など）を確かめる。マリガンは `mulligan P1`（手札を戻してシャッフルし7枚引く）→ ボトムに送るカードを `move <oid> library --bottom`。
 
 操作の構文は [references/commands.md](references/commands.md)。不明な引数は `table.py <コマンド> -h`。
 
@@ -89,6 +89,8 @@ EOF
 - `aid triggers [--phase <フェイズ名>]` … 戦場・統率領域の誘発型能力らしい行
 - `aid creatures` … 印刷P/T・カウンター・ダメージ・付箋を並べる（付箋の修整は計算しない）
 - `aid check` … ライフ・毒・伝説の重複・つける先のないオーラ・戦場外のトークン・期限切れの付箋・時期のメモ
+- `aid mana` … 席ごとのアンタップのマナ源と浮いているマナ・手札の枚数。**相手が応答できるかを判断する前に見る**
+- `aid pregame` … 開始時の手札で確かめるカード
 
 解決の直後やターンの終わりに `aid check` を一度見ると、見落としに気づきやすい。
 
