@@ -1,94 +1,18 @@
-"""table.py（紙モデルの中核）の回帰テスト。ネットワークには出ない。"""
-import contextlib
-import io
+"""CLIの契約を検証する回帰テスト。ルール判定はテーブルの責務に含めない。"""
 import json
-import pathlib
-import sys
-import tempfile
 import unittest
 
-HERE = pathlib.Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "scripts"))
-
-import cardcache  # noqa: E402
-import decks  # noqa: E402
-import table  # noqa: E402
-
-CARDS = {
-    "Forest": dict(types=["Land"], supertypes=["Basic"], subtypes=["Forest"],
-                   oracle_text_en="({T}: Add {G}.)"),
-    "Grizzly Bears": dict(types=["Creature"], subtypes=["Bear"], mana_cost="{1}{G}",
-                          power="2", toughness="2"),
-    "Giant Growth": dict(types=["Instant"], mana_cost="{G}",
-                         oracle_text_en="Target creature gets +3/+3 until end of turn."),
-    "Watcher": dict(types=["Creature"], mana_cost="{2}{G}", power="1", toughness="1",
-                    oracle_text_en="At the beginning of your upkeep, put a +1/+1 counter on this creature.\n"
-                                   "Whenever another creature you control enters, you gain 1 life."),
-    "Leyline of Testing": dict(types=["Enchantment"], mana_cost="{2}{G}{G}",
-                               oracle_text_en="If this card is in your opening hand, you may begin the game with it on the battlefield."),
-    "Pacifism": dict(types=["Enchantment"], subtypes=["Aura"], mana_cost="{1}{W}",
-                     oracle_text_en="Enchant creature\nEnchanted creature can't attack or block."),
-}
-DECK = "Deck\n20 Forest\n20 Grizzly Bears\n10 Giant Growth\n6 Watcher\n4 Pacifism\n\nSideboard\n2 Giant Growth\n"
-
-
-class TableCase(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = pathlib.Path(self.tmp.name)
-        self.cards = root / "cards"
-        for name, fields in CARDS.items():
-            cardcache.put_manual(name, str(self.cards), **fields)
-        self.deck = root / "green.txt"
-        self.deck.write_text(DECK, encoding="utf-8")
-        self.state = root / "game" / "g01.json"
-        self.base = ["--state", str(self.state), "--cards-dir", str(self.cards),
-                     "--decks-dir", str(root / "decks"), "--offline"]
-
-    def tearDown(self):
-        self.tmp.cleanup()
-
-    def cli(self, *argv, stdin=None, ok=True):
-        out, err = io.StringIO(), io.StringIO()
-        old = sys.stdin
-        if stdin is not None:
-            sys.stdin = io.StringIO(stdin)
-        try:
-            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = table.main(self.base + list(argv))
-        finally:
-            sys.stdin = old
-        if ok:
-            self.assertEqual(code, 0, err.getvalue())
-        else:
-            self.assertEqual(code, 1, out.getvalue())
-        return out.getvalue() + err.getvalue()
-
-    def st(self):
-        return json.loads(self.state.read_text(encoding="utf-8"))
-
-    def start(self, *extra):
-        self.cli("init", "--deck1", str(self.deck), "--deck2", str(self.deck), "--seed", "7", *extra)
-
-    def history(self):
-        return len(list(table.history_dir(self.state).glob("*.json")))
-
-    def find(self, name, zone):
-        st = self.st()
-        return next(o for o in st["zones"][zone] if st["objects"][str(o)]["card"] == name)
+from support import TableCase, cardcache
 
 
 class InitTest(TableCase):
-    def test_places_libraries_and_sideboards(self):
+    def test_init_places_piles_and_reproduces_seed(self):
         self.start()
         st = self.st()
         self.assertEqual(len(st["zones"]["P1:library"]), 60)
         self.assertEqual(len(st["zones"]["P2:sideboard"]), 2)
         self.assertEqual(st["tracker"]["phase"], "pregame")
         self.assertEqual(st["players"]["P1"]["life"], 20)
-
-    def test_same_seed_same_order(self):
-        self.start()
         first = self.st()["zones"]["P1:library"]
         self.cli("init", "--deck1", str(self.deck), "--deck2", str(self.deck), "--seed", "7", "--force")
         self.assertEqual(first, self.st()["zones"]["P1:library"])
@@ -107,19 +31,14 @@ class InitTest(TableCase):
 
 
 class RunTest(TableCase):
-    def test_failed_line_applies_nothing(self):
+    def test_failed_run_preserves_state_history_and_hides_output(self):
         self.start()
         before, hist = self.st(), self.history()
         out = self.cli("run", "-", stdin="draw P1 7\ncounter P1 poison -1\n", ok=False)
         self.assertIn("2行目で停止", out)
         self.assertEqual(before, self.st())
         self.assertEqual(hist, self.history())
-
-    def test_failed_run_hides_what_it_drew(self):
-        self.start()
-        out = self.cli("run", "-", stdin="draw P1 1\nmana P1 pay G\n", ok=False)
         self.assertNotIn("ドロー", out)
-        self.assertEqual(self.st()["zones"]["P1:hand"], [])
 
     def test_one_run_is_one_undo(self):
         self.start()
@@ -148,10 +67,7 @@ class RunTest(TableCase):
 class ComponentTest(TableCase):
     def test_leaving_battlefield_takes_off_dice_and_notes(self):
         self.start()
-        self.cli("draw", "P1", "7")
-        bear = self.find("Grizzly Bears", "P1:library") if not any(
-            self.st()["objects"][str(o)]["card"] == "Grizzly Bears" for o in self.st()["zones"]["P1:hand"]) \
-            else self.find("Grizzly Bears", "P1:hand")
+        bear = self.find("Grizzly Bears", "P1:library")
         aura = self.find("Pacifism", "P1:library")
         self.cli("run", "-", stdin="move %d P2:battlefield\nmove %d battlefield --controller P1\n"
                                    "attach %d --to %d\ncounter %d +1/+1 +1\ndamage %d +1\ntap %d\n"
@@ -204,6 +120,38 @@ class ComponentTest(TableCase):
         self.assertEqual(st["objects"][str(bear)]["damage"], 5)
         self.assertEqual(st["zones"]["P1:hand"], [])              # turn next は引かない
 
+    def test_expired_note_and_due_memo_are_only_shown(self):
+        self.start()
+        bear = self.find("Grizzly Bears", "P1:library")
+        self.cli("run", "-", stdin='move %d battlefield\nnote %d "+3/+3" --until eot\n'
+                                   'memo add "帰還させる" --player P2 --at ending.end\n' % (bear, bear))
+        out = self.cli("turn", "next")
+        self.assertIn("期限切れの付箋 N1", out)
+        out = self.cli("phase", "ending.end")
+        self.assertIn("時期のメモ M1", out)
+        self.assertEqual(len(self.st()["objects"][str(bear)]["notes"]), 1)   # 外すのはAI
+        self.cli("run", "-", stdin="note rm N1\nmemo done M1 --reason 済\n")
+        self.assertNotIn("!!", self.cli("show"))
+
+    def test_mana_counts_and_notes_rewrite_and_copies(self):
+        self.start()
+        self.cli("run", "-", stdin="mana P1 add G:12 C\nmana P1 pay G:5\n")
+        self.assertEqual(self.st()["players"]["P1"]["mana"], {"G": 7, "C": 1})
+        self.assertIn("{G×7C}", self.cli("show"))
+        bear = self.find("Grizzly Bears", "P1:library")
+        self.cli("run", "-", stdin='move %d battlefield\nnote %d "+2/+2" --until eot\n'
+                                   'note set N1 "+8/+8（4周）"\ncopy P1 %d --to battlefield -n 3\n' % (bear, bear, bear))
+        st = self.st()
+        self.assertEqual(st["objects"][str(bear)]["notes"][0]["text"], "+8/+8（4周）")
+        copies = [o for o in st["objects"].values() if o["kind"] == "copy"]
+        self.assertEqual(len(copies), 3)
+        self.assertTrue(all(o["arrived"] == st["tracker"]["turn"] for o in copies))
+        self.cli("mana", "P1", "clear")
+        self.cli("run", "-", stdin="mana P1 add RRG\nmana P1 pay RG\n")
+        self.assertEqual(self.st()["players"]["P1"]["mana"], {"R": 1})
+        self.cli("mana", "P1", "clear")
+        self.assertEqual(self.st()["players"]["P1"]["mana"], {})
+
 
 class DisplayTest(TableCase):
     def test_untap_all_and_compact_lands(self):
@@ -220,8 +168,6 @@ class DisplayTest(TableCase):
         self.assertFalse(st["objects"][str(forest)]["tapped"] or st["objects"][str(bear)]["tapped"])
         self.assertNotIn("このターンに出た", self.cli("show"))
 
-
-class GroupTest(TableCase):
     def test_identical_objects_fold_and_ranges_expand(self):
         self.start()
         self.cli("token", "P1", "Goblin", "--pt", "1/1", "--types", "Creature Goblin", "-n", "4")
@@ -234,8 +180,6 @@ class GroupTest(TableCase):
         self.assertEqual(self.st()["zones"]["P1:battlefield"], [])
         self.assertIn("範囲にオブジェクトはありません", self.cli("remove", "900-905", ok=False))
 
-
-class TuckedDisplayTest(TableCase):
     def test_attached_card_is_shown_once_under_its_host(self):
         self.start()
         bear = self.find("Grizzly Bears", "P1:library")
@@ -246,8 +190,6 @@ class TuckedDisplayTest(TableCase):
         self.assertEqual(out.count("[%d] Pacifism" % aura), 1)
         self.assertIn("└ 下: [%d] Pacifism (このターンに出た) 〔P1がコントロール〕" % aura, out)
 
-
-class AttackNoteTest(TableCase):
     def test_attacking_own_seat_is_annotated_not_stopped(self):
         self.start()
         bear = self.find("Grizzly Bears", "P1:library")
@@ -256,46 +198,6 @@ class AttackNoteTest(TableCase):
         self.assertIn("P1 自身の席", out)
         self.assertIn("攻撃中→P1（自分の席）", self.cli("show"))
 
-
-class HiddenInfoTest(TableCase):
-    def test_library_is_never_listed(self):
-        self.start()
-        self.assertIn("見られません", self.cli("zone", "P1:library", ok=False))
-
-    def test_search_hides_order(self):
-        self.start()
-        out = self.cli("search", "P1", "Watcher")
-        self.assertEqual(len([l for l in out.splitlines() if l.startswith("  [")]), 6)
-        self.assertIn("積み順は伏せています", out)
-
-    def test_seat_view(self):
-        self.start()
-        self.cli("run", "-", stdin="draw P1 7\ndraw P2 7\n")
-        self.assertIn("相手の手札", self.cli("--as", "P1", "show", "--hand", "P2", ok=False))
-        self.assertIn("--as P1", self.cli("--as", "P1", "draw", "P2", ok=False))
-        mine = self.cli("--as", "P1", "show", "--hand", "P1")
-        self.assertIn("P1 手札(7)", mine)
-        secret = [e for e in self.st()["log"] if e.get("private") == "P2"]
-        self.assertTrue(secret)
-        self.assertNotIn(secret[0]["text"], self.cli("--as", "P1", "log"))
-
-
-class ReminderTest(TableCase):
-    def test_expired_note_and_due_memo_are_only_shown(self):
-        self.start()
-        bear = self.find("Grizzly Bears", "P1:library")
-        self.cli("run", "-", stdin='move %d battlefield\nnote %d "+3/+3" --until eot\n'
-                                   'memo add "帰還させる" --player P2 --at ending.end\n' % (bear, bear))
-        out = self.cli("turn", "next")
-        self.assertIn("期限切れの付箋 N1", out)
-        out = self.cli("phase", "ending.end")
-        self.assertIn("時期のメモ M1", out)
-        self.assertEqual(len(self.st()["objects"][str(bear)]["notes"]), 1)   # 外すのはAI
-        self.cli("run", "-", stdin="note rm N1\nmemo done M1 --reason 済\n")
-        self.assertNotIn("!!", self.cli("show"))
-
-
-class FaceTest(TableCase):
     def test_transformed_card_shows_back_face(self):
         cardcache.save(str(self.cards), dict(cardcache.blank_record("Front // Back"), source="manual",
                        unresolved=False, types=["Sorcery"], layout="transform", faces=[
@@ -312,38 +214,24 @@ class FaceTest(TableCase):
         self.assertIn("back text", self.cli("card", str(oid)))
 
 
-class AidTest(TableCase):
-    def test_aid_does_not_change_state(self):
+class HiddenInfoTest(TableCase):
+    def test_seat_view(self):
         self.start()
-        w = self.find("Watcher", "P1:library")
-        bear = self.find("Grizzly Bears", "P1:library")
-        self.cli("run", "-", stdin="move %d battlefield\nmove %d battlefield\ndamage %d +2\n" % (w, bear, bear))
-        before, hist = self.state.read_text(encoding="utf-8"), self.history()
-        trig = self.cli("aid", "triggers", "--phase", "beginning.upkeep")
-        self.assertIn("upkeep", trig)
-        self.assertNotIn("Whenever another creature", trig)
-        self.assertIn("Whenever another creature", self.cli("aid", "triggers"))
-        self.assertIn("ダメージがタフネス以上", self.cli("aid", "creatures"))
-        self.assertIn("タフネスを超える", self.cli("aid", "check"))
-        self.assertEqual(before, self.state.read_text(encoding="utf-8"))
-        self.assertEqual(hist, self.history())
+        self.cli("run", "-", stdin="draw P1 7\ndraw P2 7\n")
+        self.assertIn("相手の手札", self.cli("--as", "P1", "show", "--hand", "P2", ok=False))
+        self.assertIn("--as P1", self.cli("--as", "P1", "draw", "P2", ok=False))
+        mine = self.cli("--as", "P1", "show", "--hand", "P1")
+        self.assertIn("P1 手札(7)", mine)
+        secret = [e for e in self.st()["log"] if e.get("private") == "P2"]
+        self.assertTrue(secret)
+        self.assertNotIn(secret[0]["text"], self.cli("--as", "P1", "log"))
 
-
-class AidMoreTest(TableCase):
-    def test_mana_sources_and_pregame(self):
-        self.deck.write_text(DECK.replace("4 Pacifism", "4 Leyline of Testing"), encoding="utf-8")
+    def test_library_and_search_hide_order(self):
         self.start()
-        forest = self.find("Forest", "P1:library")
-        other = [o for o in self.st()["zones"]["P1:library"] if self.st()["objects"][str(o)]["card"] == "Forest"][1]
-        self.cli("run", "-", stdin="move %d %d battlefield\ntap %d\n" % (forest, other, other))
-        out = self.cli("aid", "mana")
-        self.assertIn("P1: アンタップのマナ源 1", out)
-        self.assertIn("[%d] Forest" % forest, out)
-        self.assertNotIn("[%d] Forest" % other, out)
-        leyline = self.find("Leyline of Testing", "P1:library")
-        self.cli("move", str(leyline), "hand")
-        self.assertIn("opening hand", self.cli("aid", "pregame"))
-        self.assertNotIn("Leyline", self.cli("--as", "P2", "aid", "pregame"))
+        self.assertIn("見られません", self.cli("zone", "P1:library", ok=False))
+        out = self.cli("search", "P1", "Watcher")
+        self.assertEqual(len([l for l in out.splitlines() if l.startswith("  [")]), 6)
+        self.assertIn("積み順は伏せています", out)
 
 
 class ResultTest(TableCase):
@@ -356,53 +244,6 @@ class ResultTest(TableCase):
         self.assertEqual(rec["own_turn"], 3)
         self.assertIn("記録済み", self.cli("end", "--winner", "P1", "--reason", "x", ok=False))
         self.assertIn("自ターン 平均3.00", self.cli("stats", str(results)))
-
-    def test_mana_counts_and_notes_rewrite_and_copies(self):
-        self.start()
-        self.cli("run", "-", stdin="mana P1 add G:12 C\nmana P1 pay G:5\n")
-        self.assertEqual(self.st()["players"]["P1"]["mana"], {"G": 7, "C": 1})
-        self.assertIn("{G×7C}", self.cli("show"))
-        bear = self.find("Grizzly Bears", "P1:library")
-        self.cli("run", "-", stdin='move %d battlefield\nnote %d "+2/+2" --until eot\n'
-                                   'note set N1 "+8/+8（4周）"\ncopy P1 %d --to battlefield -n 3\n' % (bear, bear, bear))
-        st = self.st()
-        self.assertEqual(st["objects"][str(bear)]["notes"][0]["text"], "+8/+8（4周）")
-        copies = [o for o in st["objects"].values() if o["kind"] == "copy"]
-        self.assertEqual(len(copies), 3)
-        self.assertTrue(all(o["arrived"] == st["tracker"]["turn"] for o in copies))
-
-    def test_mana_dice(self):
-        self.start()
-        self.cli("run", "-", stdin="mana P1 add RRG\nmana P1 pay RG\n")
-        self.assertEqual(self.st()["players"]["P1"]["mana"], {"R": 1})
-        self.cli("mana", "P1", "clear")
-        self.assertEqual(self.st()["players"]["P1"]["mana"], {})
-
-
-class DeckVerifyTest(unittest.TestCase):
-    def test_verify_does_not_write_without_flag(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = pathlib.Path(tmp)
-            cards = root / "cards"
-            for name, fields in CARDS.items():
-                cardcache.put_manual(name, str(cards), **fields)
-            deck = decks.build("green", DECK, str(cards), offline=True)
-            path = decks.save(str(root / "decks"), deck)
-            before = path.read_text(encoding="utf-8")
-            empty = root / "empty-cards"
-            for extra in ([], ["--write"]):
-                argv = ["decks.py", "--dir", str(root / "decks"), "--cards-dir", str(empty),
-                        "--offline", "verify", "green"] + extra
-                old = sys.argv
-                sys.argv = argv
-                try:
-                    with contextlib.redirect_stdout(io.StringIO()) as out, \
-                            contextlib.redirect_stderr(io.StringIO()):
-                        decks.main()
-                finally:
-                    sys.argv = old
-                self.assertEqual(before, path.read_text(encoding="utf-8"))
-            self.assertIn("書き込みません", out.getvalue())
 
 
 if __name__ == "__main__":

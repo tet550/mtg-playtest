@@ -9,6 +9,9 @@
 """
 import re
 
+import table_model as table
+from table_view import pool_text, zone_ja
+
 TOPICS = ("triggers", "creatures", "check", "mana", "pregame")
 
 # 誘発型能力らしい行。英語オラクルと日本語の印刷文の両方を見る。
@@ -55,13 +58,13 @@ def trigger_lines(card):
     return list(dict.fromkeys(lines))
 
 
-def run(topic, st, table, args):
+def run(topic, st, args):
     print("（補助: 判定ではありません。最後はカードを読んで決めてください）")
     {"triggers": triggers, "creatures": creatures, "check": check, "mana": mana,
-     "pregame": pregame}[topic](st, table, args)
+     "pregame": pregame}[topic](st, args)
 
 
-def triggers(st, table, args):
+def triggers(st, args):
     phase = getattr(args, "phase", None)
     if phase and phase not in PHASE_WORDS:
         print("--phase に使える名前: %s" % " / ".join(PHASE_WORDS))
@@ -89,7 +92,7 @@ def printed_pt(card):
         return None
 
 
-def creatures(st, table, args):
+def creatures(st, args):
     rows = 0
     for seat in ("P1", "P2"):
         for oid in st["zones"][seat + ":battlefield"]:
@@ -122,7 +125,7 @@ def creatures(st, table, args):
         print("戦場にクリーチャーは見当たりません。")
 
 
-def check(st, table, args):
+def check(st, args):
     """見落としやすい盤面の状態を並べる。SBAの判定ではなく、見る場所の案内。"""
     hints = []
     for seat, p in st["players"].items():
@@ -155,7 +158,7 @@ def check(st, table, args):
         for oid in ids:
             o = table.obj(st, oid)
             if o.get("kind") in ("token", "copy", "ability"):
-                hints.append("%s（%s）が %s にあります" % (table.label(st, o), o["kind"], table.zone_ja(z)))
+                hints.append("%s（%s）が %s にあります" % (table.label(st, o), o["kind"], zone_ja(z)))
     for o, n in table.expired_notes(st):
         hints.append("付箋%s「%s」の期限を過ぎています（%s）" % (n["id"], n["text"], table.label(st, o)))
     for m in table.due_memos(st):
@@ -186,7 +189,7 @@ MANA_ABILITY_RE = re.compile(r"\{T\}[^:：]*[:：][^.。]*(?:Add|加える)", re
 OPENING_HAND_RE = re.compile(r"opening hand|開始時の手札", re.I)
 
 
-def mana(st, table, args):
+def mana(st, args):
     """席ごとに、アンタップ状態でマナ能力を持つパーマネントと、浮いているマナを並べる。
 
     相手が応答できるかを数えるときの材料。能力の条件（用途制限・召喚酔い）は判定しない。
@@ -204,14 +207,14 @@ def mana(st, table, args):
             if abilities:
                 sick = " (このターンに出た)" if o.get("arrived") == st["tracker"]["turn"] and "Land" not in (c.get("types") or []) else ""
                 rows.append("  %s%s: %s" % (table.label(st, o), sick, " / ".join(abilities)))
-        pool = table.pool_text(st["players"][seat]["mana"])
+        pool = pool_text(st["players"][seat]["mana"])
         hand = len(st["zones"][seat + ":hand"])
         print("%s: アンタップのマナ源 %d / 浮いているマナ {%s} / 手札 %d" % (seat, len(rows), pool, hand))
         for r in rows:
             print(r)
 
 
-def pregame(st, table, args):
+def pregame(st, args):
     """開始時の手札で確かめるカード（「開始時の手札にあれば」など）を示す。"""
     found = 0
     viewer = getattr(args, "as_", None)

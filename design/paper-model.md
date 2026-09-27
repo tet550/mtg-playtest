@@ -112,10 +112,22 @@
 
 | 部品 | ファイル | 内容 |
 |---|---|---|
-| 中核 | `.claude/skills/mtg-playtest/scripts/table.py` | 上記のコンポーネントと操作。ルールは判定しない |
+| CLI | `.claude/skills/mtg-playtest/scripts/table.py` | 引数解析・コマンド振り分け・席の制限・一括操作の保存単位 |
+| 状態モデル | `scripts/table_model.py`（同スキル内） | オブジェクト・領域・参照・乱数・物理操作。ファイルやCLIには依存しない |
+| 永続化 | `scripts/table_store.py` | 状態・履歴・結果の読み書き、undo |
+| 表示 | `scripts/table_view.py` | 盤面・カード・付箋・メモの表示 |
+| コマンド | `scripts/table_commands.py` | 個々の操作。モデル・表示・永続化を組み合わせる |
 | 補助層 | `.claude/skills/mtg-playtest/scripts/aid.py` | `aid triggers`（誘発型能力らしい行）、`aid creatures`（印刷P/T・カウンター・ダメージ・付箋を並べる）、`aid check`（見落としやすい盤面の状態） |
 | AI側の資料 | `.claude/skills/mtg-playtest/SKILL.md`、`references/commands.md` | ステップごとのチェックリストと操作の早見表 |
-| テスト | `.claude/skills/mtg-playtest/tests/test_table.py` | 1手1保存、非公開情報、物理的な下限、自動では何もしないこと、補助層が状態を変えないこと、`decks.py verify` が書き込まないこと |
+| テスト | `.claude/skills/mtg-playtest/tests/` | `test_table.py`（CLIの契約）、`test_aid.py`（補助表示）、`test_decks.py`（検証時の保存保護）。共通準備は `support.py` |
+
+2026-09-27 に責務ごとに分割。`table.py` のコマンド、状態ファイル形式、乱数の方式は変更していない。依存は CLI → コマンド → モデル・表示・永続化の向きとし、補助層はモデルと表示を直接参照する。モデルからCLIへの逆参照は持たない。
+
+テストは重複するケースを統合した25件。ネットワークを使わず、一時ディレクトリ内で実行する。リポジトリ直下から次で実行できる。
+
+```sh
+python3 -m unittest discover -s .claude/skills/mtg-playtest/tests -v
+```
 
 プロトタイプとの互換性はない。状態ファイルの形式もシャッフルの方式も新しくしたので、同じ seed でもプロトタイプとは初手が変わる。
 
