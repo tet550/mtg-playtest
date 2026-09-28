@@ -1,0 +1,17 @@
+# 対局データ（実行のたびに生成される）
+playtest/
+
+# カードキャッシュ（Scryfall から再取得できる。第三者の著作物なので配布しない）
+cards/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
