@@ -209,6 +209,11 @@ def _label(state: GameState, cid: str) -> str:
     return "%s <%s>" % (cid, c.name) if c else cid
 
 
+def _labels(state: GameState, ids) -> str:
+    """ログのイベント用の一覧: "#c3 <Forest>, #c9 <Grizzly Bears>"（list の repr にしない）。"""
+    return ", ".join(_label(state, c) for c in ids) or "-"
+
+
 # ---------------------------------------------------------------- card movement
 
 def _drop_links(ctx: Context, cid: str) -> None:
@@ -338,7 +343,7 @@ def op_move(ctx: Context, p: dict) -> dict:
             for cid in ids:
                 if cid in k:
                     k[cid]["ordered"] = False
-        ctx.event("placed in random order: %s" % placed)
+        ctx.event("placed in random order: %s" % _labels(ctx.state, placed))
     if p.get("as"):
         ctx.aliases[p["as"]] = ids
     return {"cards": ids}
@@ -409,7 +414,7 @@ def op_untap_all(ctx: Context, p: dict) -> dict:
            if ctx.state.cards[cid].controller == pid and ctx.state.cards[cid].tapped]
     for cid in ids:
         ctx.state.cards[cid].tapped = False
-    ctx.event("untap all of %s: %s" % (pid, ids))
+    ctx.event("untap all of %s: %s" % (pid, _labels(ctx.state, ids)))
     return {"cards": ids}
 
 
@@ -487,8 +492,58 @@ def op_reveal(ctx: Context, p: dict) -> dict:
     for pid in _viewers(ctx, p.get("to")):
         for cid in ids:
             info.learn(ctx.state, pid, cid, True)
-    ctx.event("reveal %s to %s" % ([_label(ctx.state, c) for c in ids], p.get("to", "all")))
+    ctx.event("reveal %s to %s" % (_labels(ctx.state, ids), p.get("to", "all")))
     return {"cards": ids}
+
+
+def op_search(ctx: Context, p: dict) -> dict:
+    """ライブラリーから名前でカードを探して動かし、シャッフルする（サーチ）。
+
+    name: 名前（リストならどれか）、count（既定1。見つかった数が足りなければ失敗）、to / position / tapped、
+    reveal（true で全員に公開）、shuffle（既定 true）、zone（既定は探す Player のライブラリー）、player（探す Player）。
+    探した Player は中身を全部見るが、残りのカードは記憶に加えない（すぐシャッフルされ、結果の learned が長くなるだけなので）。
+    動かしたカードは、探した Player が知っている扱いになる。同じライブラリーの上などへ置くときは、シャッフルしてから置く。
+    """
+    s = ctx.state
+    pid = _player(ctx, p.get("player"))
+    zn = resolve_zone(ctx, p.get("zone", "library"), pid)
+    if s.zones[zn].kind != "library":
+        raise OperationError("search looks in a library, not %s" % zn)
+    names = p.get("name")
+    if not names:
+        raise OperationError("search needs 'name'")
+    names = [names] if isinstance(names, str) else list(names)
+    if "to" not in p:
+        raise OperationError("search needs 'to'")
+    n = int(p.get("count", 1))
+    hits = [cid for cid in s.zones[zn].cards if s.cards[cid].name in names][:n]
+    if len(hits) < n:
+        raise OperationError("found %d of %s in %s (need %d)" % (len(hits), names, zn, n))
+    to = resolve_zone(ctx, p["to"], s.cards[hits[0]].owner) if hits else None
+    do_shuffle = p.get("shuffle", True)
+    if do_shuffle and to == zn:
+        for cid in hits:
+            s.zones[zn].cards.remove(cid)
+        ctx.rng.shuffle(s.zones[zn].cards)
+        info.forget_positions(s, zn)
+        s.zones[zn].cards.extend(hits)  # 一時的に置いてから、指定の位置へ動かし直す
+    placed = list(reversed(hits)) if p.get("position") in (None, "top") else hits
+    for cid in placed:
+        move_card(ctx, cid, to, p.get("position"), p.get("face_down"), p.get("tapped"), None, ())
+        info.learn(s, pid, cid, True)
+    ctx.event("%s searches %s for %s: %s" % (pid, zn, " / ".join("<%s>" % x for x in names), _labels(s, hits)))
+    if p.get("reveal"):
+        for viewer in s.player_order:
+            for cid in hits:
+                info.learn(s, viewer, cid, True)
+        ctx.event("reveal %s to all" % _labels(s, hits))
+    if do_shuffle and to != zn:
+        ctx.rng.shuffle(s.zones[zn].cards)
+        info.forget_positions(s, zn)
+        ctx.event("shuffle %s" % zn)
+    if p.get("as"):
+        ctx.aliases[p["as"]] = hits
+    return {"cards": hits}
 
 
 def op_look(ctx: Context, p: dict) -> dict:
@@ -499,7 +554,7 @@ def op_look(ctx: Context, p: dict) -> dict:
         info.learn(ctx.state, pid, cid, True)
     if p.get("as"):
         ctx.aliases[p["as"]] = ids
-    ctx.event("%s looks at %s" % (pid, [_label(ctx.state, c) for c in ids]))
+    ctx.event("%s looks at %s" % (pid, _labels(ctx.state, ids)))
     return {"cards": ids}
 
 
@@ -599,7 +654,7 @@ def op_note_remove(ctx: Context, p: dict) -> dict:
                 and ("until" not in p or n.until == p["until"])]
     for n in nids:
         del s.notes[n]
-    ctx.event("notes removed: %s" % nids)
+    ctx.event("notes removed: %s" % ", ".join(nids))
     return {"notes": nids}
 
 
@@ -636,7 +691,7 @@ def op_link_remove(ctx: Context, p: dict) -> dict:
         raise OperationError("link_remove needs link or object")
     for l in lids:
         del s.links[l]
-    ctx.event("links removed: %s" % lids)
+    ctx.event("links removed: %s" % ", ".join(lids))
     return {"links": lids}
 
 
@@ -753,7 +808,7 @@ def op_combat_remove(ctx: Context, p: dict) -> dict:
     s.combat.attacks = [a for a in s.combat.attacks if a.attacker not in ids]
     live = {a.attacker for a in s.combat.attacks}
     s.combat.blocks = [b for b in s.combat.blocks if b.blocker not in ids and b.attacker in live]
-    ctx.event("removed from combat: %s" % sorted(ids))
+    ctx.event("removed from combat: %s" % _labels(ctx.state, sorted(ids)))
     return {}
 
 
@@ -1073,7 +1128,7 @@ OPERATIONS: dict = {
     # 生成・削除
     "create": op_create, "remove": op_remove,
     # 情報
-    "reveal": op_reveal, "look": op_look,
+    "reveal": op_reveal, "look": op_look, "search": op_search,
     # Counter / Note / Link
     "counter_add": op_counter_add, "counter_remove": op_counter_remove, "counter_set": op_counter_set,
     "note_add": op_note_add, "note_update": op_note_update, "note_remove": op_note_remove,

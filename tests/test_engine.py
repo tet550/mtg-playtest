@@ -7,6 +7,7 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from mtgtable import Engine, GameStore, new_game, parse_decklist, player_view, state_diff  # noqa: E402
+from mtgtable import info  # noqa: E402
 from mtgtable.render import render_view  # noqa: E402
 
 DECK_A = """# a
@@ -350,6 +351,50 @@ class OperationTest(unittest.TestCase):
         e = game()
         ok(e, None, {"op": "step", "to": "main1"})
         self.assertEqual((e.state.turn.turn, e.state.turn.step, e.state.turn.priority), (1, "main", "p1"))
+
+    def test_search_moves_only_the_found_card(self):
+        e = game()
+        lib = len(e.state.zones["p1.library"].cards)
+        r = ok(e, "p1", {"op": "search", "name": "Grizzly Bears", "to": "hand", "reveal": True, "as": "b"})
+        self.assertEqual(len(r.learned), 1)
+        bear = r.learned[0]["id"]
+        self.assertEqual((r.learned[0]["name"], r.learned[0]["zone"]), ("Grizzly Bears", "p1.hand"))
+        self.assertEqual(r.aliases["b"], [bear])
+        self.assertEqual(len(e.state.zones["p1.library"].cards), lib - 1)
+        self.assertTrue(info.knows_identity(e.state, "p2", bear))  # 公開した
+        # 残りのライブラリーは覚えない（シャッフル済みで位置も分からない）
+        self.assertEqual(player_view(e.state, "p1")["zones"]["p1.library"].get("known_positions_count"), None)
+        # 見つからない・足りないなら失敗
+        self.assertEqual(e.apply_group("p1", {"ops": [{"op": "search", "name": "Nope", "to": "hand"}]}).status,
+                         "failed")
+
+    def test_search_to_battlefield_and_to_top(self):
+        e = game()
+        r = ok(e, "p1", {"op": "search", "name": ["Forest", "Island"], "count": 2, "to": "battlefield",
+                         "tapped": True})
+        cards = r.results[0]["cards"]
+        self.assertTrue(all(e.state.cards[c].tapped and e.state.cards[c].zone == "battlefield" for c in cards))
+        # 「探してシャッフルし、その後一番上に置く」
+        r = ok(e, "p1", {"op": "search", "name": "Grizzly Bears", "to": "library", "position": "top"})
+        top = r.results[0]["cards"][0]
+        self.assertEqual(e.state.zones["p1.library"].cards[0], top)
+        self.assertTrue(info.knows_position(e.state, "p1", top))
+        self.assertFalse(info.knows_identity(e.state, "p2", top))
+
+    def test_unordered_library_cards_do_not_leak_order(self):
+        e = game()
+        ok(e, "p1", {"op": "look", "cards": {"zone": "library", "top": 10}}, {"op": "shuffle"})
+        v = player_view(e.state, "p1", library=True)["zones"]["p1.library"]
+        ids = [c["id"] for c in v["known_unordered"]]
+        self.assertEqual(len(ids), 10)
+        self.assertEqual(ids, sorted(ids, key=info.id_sort_key))
+
+    def test_event_lists_are_plain_text(self):
+        e = game()
+        r = e.apply_group("p1", {"ops": [{"op": "look", "cards": {"zone": "library", "top": 2}}]})
+        line = [x for x in r.events if "looks at" in x][0]
+        self.assertNotIn("[", line)
+        self.assertRegex(line, r"^p1 looks at #c\d+ <[^<>]+>, #c\d+ <[^<>]+>$")
 
     def test_step_requires_a_name(self):
         e = game()

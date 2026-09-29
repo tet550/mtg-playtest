@@ -158,7 +158,7 @@ T1 も同じ骨組み（ゲーム前から `step to=untap` で先攻の T1 に�
 | 占術 N | `look {cards: {zone: library, top: N}}` → 見てから `move ... position: bottom`（上に残す順は `move ... position: top`） |
 | 諜報 N | `look` → `move ... to graveyard` |
 | 切削 N | `move {cards: {zone: library, top: N}, to: graveyard}` |
-| サーチ | `look {cards: {zone: library, all: true}}` → `move {card: {zone: library, name: "Swamp"}, to: ...}` → `shuffle`（何を取るか決めてから書けるなら1つの Batch で） |
+| サーチ | `search {name: "Swamp", to: hand, reveal: true}`（シャッフル込み。戦場へタップ状態なら `to: battlefield, tapped: true`、2枚なら `count: 2`、候補が複数なら `name: ["Swamp", "Mountain"]`）。何も持ってこないなら `shuffle` だけ |
 | 手札を公開させる（Duress など） | `reveal {cards: {zone: p2.hand, all: true}, to: p1}` → 見てから選ぶ（公開の所で Batch を区切る） |
 | 相手が選んで捨てる | 相手として判断し、その Player の Batch で `move ... to graveyard` |
 | 上から N 枚を見て1枚を手札、残りを下に無作為の順で | `look {top: N}` → `move {card, to: hand}` → `move {cards: [...], to: library, position: bottom, order: random}` |

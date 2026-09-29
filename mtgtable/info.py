@@ -11,6 +11,8 @@ GameState そのものと、各 Player から見える情報を分ける。
 """
 from __future__ import annotations
 
+import re
+
 from typing import Optional
 
 from .model import GameState, INFO_POLICIES
@@ -83,6 +85,12 @@ def can_reference(state: GameState, viewer: Optional[str], card_id: str) -> bool
 
 def known_set(state: GameState, viewer: Optional[str]) -> set:
     return {cid for cid in state.cards if knows_identity(state, viewer, cid)}
+
+
+def id_sort_key(oid: str):
+    """"#c9" < "#c10" のように数値で並べるためのキー。"""
+    m = re.match(r"^#([a-z]+)(\d+)$", oid)
+    return (m.group(1), int(m.group(2))) if m else (oid, 0)
 
 
 # ---------------------------------------------------------------- knowledge
@@ -274,7 +282,8 @@ def player_view(state: GameState, viewer: Optional[str], sideboard: bool = False
             if positions:
                 zv["known_positions"] = positions
             if unordered:
-                zv["known_unordered"] = unordered
+                # 位置を知らないカードは id 順に並べる（領域の並び順で出すと位置が漏れる）
+                zv["known_unordered"] = sorted(unordered, key=lambda c: id_sort_key(c["id"]))
         else:
             known = [cid for cid in zone.cards if knows_identity(state, viewer, cid)]
             if len(known) == len(zone.cards):

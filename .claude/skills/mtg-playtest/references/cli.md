@@ -124,7 +124,8 @@
 | `create` | `name` または `copy_of`, `definition?, zone?=battlefield, controller?, owner?, count?=1, token?=true, tapped?, face_down?, as?` | トークン等。`copy_of` は元カードを参照（コピーのコピーも大元を指す）。`definition` は解釈しない辞書 |
 | `remove` | `card` | ゲームから取り除く（トークンの消滅など）。Counter / Note / Link も消える |
 | `reveal` | `card, to?=all` | 見た Player が中身を覚える |
-| `look` | `card, player?, as?` | その Player だけが見る（占術・サーチ） |
+| `look` | `card, player?, as?` | その Player だけが見る（占術・手札を見る効果） |
+| `search` | `name, to, count?=1, position?, tapped?, reveal?, shuffle?=true, zone?, player?, as?` | ライブラリーから名前（リストならどれか）で探して動かし、シャッフルする。見つかった数が `count` に足りなければ失敗。残りのカードは記憶に加えない（`learned` には動かしたカードだけ）。同じライブラリーへ置く（「シャッフルして一番上に」）ときはシャッフルしてから置く |
 
 ### Counter / Note / Link
 
