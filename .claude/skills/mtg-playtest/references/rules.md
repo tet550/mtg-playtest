@@ -22,6 +22,8 @@
 ## ゲームの開始
 
 - ライフ20、手札7枚。先攻は最初のターンのドローを飛ばす
+- 順番（総合ルール 103）: 手札を引く → 全員のマリガンを終える → 開始時の手札からの行動（Leyline 系。先攻 → ターン順）
+  → 先攻の T1。ここまでは **ゲーム前**（mtgtable では turn 0 / `pregame`。`step to=untap` で T1 へ）
 - マリガン（ロンドン）: 手札をライブラリーに戻して切り直し7枚引く。キープしたら、マリガンした回数だけ
   手札を好きに選んでライブラリーの一番下に置く
   → `declare kind=mulligan` → `move {zone: hand, all} to library` → `shuffle` → `draw 7`、キープ時に `move ... position: bottom`

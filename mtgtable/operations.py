@@ -18,7 +18,7 @@ from typing import Callable, Optional
 from . import info
 from .model import (
     AttackAssignment, BlockAssignment, Card, Counter, Declaration, GameState, Link, Mana,
-    Note, StackItem, TURN_SEQUENCE, NO_PRIORITY_STEPS, PLAYER_ZONES, zone_name,
+    Note, StackItem, TURN_SEQUENCE, NO_PRIORITY_STEPS, PREGAME, PLAYER_ZONES, zone_name,
 )
 
 
@@ -914,6 +914,7 @@ def op_step(ctx: Context, p: dict) -> dict:
     declare_attackers / declare_blockers / combat_damage / end_of_combat / main2 / end / cleanup）。
 
     今より前のステップを指定すると、次のターンのそのステップになる（クリンナップの後は次のターン）。
+    ゲーム前（pregame）からは、先攻（active）の T1 のそのステップに入る。
     進めるのは Turn State だけ。アンタップ・ドロー・マナの消滅などは行わない。
     """
     s = ctx.state
@@ -921,6 +922,15 @@ def op_step(ctx: Context, p: dict) -> dict:
     if not p.get("to"):
         raise OperationError("step needs 'to' (one of %s)" % ", ".join(STEP_NAMES))
     target = _step_key(p["to"])
+    if (t.phase, t.step) == PREGAME:
+        before = (t.turn, t.phase, t.step)
+        t.turn = 1
+        t.phase, t.step = target
+        t.priority = None if t.step in NO_PRIORITY_STEPS else t.active
+        t.passed = []
+        s.turn_started[t.active] = s.tick()  # ゲーム前に出たパーマネントは T1 に召喚酔いでない
+        ctx.event("step: turn %d %s/%s -> turn %d %s/%s (active %s)" % (before + (t.turn, t.phase, t.step, t.active)))
+        return {"turn": t.turn, "phase": t.phase, "step": t.step}
     try:
         i = TURN_SEQUENCE.index((t.phase, t.step))
     except ValueError:

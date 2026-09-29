@@ -18,6 +18,8 @@ MTG の処理を mtgtable の Operation に落とす定型。id・名前は例�
 
 ## ターンの骨組み
 
+T1 も同じ骨組み（ゲーム前から `step to=untap` で先攻の T1 に入る）。先攻は `draw` を書かない。
+
 ```json
 {"label": "T5 開始", "pre": [{"turn": 4, "step": "cleanup"}], "ops": [
   {"op": "step", "to": "untap"}, {"op": "untap_all"},

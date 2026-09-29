@@ -91,11 +91,15 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 各 Player について、自分の view だけを見てキープかマリガンを決める。マリガンは
 `declare kind=mulligan` → 手札を全部ライブラリーへ → `shuffle` → `draw 7` → 枚数分を下へ、を1グループで行う。
 
+`new` の直後は **ゲーム前**（view に `Pregame  first pN`。turn 0）。マリガンはここで行う。全員のマリガン（下に置く処理まで）が
+終わったら、開始時の手札から使えるカード（<Leyline Axe> など「開始時の手札にあるなら、戦場に出た状態でゲームを始めてよい」）を
+先攻 → ターン順に処理する。これもゲーム前（`move ... to battlefield`）。その後、先攻が `step to=untap` で T1 に入る。
+
 ### 3. ターンの進め方
 
 アクティブ・プレイヤーが進行を持つ。1ターンを原則この単位で `apply` する:
 
-1. **ターン開始**: `step to=untap`（次のターンへ）→ `untap_all` → `step to=upkeep` → 誘発があれば処理 →
+1. **ターン開始**: `step to=untap`（次のターンへ。ゲーム前からは先攻の T1 へ）→ `untap_all` → `step to=upkeep` → 誘発があれば処理 →
    `step to=draw` → `draw`（先攻1ターン目は引かない）
 2. **メイン・戦闘・終了**: 土地・呪文・能力。呪文や能力は `stack_push` → `pass` → 全員パスなら解決
 3. **クリンナップ**: 手札の上限、`note_remove {until: "end_of_turn"}`、必要なら `mana_clear`

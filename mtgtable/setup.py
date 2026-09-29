@@ -10,7 +10,7 @@ import re
 from dataclasses import dataclass, field
 
 from . import info
-from .model import Card, GameState, TURN_SEQUENCE, zone_name
+from .model import Card, GameState, PREGAME, zone_name
 
 _LINE = re.compile(r"^\s*(\d+)\s*x?\s+(.+?)\s*$")
 _SET_SUFFIX = re.compile(r"\s+\([A-Za-z0-9]{2,6}\)\s*[\w-]*$")
@@ -92,11 +92,11 @@ def new_game(decks: dict, seed: int = 0, life: int = 20, first: str = None,
                 s.cards[cid].zone = zone_name(pid, "hand")
     for pid, pol in (policies or {}).items():
         info.set_policy(s, pid, pol)
-    s.turn.turn = 1
+    # ゲーム前から始める（マリガン・開始時の手札からの行動はここ）。active は先攻。最初の step で T1 に入る
+    s.turn.turn = 0
     s.turn.active = first or s.player_order[0]
-    s.turn.phase, s.turn.step = TURN_SEQUENCE[0]
+    s.turn.phase, s.turn.step = PREGAME
     s.turn.priority = None
-    s.turn_started[s.turn.active] = s.clock
     s.meta["decks"] = {pid: {"name": d.name, "main": d.main_count,
                              "sideboard": sum(n for n, _ in d.sideboard)} for pid, d in decks.items()}
     info.refresh_knowledge(s)

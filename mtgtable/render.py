@@ -152,8 +152,11 @@ def _cards_block(title: str, zv: dict, indent: str = "  ") -> list:
 def render_view(view: dict) -> str:
     t = view["turn"]
     out = ["== view as %s (policy %s) v%d ==" % (view["viewer"] or "judge", view["policy"], view["version"])]
-    line = "Turn %d  active %s  %s/%s  priority %s" % (t["turn"], t["active"], t["phase"], t["step"],
-                                                     t["priority"] or "-")
+    if (t["phase"], t["step"]) == ("pregame", "pregame"):
+        line = "Pregame  first %s  priority %s" % (t["active"], t["priority"] or "-")
+    else:
+        line = "Turn %d  active %s  %s/%s  priority %s" % (t["turn"], t["active"], t["phase"], t["step"],
+                                                         t["priority"] or "-")
     if t.get("passed"):
         line += "  passed: " + ", ".join(t["passed"])
     if t.get("standing_passes"):

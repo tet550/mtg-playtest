@@ -168,7 +168,7 @@
 |---|---|---|
 | `life` | `amount`（増減）または `set`, `player?` | |
 | `player_set` | `status?, name?, player?` | `status`: `playing` / `lost` / `won` / `conceded` / `draw` |
-| `step` | `to` | 名前で進める: `untap` `upkeep` `draw` `main1` `beginning_of_combat` `declare_attackers` `declare_blockers` `combat_damage` `end_of_combat` `main2` `end` `cleanup`。今より前を指定すると次のターン（アクティブ交代）。途中のステップは飛ばす |
+| `step` | `to` | 名前で進める: `untap` `upkeep` `draw` `main1` `beginning_of_combat` `declare_attackers` `declare_blockers` `combat_damage` `end_of_combat` `main2` `end` `cleanup`。今より前を指定すると次のターン（アクティブ交代）。途中のステップは飛ばす。ゲーム前（`new` の直後、turn 0 / `pregame`）からは先攻の T1 のそのステップへ |
 | `turn_set` | `turn?, phase?, step?, active?, priority?` | 標準に無い進行（追加ターン、`first_strike_damage` など） |
 | `priority` | `player` | 優先権を直接渡す |
 | `pass` | `until?, player?, text?` | パスの宣言を記録する（人間との対戦で、求めたパスをもらったとき）。`until`: `stack` / `step` / `turn` で継続的なパス。全員が続けてパスすると `all_passed: true`。エンジンはこれで止まったり進んだりしない |

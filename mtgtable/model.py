@@ -46,6 +46,8 @@ TURN_SEQUENCE = [
 ]
 # 通常は優先権が発生しないステップ。step はここで priority を空にする
 NO_PRIORITY_STEPS = {"untap", "cleanup"}
+# ゲーム前（マリガン・開始時の手札からの行動。総合ルール 103）。turn 0。最初の step で先攻の T1 に入る
+PREGAME = ("pregame", "pregame")
 
 INFO_POLICIES = ("normal", "own_library", "all_libraries", "omniscient")
 

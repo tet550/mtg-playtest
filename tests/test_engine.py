@@ -324,8 +324,36 @@ class OperationTest(unittest.TestCase):
         self.assertEqual((e.state.turn.turn, e.state.turn.active, e.state.turn.step), (2, "p2", "untap"))
         self.assertIsNone(e.state.turn.priority)
 
+    def test_game_starts_in_pregame(self):
+        e = game(first="p2")
+        t = e.state.turn
+        self.assertEqual((t.turn, t.phase, t.step, t.active, t.priority), (0, "pregame", "pregame", "p2", None))
+        self.assertIn("Pregame  first p2", render_view(player_view(e.state, "p1")))
+        ok(e, None, {"op": "step", "to": "untap"})
+        t = e.state.turn
+        self.assertEqual((t.turn, t.phase, t.step, t.active, t.priority), (1, "beginning", "untap", "p2", None))
+        # T1 からは通常どおり（クリンナップの後の untap で次のターン）
+        ok(e, None, {"op": "step", "to": "cleanup"}, {"op": "step", "to": "untap"})
+        self.assertEqual((e.state.turn.turn, e.state.turn.active), (2, "p1"))
+
+    def test_opening_hand_permanent_is_not_sick_on_turn_1(self):
+        from mtgtable.info import summoning_sick
+        e = game()
+        # 開始時の手札から戦場へ（Leyline など）はゲーム前
+        bear = find(e, "p1", "hand", "Grizzly Bears")
+        ok(e, "p1", {"op": "declare", "kind": "keep"}, {"op": "move", "card": bear, "to": "battlefield"})
+        self.assertTrue(summoning_sick(e.state, e.state.cards[bear]))
+        ok(e, None, {"op": "step", "to": "untap"})
+        self.assertFalse(summoning_sick(e.state, e.state.cards[bear]))
+
+    def test_pregame_to_any_step(self):
+        e = game()
+        ok(e, None, {"op": "step", "to": "main1"})
+        self.assertEqual((e.state.turn.turn, e.state.turn.step, e.state.turn.priority), (1, "main", "p1"))
+
     def test_step_requires_a_name(self):
         e = game()
+        ok(e, None, {"op": "step", "to": "untap"})
         for bad in ({"op": "step"}, {"op": "step", "to": "main"}, {"op": "step", "to": "untap"},
                     {"op": "step", "to": "second_main"}):
             self.assertEqual(e.apply_group(None, {"ops": [bad]}).status, "failed", bad)
