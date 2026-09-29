@@ -19,13 +19,13 @@
 
 | コマンド | 内容 | 主なオプション |
 |---|---|---|
-| `new GAME --deck p1=FILE [--deck p2=FILE]` | 対局を作る。デッキのオラクル・キャッシュも用意する | `--seed N` `--first p2` `--hand 7` `--life 20` `--policy p1=omniscient` `--offline` `--force` |
+| `new GAME --deck p1=FILE [--deck p2=FILE]` | 対局を作る。デッキのオラクル・キャッシュも用意する。ゲーム前（turn 0 / `pregame`）から始まる。`--deck` が1つなら一人回し | `--seed N` `--first p2` `--hand 7` `--life 20` `--policy p1=omniscient` `--offline` `--force` |
 | `view GAME --as pN` | Player View。ライブラリー・墓地は枚数だけ、サイドボードは出さない | `--no-names` `--library` `--graveyard` `--sideboard` `--full` `--json` `--oracle` |
 | `apply GAME [FILE] --as pN` | Batch を適用（FILE 省略で標準入力） | `--view`（と view の表示オプション） |
 | `ids GAME --as pN [#c12 ...]` | id とカード名の対応（知っているカードだけ。省略で手札・戦場・スタック・墓地・追放） | |
 | `undo GAME [n]` / `redo GAME [n]` | ActionGroup 単位で戻す／やり直す | `undo --to N`（log の N 件目の直後まで。割り込みの巻き戻しに） |
-| `log GAME` | Operation Log（`~` は Undo 済み。ラベルの無いグループは Operation の要約） | `--last N` `--events`（全情報。判断には使わない） `--no-names` |
-| `replay GAME --to N` | log の N 件目時点 | `--as` `--json` `--no-names` |
+| `log GAME` | Operation Log。1行 `番号 v版 actor ラベル`（`~` は Undo 済み、代理の宣言は `[proxy by pX]`。ラベルの無いグループは Operation の要約） | `--last N` `--events`（全情報。判断には使わない） `--no-names` |
+| `replay GAME --to N` | log の N 件目時点 | `--as` `--json` `--no-names` `--full` |
 | `diff GAME --from A [--to B]` | 2時点の状態差分 | `--all`（knowledge も） |
 | `fork GAME DEST [--at N]` | 途中時点から別の対局 | `--force` |
 | `policy GAME p1=omniscient` | Information Policy を変える | |
@@ -35,12 +35,14 @@
 | `oracle --game GAME --as pN [--card #c12 ...]` | 対局の中で pN が知っているカード（`--card` 省略でサイドボード以外の全部） | `--brief` |
 | `deck FILE` | 枚数の確認とデッキ・キャッシュの作成 | `--fetch`（無いカードを取得） `--refresh` |
 
-- `--as` は `p1` / `p2` / `judge`（全知）。Player の判断に `judge` を使わない
+- `--as` は `p1` / `p2` / `judge`（全知）。Player の判断に `judge` を使わない。`view` `replay` `ids` `oracle --game` は
+  **省略すると judge**（全部見える）なので、Player として見るときは必ず `--as pN` を付ける
 - `--no-names` はカード名を出さず id だけにする。`apply` の `learned` は `--no-names` でも名前を出す
   （新しく知ったカードの id と名前はここで分かる）。後で名前が要るときは `ids` か `oracle --game ... --card` で引く
 - `--brief` は注釈文（括弧内）を省く。トークンの能力（Lander・Treasure など）は注釈文にしか無いことがあるので、
   初めて読むカードには使わない
-- 終了コード: `apply` は失敗・前提不成立で 2、`oracle` は見つからないカードがあると 1
+- 終了コード: `apply` は失敗・前提不成立で 2、Batch の JSON や書式が不正なら 1（何も適用しない）、
+  `oracle` は見つからないカードがあると 1
 
 ### オラクルのキャッシュ
 
@@ -103,13 +105,16 @@
              "links_removed": [...], "results": [...]}]}
 ```
 
-- `learned`: このグループで操作者が新しく知ったカード
+- `learned`: このグループで操作者が新しく知ったカード（`--no-names` でも名前が出る）
+- `results`: 各 Operation の戻り値（`stack_push` → `{"item"}`、`draw` → `{"cards", "short"}`、`cast` → `{"card", "item"}` など）
+- `actor` / `proxy_by`: グループごとの actor・代理の宣言のときだけ付く
 - `links_removed`: 領域移動で外れた Link（張り直すかは AI が決める）
 - 操作者が知り得ないカードの id は `"hidden"` に置き換わる
 
 ## Operation
 
-`player` を省くと操作者。`card` / `cards` はどちらでもよい（リストや参照も可）。
+`player` を省くと操作者（judge のときは必須）。`card` / `cards`、`attacker` / `attackers`、`target` / `targets`（`link_add`）は
+どちらの名前でもよい（値は1つでもリストでも参照でも可）。
 
 ### カード
 
@@ -125,7 +130,7 @@
 | `remove` | `card` | ゲームから取り除く（トークンの消滅など）。Counter / Note / Link も消える |
 | `reveal` | `card, to?=all` | 見た Player が中身を覚える |
 | `look` | `card, player?, as?` | その Player だけが見る（占術・手札を見る効果） |
-| `search` | `name, to, count?=1, position?, tapped?, reveal?, shuffle?=true, zone?, player?, as?` | ライブラリーから名前（リストならどれか）で探して動かし、シャッフルする。見つかった数が `count` に足りなければ失敗。残りのカードは記憶に加えない（`learned` には動かしたカードだけ）。同じライブラリーへ置く（「シャッフルして一番上に」）ときはシャッフルしてから置く |
+| `search` | `name, to, count?=1, position?, tapped?, face_down?, reveal?, shuffle?=true, zone?, player?, as?` | ライブラリーから名前（リストならどれか）で探して動かし、シャッフルする。見つかった数が `count` に足りなければ失敗。残りのカードは記憶に加えない（`learned` には動かしたカードだけ）。同じライブラリーへ置く（「シャッフルして一番上に」）ときはシャッフルしてから置く |
 
 ### Counter / Note / Link
 
@@ -142,7 +147,7 @@
 
 | op | パラメーター | 内容 |
 |---|---|---|
-| `stack_push` | `card?` または `source?`, `kind?, controller?, text?, targets?, as?` | `card` を渡すとそのカードをスタック領域へ（呪文）。`kind`: `spell` / `activated` / `triggered` など。`targets` を渡すと `target` Link を張る。積んだ Player が優先権を持つ |
+| `stack_push` | `card?` または `source?`, `kind?, controller?, text?, targets?, as?` | `card` を渡すとそのカードをスタック領域へ（呪文）。`kind`: `spell` / `activated` / `triggered` など（省略で `card` があれば `spell`、無ければ `ability`）。`targets` を渡すと `target` Link を張る。積んだ Player が優先権を持つ |
 | `stack_remove` | `item?`（省略で一番上）, `card_to?, position?` | 解決・打ち消し。`card_to` で呪文のカードも動かす。その項目が source の Link も外す。アクティブ・プレイヤーが優先権を持つ |
 | `stack_move` | `item, index` | 順番の入れ替え（index 0 が一番上） |
 
@@ -183,9 +188,9 @@
 
 | op | パラメーター | 中でやること |
 |---|---|---|
-| `pay` | `{"#c103": "U", "#c63": "G", "pool"?: "UG", "life"?: 1}` | 各カードを `tap` → `mana_add`（source 付き）→ 出したマナを全部 `mana_spend`。`pool` はプールにあるマナを使う、`life` はライフを払う |
-| `cast` | `card, pay?, targets?, text?, then?, to?, resolve?=true, as?` | `pay` → `stack_push` → `then` の op（解決時の処理）→ `stack_remove`。行き先はタイプ行から（インスタント・ソーサリーは墓地、他は戦場。分からなければ `to` が要る）。`resolve: false` で積むだけ |
-| `push_resolve` | `source, text, kind?=triggered, targets?, pay?, then?, as?` | スタックに積んで即座に解決する（能力用）: `pay`（起動コスト）→ `stack_push` → `then` → `stack_remove`。`as` はスタックの項目。積むだけ（相手の応答を待つ）なら `pay` と `stack_push` |
+| `pay` | `{"#c103": "U", "#c63": "G", "pool"?: "UG", "life"?: 1, "player"?: "p1"}` | 各カードを `tap` → `mana_add`（source 付き）→ 出したマナを全部 `mana_spend`。`pool` はプールにあるマナを使う、`life` はライフを払う |
+| `cast` | `card, pay?, targets?, text?, controller?, then?, to?, resolve?=true, as?` | `pay` → `stack_push` → `then` の op（解決時の処理）→ `stack_remove`。行き先はタイプ行から（インスタント・ソーサリーは墓地、他は戦場。分からなければ `to` が要る）。`resolve: false` で積むだけ |
+| `push_resolve` | `source, text, kind?=triggered, targets?, controller?, pay?, then?, as?` | スタックに積んで即座に解決する（能力用）: `pay`（起動コスト）→ `stack_push` → `then` → `stack_remove`。`as` はスタックの項目。積むだけ（相手の応答を待つ）なら `pay` と `stack_push` |
 | `land` | `card, mana, tapped?, as?, note_as?` | 戦場に出して `mana: ...` の Note を付ける（`mana: "{U} or {R}"`） |
 | `turn_start` | `draw?, upkeep?, to?, as?` | `step untap`（ゲーム前からは先攻の T1）→ `untap_all` → `step upkeep` → `upkeep` の op → `step draw` → `draw`（既定1枚。ゲームの最初のターンは0）→ `to` のステップへ（省略でドロー・ステップ） |
 | `turn_end` | `end?, cleanup?` | `step end` → `end` の op → `step cleanup` → `cleanup` の op（手札の上限など）→ `note_remove until=end_of_turn` → 全員の `mana_clear` |
@@ -193,6 +198,14 @@
 - マナの書き方: `"U"` `"UU"` `"RG"`（1枚から2マナ）`"5U"`、制限付きは `{"color": "U", "amount": 5, "note": "abilities only"}`、
   タップせずに出す（ETB でマナが出るなど）は `{"color": "B", "tap": false}`
 - `pay` のキーは id（`#` は省略可）。出したマナは全部使う前提。余らせて浮かせるなら基本の `tap` / `mana_add` を使う
+- `then` / `upkeep` / `end` / `cleanup` は op のリスト（複合 op も書ける）。操作者として順に適用し、中で付けた `as` は
+  同じ Batch の後ろでも使える
+- `as` の中身: `cast` → 唱えたカード、`push_resolve` → スタックの項目、`land` → 土地（`note_as` → mana の Note）、
+  `turn_start` → 引いたカード
+- 戻り値（`results`）: `pay` → `{"paid": [マナ]}`、`cast` → `{"card", "item"}`、`push_resolve` → `{"item"}`、
+  `land` → `{"card", "note"}`、`turn_start` → `{"turn", "active", "drawn"}`、`turn_end` → `{"turn"}`
+- 行き先の自動判定（`cast`）は印刷されたタイプ行の表面（`//` の前）だけを見る。唱える面が違う
+  （出来事・分割・両面の裏面など）ときは `to` を書く
 
 ## カード参照
 

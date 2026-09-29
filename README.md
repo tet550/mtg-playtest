@@ -32,6 +32,9 @@ python -m mtgtable new playtest/g1 --deck p1=decklists/piza.txt --deck p2=deckli
 python -m mtgtable view playtest/g1 --as p1
 ```
 
+対局はゲーム前（turn 0 / `pregame`）から始まる。マリガンと開始時の手札からの行動を書いてから、最初の
+`step`（または `turn_start`）で先攻の T1 に入る。
+
 ```bash
 python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 ```
@@ -44,7 +47,9 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 
 | オプション | 内容 |
 |---|---|
+| `--library` / `--graveyard` | ライブラリーの既知のカード・墓地の中身も出す。既定では枚数だけ |
 | `--sideboard` | サイドボード（ゲーム外）も出す。既定では出さない |
+| `--full` | サイドボード・ライブラリー・墓地を全部出す |
 | `--no-names` | カード名を出さず id だけにする（AI が id を覚えているときの省略用） |
 | `--json` | JSON で出す |
 
@@ -68,7 +73,8 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 | `ids GAME --as p1 [#c12 ...]` | id とカード名の対応（p1 が知っているカードだけ） |
 | `deck FILE [--fetch]` | デッキリストの枚数確認とオラクル・キャッシュの作成（`--fetch` で無いカードを取得） |
 
-`--as` には `p1` / `p2` / `judge`。`judge` は全知（Judge / Orchestrator / 手動介入用）。
+`--as` には `p1` / `p2` / `judge`。`judge` は全知（Judge / Orchestrator / 手動介入用）。`view` `replay` `ids` は
+省略すると judge なので、Player として見るときは必ず `--as` を付ける。カード名は表示では `<Name>` で囲む。
 
 一人回し（Goldfish）はデッキを1つだけ渡し、必要なら Policy を広げる:
 
@@ -85,15 +91,16 @@ MTG の基本ルールの要点は [references/rules.md](.claude/skills/mtg-play
 
 ```json
 {"actor": "p1", "groups": [
-  {"label": "Llanowar Elves を唱えてパス", "pre": [{"step": "main"}], "ops": [
-     {"op": "tap", "card": "#c12"},
-     {"op": "mana_add", "color": "G", "source": "#c12"},
-     {"op": "mana_spend", "color": "G"},
-     {"op": "stack_push", "card": "#c40", "as": "elves"},
-     {"op": "pass"}]},
-  {"label": "解決", "ops": [{"op": "stack_remove", "item": "$elves", "card_to": "battlefield"}]}
+  {"label": "T3 開始", "ops": [{"op": "turn_start", "to": "main1"}]},
+  {"label": "Forest, Llanowar Elves", "pre": [{"step": "main"}], "ops": [
+     {"op": "land", "card": "#c12", "mana": "{G}"},
+     {"op": "cast", "card": "#c40", "pay": {"#c12": "G"}}]},
+  {"label": "T3 終了", "ops": [{"op": "turn_end"}]}
 ]}
 ```
+
+- `land` `cast` `push_resolve` `pay` `turn_start` `turn_end` は、基本の Operation（`tap` `mana_add` `stack_push`
+  `stack_remove` `step` など）をまとめた複合 Operation。ルールの判定はしない
 
 - **ActionGroup**（`groups` の1要素）は丸ごと適用するか丸ごと取り消す。log の1件・Undo の1単位
 - **Batch** が止まるのは、失敗と前提不成立だけ。知らないカードを見たときも、優先権が動いたときも止めない。
@@ -132,6 +139,18 @@ MTG の基本ルールの要点は [references/rules.md](.claude/skills/mtg-play
 ```bash
 python -m unittest discover -s tests
 ```
+
+| ファイル | 対象 |
+|---|---|
+| `helpers.py` | 共通部品（小さなデッキ2つの対局、`ok` など） |
+| `test_setup.py` | デッキリスト・初期状態 |
+| `test_info.py` | 公開範囲・記憶・Player View・表示 |
+| `test_operations.py` | 基本の Operation（カード・Link・トークン・スタック・戦闘・マナ・ライブラリー・ログの文字列） |
+| `test_composite.py` | 複合 Operation（`pay` `cast` `push_resolve` `land` `turn_start` `turn_end`） |
+| `test_turn.py` | ターン・ステップ・ゲーム前・宣言・優先権のパス |
+| `test_batch.py` | ActionGroup・Batch・エイリアス・グループごとの actor・代理の宣言 |
+| `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
+| `test_carddb.py` | オラクルのキャッシュ |
 
 ## 権利
 
