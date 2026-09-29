@@ -1,3 +1,4 @@
+"""オラクルのキャッシュ（1枚ごと・デッキごと）と表示。"""
 import json
 import os
 import pathlib
