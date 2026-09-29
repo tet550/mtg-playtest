@@ -74,6 +74,10 @@
   AI 同士の対戦で、相手の手番まで1つの Batch に入れるときに使う。各グループはその actor として適用され
   （知らないカードの id は使えない）、log にもその actor で残る。actor を書かないグループは judge になるので、
   この形では全グループに actor を書く
+- **代理の宣言（`"proxy": "p1"`）**: Batch の actor が Player のとき、グループに `"proxy"` を書くと、そのグループを
+  相手の Player として適用する（人間が相手の対局で、相手の宣言を同じ Batch に入れるとき）。log には
+  `p1  [proxy by p2] ...` と残り、結果にも `"proxy_by"` が付く。`learned` と id の伏せ字は操作者（Batch の actor）
+  から見た形。エンジンは妥当かどうかを判定しない（止めない）。使ってよい場面と巻き戻しは SKILL.md の「代理の宣言」
 - **ActionGroup**: 1つでも Operation が失敗したら丸ごと取り消す。log の1件・Undo の1単位
 - **Batch**: 先頭から順に適用し、次で止まる
 

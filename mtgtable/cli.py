@@ -146,6 +146,8 @@ def cmd_log(a):
     for e in entries:
         mark = " " if e["seq"] <= cur else "~"  # ~ = Undo 済み（Redo できる）
         label = e["label"] or "; ".join(summarize_op(op) for op in e["ops"])
+        if e.get("proxy_by"):
+            label = "[proxy by %s] %s" % (e["proxy_by"], label)
         print("%s%4d v%-4d %-5s %s" % (mark, e["seq"], e["version"], e["actor"] or "judge", label))
         if a.events:
             for ev in e["events"]:

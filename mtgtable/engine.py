@@ -53,11 +53,24 @@ def normalize_batch(raw) -> dict:
             raise OperationError("group %d has no ops" % i)
         pre = g.get("pre", g.get("preconditions", []))
         ng = {"label": g.get("label", ""), "pre": pre if isinstance(pre, list) else [pre], "ops": ops}
+        if "actor" in g and "proxy" in g:
+            raise OperationError("group %d sets both actor and proxy" % i)
         if "actor" in g:
             # ActionGroup ごとの操作者（AI 同士の対戦で、相手の手番まで1つの Batch に入れるとき）
             if raw.get("actor") is not None:
-                raise OperationError("group %d sets actor; per-group actors need the batch actor to be judge" % i)
+                raise OperationError("group %d sets actor; per-group actors need the batch actor to be judge"
+                                     " (to declare for another player, use \"proxy\")" % i)
             ng["actor"] = g["actor"]
+        if "proxy" in g:
+            # 代理の宣言: 操作者（Batch の actor）が相手の宣言（ブロック・パスなど）を代わりに書く。
+            # その Player として適用し log にも代理と残すが、結果（learned・id の伏せ字）は操作者から見た形で返す。
+            # 妥当かどうかはエンジンは判定しない（指摘があれば AI が Undo で巻き戻す）
+            if raw.get("actor") is None:
+                raise OperationError("group %d sets proxy; proxy needs a player as the batch actor"
+                                     " (a judge batch uses per-group \"actor\")" % i)
+            if g["proxy"] == raw.get("actor"):
+                raise OperationError("group %d: proxy %s is the batch actor itself" % (i, g["proxy"]))
+            ng["proxy"] = g["proxy"]
         out.append(ng)
     return {"actor": raw.get("actor"), "groups": out}
 
@@ -143,6 +156,7 @@ class GroupResult:
     label: str
     status: str  # applied / failed / precondition_failed / skipped
     actor: Optional[str] = None
+    proxy_by: Optional[str] = None  # 代理の宣言なら、代わりに書いた Player
     error: str = ""
     results: list = field(default_factory=list)
     created: list = field(default_factory=list)
@@ -158,6 +172,8 @@ class GroupResult:
         d = {"label": self.label, "status": self.status}
         if self.actor is not None:
             d["actor"] = self.actor
+        if self.proxy_by is not None:
+            d["proxy_by"] = self.proxy_by
         for k in ("error", "created", "aliases", "learned", "links_removed", "results"):
             v = getattr(self, k)
             if v:
@@ -188,14 +204,19 @@ class Engine:
     def _rng(self) -> random.Random:
         return random.Random("%s:%s" % (self.state.seed, self.state.version))
 
-    def apply_group(self, actor: Optional[str], group: dict, aliases: Optional[dict] = None) -> GroupResult:
-        """ActionGroup を1つ、丸ごと適用するか丸ごと取り消す。aliases は Batch 内で前から引き継ぐもの。"""
+    def apply_group(self, actor: Optional[str], group: dict, aliases: Optional[dict] = None,
+                    viewer: Optional[str] = "") -> GroupResult:
+        """ActionGroup を1つ、丸ごと適用するか丸ごと取り消す。aliases は Batch 内で前から引き継ぐもの。
+
+        viewer は結果を受け取る Player（代理の宣言では操作者。省略で actor）。learned と id の伏せ字は viewer から見た形。"""
         s = self.state
         if actor is not None and actor not in s.players:
             raise OperationError("unknown actor %r" % actor)
+        if viewer == "":
+            viewer = actor
         res = GroupResult(label=group.get("label", ""), status="applied")
         before_state = s.clone()
-        before_known = info.known_set(s, actor)
+        before_known = info.known_set(s, viewer)
         res.aliases_in = {k: list(v) for k, v in (aliases or {}).items()}
         ctx = Context(state=s, actor=actor, rng=self._rng(), aliases={k: list(v) for k, v in res.aliases_in.items()})
         try:
@@ -219,12 +240,12 @@ class Engine:
         res.events = ctx.events
         res.created = [x for x in ctx.created]
         # 無作為に非公開領域へ動いたカードなど、操作者が知り得ない id は結果に出さない
-        res.results = _mask(s, actor, res.results)
+        res.results = _mask(s, viewer, res.results)
         res.aliases_out = dict(ctx.aliases)
-        res.aliases = _mask(s, actor, {k: v for k, v in ctx.aliases.items() if res.aliases_in.get(k) != v})
-        res.links_removed = _mask(s, actor, ctx.links_removed)
+        res.aliases = _mask(s, viewer, {k: v for k, v in ctx.aliases.items() if res.aliases_in.get(k) != v})
+        res.links_removed = _mask(s, viewer, ctx.links_removed)
         created = set(ctx.created)
-        for cid in sorted(info.known_set(s, actor) - before_known - created,
+        for cid in sorted(info.known_set(s, viewer) - before_known - created,
                           key=lambda c: (s.cards[c].zone, c)):
             c = s.cards[cid]
             res.learned.append({"id": cid, "name": c.name, "zone": c.zone})
@@ -243,12 +264,14 @@ class Engine:
         aliases = {}
 
         def actor_of(g):
-            return g.get("actor", actor)
+            return g.get("actor", g.get("proxy", actor))
 
         for i, g in enumerate(groups):
-            r = self.apply_group(actor_of(g), g, aliases)
+            r = self.apply_group(actor_of(g), g, aliases, viewer=actor if "proxy" in g else "")
             if "actor" in g:
                 r.actor = g["actor"]
+            if "proxy" in g:
+                r.actor, r.proxy_by = g["proxy"], actor
             out["groups"].append(r)
             if r.status != "applied":
                 out["stopped"] = {"at": i, "reason": r.status, "error": r.error}

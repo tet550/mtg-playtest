@@ -92,11 +92,15 @@ class GameStore:
             entries = self.read_log()[:cursor]
             now = datetime.datetime.now().isoformat(timespec="seconds")
             for group, r in applied:
-                entries.append({"seq": len(entries) + 1, "version": r.version, "time": now,
-                                "actor": group.get("actor", result["actor"]), "label": group.get("label", ""),
-                                "pre": group.get("pre", []), "ops": group["ops"],
-                                "aliases_in": r.aliases_in,
-                                "events": r.events})
+                entry = {"seq": len(entries) + 1, "version": r.version, "time": now,
+                         "actor": group.get("actor", group.get("proxy", result["actor"])),
+                         "label": group.get("label", ""),
+                         "pre": group.get("pre", []), "ops": group["ops"],
+                         "aliases_in": r.aliases_in,
+                         "events": r.events}
+                if "proxy" in group:
+                    entry["proxy_by"] = result["actor"]  # 代理の宣言（指摘があれば Undo で巻き戻す）
+                entries.append(entry)
             self._write_log(entries)
             cursor = len(entries)
         self._save_state(engine.state, cursor)

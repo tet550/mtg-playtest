@@ -147,6 +147,37 @@ class MultiActorBatchTest(unittest.TestCase):
         with self.assertRaises(OperationError):
             e.apply_batch({"actor": "p1", "groups": [{"actor": "p2", "ops": [{"op": "draw"}]}]})
 
+    def test_proxy_group_declares_for_other_player(self):
+        e = game()
+        bear = find(e, "p1", "hand", "Grizzly Bears")
+        opp = hand(e, "p2")[0]
+        res = e.apply_batch({"actor": "p1", "groups": [
+            {"ops": [{"op": "move", "card": bear, "to": "battlefield"},
+                     {"op": "attack", "attacker": bear, "target": "p2", "tap": True}]},
+            {"proxy": "p2", "label": "no block", "ops": [{"op": "declare", "kind": "no_block"},
+                                                        {"op": "pass"}]},
+            {"ops": [{"op": "life", "player": "p2", "amount": -2}]},
+        ]})
+        self.assertIsNone(res["stopped"])
+        g = res["groups"][1]
+        self.assertEqual((g.actor, g.proxy_by), ("p2", "p1"))
+        self.assertEqual(g.public()["proxy_by"], "p1")
+        self.assertEqual(e.state.players["p2"].life, 18)
+        # 代理の結果は操作者（p1）から見た形: p2 の手札の id は出さない
+        res = e.apply_batch({"actor": "p1", "groups": [
+            {"proxy": "p2", "ops": [{"op": "draw", "as": "d"}]}]})
+        g = res["groups"][0]
+        self.assertEqual(g.learned, [])
+        self.assertEqual(g.aliases["d"], ["hidden"])
+        self.assertNotIn(opp, str(g.public()))
+
+    def test_proxy_needs_player_batch(self):
+        e = game()
+        with self.assertRaises(OperationError):
+            e.apply_batch({"groups": [{"proxy": "p2", "ops": [{"op": "pass"}]}]})
+        with self.assertRaises(OperationError):
+            e.apply_batch({"actor": "p1", "groups": [{"proxy": "p1", "ops": [{"op": "pass"}]}]})
+
 
 if __name__ == "__main__":
     unittest.main()

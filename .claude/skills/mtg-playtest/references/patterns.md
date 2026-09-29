@@ -174,6 +174,9 @@ MTG の処理を mtgtable の Operation に落とす定型。id・名前は例�
 
 - 攻撃時の誘発はこの後で積む。ブロックは防御側として判断する（パスではないので必ず聞く）:
   `{"op": "block", "blocker": "#c98", "attacker": "#c66"}` またはブロックしない `declare {kind: "no_block"}`
+- 人間が相手で、ブロックできるクリーチャーがいない（選択の余地が無い）ときは、同じ Batch に代理で書いて
+  ダメージまで進めてよい（SKILL.md の「代理の宣言」）:
+  `{"proxy": "p1", "label": "ブロック無し（アンタップのクリーチャーなし）", "ops": [{"op": "declare", "kind": "no_block"}]}`
 - ダメージ: `step to=combat_damage` → `life` / ダメージ Note → 状況起因処理 → `step to=end_of_combat` → `combat_clear`
 - 攻撃しないなら戦闘を飛ばして `step to=main2`
 
