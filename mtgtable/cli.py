@@ -13,7 +13,7 @@ from . import carddb, info
 from .engine import public_result
 from .model import INFO_POLICIES
 from .operations import OperationError, describe_operations, summarize_op
-from .render import render_view, strip_names
+from .render import card_name, render_view, strip_names
 from .setup import load_decklist, new_game
 from .store import GameStore, state_diff
 
@@ -202,7 +202,7 @@ def cmd_ids(a):
     for cid in cids:
         c = state.cards[cid]
         if info.knows_identity(state, viewer, cid):
-            print("%s %s (%s)" % (cid, c.name, c.zone))
+            print("%s %s (%s)" % (cid, card_name(c.name), c.zone))
         elif a.ids:
             print("%s ? (not known to %s)" % (cid, viewer or "judge"))
 

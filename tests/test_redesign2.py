@@ -39,6 +39,7 @@ class ViewOptionTest(unittest.TestCase):
         self.assertNotIn("Forest", text)
         self.assertNotIn("×", text)  # 名前が分からないカード同士はまとめない
         self.assertEqual(strip_names("move #c3(Forest): a -> b; #t2(Clue, Big) x"), "move #c3: a -> b; #t2 x")
+        self.assertEqual(strip_names("move #c3 <Forest>: a -> b; #t2 <Clue, Big> x"), "move #c3: a -> b; #t2 x")
 
 
 class PriorityTest(unittest.TestCase):
@@ -114,7 +115,7 @@ class TokenTest(unittest.TestCase):
         newest = [c for c in e.state.cards.values() if c.token][-1]
         self.assertEqual(newest.definition["copy_of"], cid)
         text = render_view(player_view(e.state, "p1"))
-        self.assertIn("#t1..#t4 Grizzly Bears ×4 (token, sick)  {copy of %s}" % cid, text)
+        self.assertIn("#t1..#t4 <Grizzly Bears> ×4 (token, sick)  {copy of %s}" % cid, text)
 
 
     def test_sacrificed_token_can_be_ability_source(self):

@@ -100,7 +100,7 @@ def lookup(name: str, offline: bool = False, refresh: bool = False):
 
 def format_card(rec: dict) -> str:
     def one(r):
-        head = r.get("name", "?")
+        head = "<%s>" % r.get("name", "?")
         if r.get("mana_cost"):
             head += "  " + r["mana_cost"]
         lines = [head, r.get("type_line", "")]
@@ -179,7 +179,7 @@ REMINDER = re.compile(r" ?\([^()]*\)")
 def format_card_compact(rec: dict, count=None, brief: bool = False) -> str:
     """1枚を「枚数 名前 コスト — タイプ P/T」＋字下げした本文で。brief なら注釈文（括弧内）を省く。"""
     def head(r):
-        parts = [r.get("name", "?")]
+        parts = ["<%s>" % r.get("name", "?")]
         if r.get("mana_cost"):
             parts.append(r["mana_cost"])
         parts.append("— " + r.get("type_line", ""))
@@ -198,7 +198,7 @@ def format_card_compact(rec: dict, count=None, brief: bool = False) -> str:
 
     prefix = "%d " % count if count else ""
     if rec.get("faces"):
-        lines = [prefix + rec.get("name", "?")]
+        lines = [prefix + "<%s>" % rec.get("name", "?")]
         for f in rec["faces"]:
             lines.append("  / " + head(f))
             lines.extend(body(f))
@@ -215,7 +215,7 @@ def format_deck(data: dict, sideboard: bool = True, brief: bool = False) -> str:
         out.append("## %s (%d)" % (title, sum(n for n, _ in entries)))
         for n, name in entries:
             rec = data["cards"].get(name)
-            out.append(format_card_compact(rec, n, brief) if rec else "%d %s  [not cached]" % (n, name))
+            out.append(format_card_compact(rec, n, brief) if rec else "%d <%s>  [not cached]" % (n, name))
     if data["missing"]:
         out.append("missing: " + ", ".join(data["missing"]))
     return "\n".join(out)

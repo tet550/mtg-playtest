@@ -18,11 +18,11 @@ class ViewTest(unittest.TestCase):
                {"op": "create", "name": "Axe", "count": 2, "as": "axes"})
         a1, a2 = r.aliases["axes"]
         text = render_view(player_view(e.state, "p1"))
-        self.assertIn("%s %s Axe ×2" % (a1, a2), text)
+        self.assertIn("%s %s <Axe> ×2" % (a1, a2), text)
         ok(e, "p1", {"op": "link_add", "kind": "attached", "source": a1, "targets": bear})
         lines = render_view(player_view(e.state, "p1")).splitlines()
-        self.assertTrue(any(l.strip().startswith(a1 + " Axe") and "attached->" + bear in l for l in lines))
-        self.assertTrue(any(l.strip().startswith(a2 + " Axe") for l in lines))
+        self.assertTrue(any(l.strip().startswith(a1 + " <Axe>") and "attached->" + bear in l for l in lines))
+        self.assertTrue(any(l.strip().startswith(a2 + " <Axe>") for l in lines))
         self.assertTrue(any(l.strip().startswith(bear) and "attached<-" + a1 in l for l in lines))
 
     def test_library_and_graveyard_collapsed_by_default(self):

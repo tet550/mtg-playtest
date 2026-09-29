@@ -14,6 +14,11 @@ import re
 _ID = re.compile(r"^#([a-z]+)(\d+)$")
 
 
+def card_name(name: str) -> str:
+    """表示でのカード名の書き方: <Hired Claw>（地の文・id・Note と区別するため。JSON の値には付けない）。"""
+    return "<%s>" % name
+
+
 def id_ranges(ids: list) -> str:
     """["#t5", "#t6", "#t7", "#c2"] -> "#t5..#t7 #c2"。"""
     out, run = [], []
@@ -68,7 +73,7 @@ def _card(cv: dict, ids: str = None, count: int = 1) -> str:
     if cv.get("hidden"):
         s = "%s[face-down]" % ident if cv.get("face_down") else "%s[hidden]" % ident
     else:
-        s = ident + (" " + cv["name"] if cv.get("name") else "")
+        s = ident + (" " + card_name(cv["name"]) if cv.get("name") else "")
     if count > 1:
         s += " ×%d" % count
     flags = []
@@ -226,9 +231,9 @@ def render_view(view: dict) -> str:
     return "\n".join(out)
 
 
-_NAMED_ID = re.compile(r"(#[a-z]+\d+)\([^()]*\)")
+_NAMED_ID = re.compile(r"(#[a-z]+\d+)(?:\([^()]*\)| <[^<>]*>)")
 
 
 def strip_names(text: str) -> str:
-    """ログのイベント "#c33(Mona Lisa, Science Geek)" からカード名を落とす。"""
+    """ログのイベント "#c33 <Mona Lisa, Science Geek>"（古いログは "#c33(...)"）からカード名を落とす。"""
     return _NAMED_ID.sub(r"\1", text)

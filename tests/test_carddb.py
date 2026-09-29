@@ -50,7 +50,7 @@ class DeckCacheTest(unittest.TestCase):
         self.assertEqual(data["missing"], [])
         self.assertEqual(carddb.load_deck_cache(deck)["cards"]["Grizzly Bears"]["power"], "2")
         sheet = carddb.format_deck(data)
-        self.assertIn("4 Grizzly Bears {1}{G} — Creature — Bear 2/2", sheet)
+        self.assertIn("4 <Grizzly Bears> {1}{G} — Creature — Bear 2/2", sheet)
         self.assertIn("## Sideboard (1)", sheet)
         self.assertNotIn("Naturalize", carddb.format_deck(data, sideboard=False))
 
@@ -61,8 +61,8 @@ class DeckCacheTest(unittest.TestCase):
         self.assertEqual(carddb.deck_hash(a), carddb.deck_hash(parse_decklist(DECK, "green")))
 
     def test_brief_drops_reminder_text(self):
-        self.assertEqual(carddb.format_card_compact(FOREST), "Forest — Basic Land — Forest\n    ({T}: Add {G}.)")
-        self.assertEqual(carddb.format_card_compact(FOREST, brief=True), "Forest — Basic Land — Forest")
+        self.assertEqual(carddb.format_card_compact(FOREST), "<Forest> — Basic Land — Forest\n    ({T}: Add {G}.)")
+        self.assertEqual(carddb.format_card_compact(FOREST, brief=True), "<Forest> — Basic Land — Forest")
 
 
 if __name__ == "__main__":

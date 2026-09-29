@@ -231,7 +231,8 @@ Player として操作するとき、中身を知らない非公開カードは 
   （`known_positions`）と分からないもの（`known_unordered`）に分けて出す。知らない非公開カードは id も出さない
 - **KnownInformation**: 見えた・公開された・`look` で見たカードは覚える。シャッフルで位置の記憶だけ消える
 - **InformationPolicy**: `normal` / `own_library` / `all_libraries` / `omniscient`（一人回し・テスト用）
-- 表示の整理: 同じ状態のオブジェクトは `#t4..#t11 Name ×8` の1行、同じ内容の Note は `×N` にまとめる。
+- カード名は表示では `<Name>` で囲む（view・ids・oracle・log --events。JSON の値には付けない）
+- 表示の整理: 同じ状態のオブジェクトは `#t4..#t11 <Name> ×8` の1行、同じ内容の Note は `×N` にまとめる。
   Link はカードの行に `[attached->#c28]`（source 側）/ `[attached<-#c130]`（targets 側）と出る。付いている先が
   違うものはまとめない
 - ライブラリー・墓地は既定では枚数だけ（`library (44, known positions: 3)`）。中身は `--library` / `--graveyard`

@@ -206,7 +206,7 @@ def _alias(ctx: Context, params: dict, ids: list) -> None:
 
 def _label(state: GameState, cid: str) -> str:
     c = state.cards.get(cid)
-    return "%s(%s)" % (cid, c.name) if c else cid
+    return "%s <%s>" % (cid, c.name) if c else cid
 
 
 # ---------------------------------------------------------------- card movement
@@ -469,7 +469,7 @@ def op_remove(ctx: Context, p: dict) -> dict:
         s.stack.items = [it for it in s.stack.items if it.card != cid]
         info.forget_card(s, cid)
         del s.cards[cid]
-        ctx.event("remove %s(%s) from the game" % (cid, card.name))
+        ctx.event("remove %s <%s> from the game" % (cid, card.name))
     return {"cards": ids}
 
 
