@@ -2,6 +2,8 @@
 
 MTG の処理を mtgtable の Operation に落とす定型。id・名前は例（架空の対局）。
 各例は1つの ActionGroup の `ops`（`{"op": ...}` の `"op":` は省かず書く）。
+**よく使う手順は複合 op（`turn_start` `turn_end` `land` `cast` `push_resolve` `pay`）で1手に書く。** 基本の op は、
+複合 op で書けない所（マナを浮かせる、解決の途中で止めて相手に聞くなど）に使う。
 ルールの要点は [rules.md](rules.md)、Operation の仕様は [cli.md](cli.md)。
 
 ## 目次
@@ -18,21 +20,20 @@ MTG の処理を mtgtable の Operation に落とす定型。id・名前は例�
 
 ## ターンの骨組み
 
-T1 も同じ骨組み（ゲーム前から `step to=untap` で先攻の T1 に入る）。先攻は `draw` を書かない。
+T1 も同じ骨組み（ゲーム前から先攻の T1 に入る。ゲームの最初のターンは引かない）。
 
 ```json
-{"label": "T5 開始", "pre": [{"turn": 4, "step": "cleanup"}], "ops": [
-  {"op": "step", "to": "untap"}, {"op": "untap_all"},
-  {"op": "step", "to": "upkeep"},
-  {"op": "step", "to": "draw"}, {"op": "draw"}]}
-{"label": "T5 終了", "pre": [{"step": "main"}], "ops": [
-  {"op": "step", "to": "end"}, {"op": "step", "to": "cleanup"},
-  {"op": "note_remove", "until": "end_of_turn"}, {"op": "mana_clear"}]}
+{"label": "T5 開始", "pre": [{"turn": 4, "step": "cleanup"}], "ops": [{"op": "turn_start", "to": "main1"}]}
+{"label": "T5 終了", "pre": [{"step": "main"}], "ops": [{"op": "turn_end"}]}
 ```
 
+- 引いたカードを見てから次を決めるなら、`to` を省いてドロー・ステップで区切る
+- アップキープの誘発: `turn_start {upkeep: [{"op": "push_resolve", "source": "#c7", "text": "..."}]}`
+- 終了ステップの誘発（「次の終了ステップに生け贄」など）: `turn_end {end: [...]}`
+- 手札が8枚以上なら `turn_end {cleanup: [{"op": "move", "card": "#c3", "to": "graveyard"}]}`
 - 相手が応答できないなら、相手の Batch で先に `{"op": "pass", "until": "turn"}` を入れておく
-- アップキープの誘発があれば `step to=upkeep` の後で積む（下の「誘発型能力」）
-- 手札が8枚以上ならクリンナップで捨てる（`move ... to graveyard`）
+- 中身は `step untap` → `untap_all` → `step upkeep` → `step draw` → `draw`、終了は `step end` → `step cleanup` →
+  `note_remove until=end_of_turn` → `mana_clear`
 
 ## 土地
 
@@ -40,13 +41,9 @@ T1 も同じ骨組み（ゲーム前から `step to=untap` で先攻の T1 に�
 条件が変わったときに `note_update` する。
 
 ```json
-{"ops": [
-  {"op": "move", "card": "#c69", "to": "battlefield"},
-  {"op": "note_add", "target": "#c69", "text": "mana: {W} ({R} needs a Mountain or Plains)", "as": "m69"}]}
-{"ops": [
-  {"op": "move", "card": "#c9", "to": "battlefield"},
-  {"op": "note_add", "target": "#c9", "text": "mana: {R}"},
-  {"op": "note_update", "note": "$m69", "text": "mana: {W} or {R}"}]}
+{"ops": [{"op": "land", "card": "#c69", "mana": "{W} ({R} needs a Mountain or Plains)", "note_as": "m69"}]}
+{"ops": [{"op": "land", "card": "#c9", "mana": "{R}"},
+         {"op": "note_update", "note": "$m69", "text": "mana: {W} or {R}"}]}
 ```
 
 | 土地の例 | Note の書き方 |
@@ -56,23 +53,23 @@ T1 も同じ骨組み（ゲーム前から `step to=untap` で先攻の T1 に�
 | Starting Town | `mana: {C}; any color for 1 life` |
 | Verge 系 | 条件を満たす前は片方だけ、満たしたら両方 |
 
-タップイン（入った時点でタップ）は `move {tapped: true}`。フェッチなどの起動型能力も Note に書いておく。
+タップイン（入った時点でタップ）は `land {tapped: true}`。フェッチなどの起動型能力も Note に書いておく。
 
 ## 呪文
 
-**唱える → 解決（パーマネント）**
+**唱える → 解決**
 
 ```json
-{"ops": [
-  {"op": "tap", "cards": ["#c10", "#c11"]},
-  {"op": "mana_add", "color": "G", "source": "#c10"}, {"op": "mana_add", "color": "G", "source": "#c11"},
-  {"op": "mana_spend", "color": "G", "amount": 2},
-  {"op": "stack_push", "card": "#c40", "as": "bear"}, {"op": "pass"}]}
-{"ops": [{"op": "stack_remove", "item": "$bear", "card_to": "battlefield"}]}
+{"ops": [{"op": "cast", "card": "#c40", "pay": {"#c10": "G", "#c11": "G"}}]}
+{"ops": [{"op": "cast", "card": "#c41", "pay": {"#c12": "R"}, "targets": ["p2"],
+          "then": [{"op": "life", "player": "p2", "amount": -3}]}]}
 ```
 
-- インスタント・ソーサリーは `card_to: "graveyard"`
-- 対象を取る呪文は `stack_push {targets: ["#c7"]}`（`target` Link が張られ、解決で外れる）
+- 行き先はタイプ行から決まる（インスタント・ソーサリーは墓地、他は戦場）。両面・出来事などは `to` を書く
+- `then` は解決時の処理（`stack_remove` の前に適用）。対象を取る呪文は `targets`（`target` Link が張られ、解決で外れる）
+- 相手の応答を待つ（人間にパスを求める）なら `cast {resolve: false, as: "x"}` で積むだけにして区切り、
+  次の Batch で解決の処理と `stack_remove {item: ...}` を書く
+- Starting Town のライフ: `pay {"#c76": "R", "life": 1}`。浮いているマナを使う: `pay {"pool": "U"}`
 - 打ち消し: 打ち消す呪文を積んで解決したら、打ち消された側を `stack_remove {item: "#s3", card_to: "graveyard"}`
 - 追加コストの生け贄（Rottenmouth Viper など）: `stack_push` の前に `move ... to graveyard`
 
@@ -103,11 +100,14 @@ T1 も同じ骨組み（ゲーム前から `step to=untap` で先攻の T1 に�
 
 ```json
 {"ops": [
-  {"op": "stack_remove", "item": "$bear", "card_to": "battlefield"},
-  {"op": "stack_push", "kind": "triggered", "source": "#c40", "text": "When this enters, draw a card", "as": "etb"},
-  {"op": "pass"}]}
-{"ops": [{"op": "draw"}, {"op": "stack_remove", "item": "$etb"}]}
+  {"op": "cast", "card": "#c40", "pay": {"#c10": "G", "#c11": "G"}},
+  {"op": "push_resolve", "source": "#c40", "text": "When this enters, draw a card", "then": [{"op": "draw"}]}]}
+{"ops": [{"op": "push_resolve", "kind": "activated", "source": "#c12", "text": "+1/+1 counter",
+          "pay": {"#c42": "R", "#c113": "B"}, "then": [{"op": "counter_add", "target": "#c12", "kind": "+1/+1"}]}]}
 ```
+
+- 引いたカード・見たカードで次を決めるなら、`then` の後で Batch を区切る
+- 解決の途中で相手が選ぶ（ディスカードなど）なら `pay` と基本の `stack_push` で積んで区切る
 
 - 同時に複数誘発したら、アクティブ・プレイヤーの分 → 相手の分の順で積む。自分の分の順は積む順で決める
 - 選択肢のある能力（「〜してもよい」「1つを選ぶ」）は、選んだ内容を `text` に書く

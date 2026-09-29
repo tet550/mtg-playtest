@@ -99,10 +99,12 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 
 アクティブ・プレイヤーが進行を持つ。1ターンを原則この単位で `apply` する:
 
-1. **ターン開始**: `step to=untap`（次のターンへ。ゲーム前からは先攻の T1 へ）→ `untap_all` → `step to=upkeep` → 誘発があれば処理 →
-   `step to=draw` → `draw`（先攻1ターン目は引かない）
-2. **メイン・戦闘・終了**: 土地・呪文・能力。呪文や能力は `stack_push` → `pass` → 全員パスなら解決
-3. **クリンナップ**: 手札の上限、`note_remove {until: "end_of_turn"}`、必要なら `mana_clear`
+1. **ターン開始**: `turn_start`（untap → untap_all → upkeep → draw。ゲーム前からは先攻の T1 へ。最初のターンは引かない）
+2. **メイン・戦闘・終了**: 土地は `land`、呪文は `cast`、能力は `push_resolve`（積んで即座に解決。コストは `pay`）。相手の応答を待つ所は
+   `cast {resolve: false}` / `stack_push` で積んで区切る
+3. **終了**: `turn_end`（end → cleanup → `until: end_of_turn` の Note を外す → マナ・プールを空に）
+
+複合 op は基本の op をまとめたもの（[cli.md](references/cli.md#複合よく使う手順をまとめたもの)）。書けない所だけ基本の op を使う。
 
 書き方の定型は [patterns.md](references/patterns.md)。優先権が動く前（`pass` の前）に、状況起因処理
 （ライフ0、致死ダメージ、タフネス0、レジェンド・ルール、戦場外のトークンなど）を毎回確かめる。

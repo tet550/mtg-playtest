@@ -176,6 +176,24 @@
 | `hold` | `player?` | 継続的なパスを取り消す |
 | `declare` | `kind, text?, player?` | `keep` / `mulligan` / `no_block` など。`concede` は status も変える。`pass` は `pass` と同じ |
 
+### 複合（よく使う手順をまとめたもの）
+
+中で基本の op を順に適用するだけで、ルールの判定はしない。log には書いたとおり（複合 op のまま）残る。
+途中で失敗したら ActionGroup ごと取り消し（基本の op と同じ）。
+
+| op | パラメーター | 中でやること |
+|---|---|---|
+| `pay` | `{"#c103": "U", "#c63": "G", "pool"?: "UG", "life"?: 1}` | 各カードを `tap` → `mana_add`（source 付き）→ 出したマナを全部 `mana_spend`。`pool` はプールにあるマナを使う、`life` はライフを払う |
+| `cast` | `card, pay?, targets?, text?, then?, to?, resolve?=true, as?` | `pay` → `stack_push` → `then` の op（解決時の処理）→ `stack_remove`。行き先はタイプ行から（インスタント・ソーサリーは墓地、他は戦場。分からなければ `to` が要る）。`resolve: false` で積むだけ |
+| `push_resolve` | `source, text, kind?=triggered, targets?, pay?, then?, as?` | スタックに積んで即座に解決する（能力用）: `pay`（起動コスト）→ `stack_push` → `then` → `stack_remove`。`as` はスタックの項目。積むだけ（相手の応答を待つ）なら `pay` と `stack_push` |
+| `land` | `card, mana, tapped?, as?, note_as?` | 戦場に出して `mana: ...` の Note を付ける（`mana: "{U} or {R}"`） |
+| `turn_start` | `draw?, upkeep?, to?, as?` | `step untap`（ゲーム前からは先攻の T1）→ `untap_all` → `step upkeep` → `upkeep` の op → `step draw` → `draw`（既定1枚。ゲームの最初のターンは0）→ `to` のステップへ（省略でドロー・ステップ） |
+| `turn_end` | `end?, cleanup?` | `step end` → `end` の op → `step cleanup` → `cleanup` の op（手札の上限など）→ `note_remove until=end_of_turn` → 全員の `mana_clear` |
+
+- マナの書き方: `"U"` `"UU"` `"RG"`（1枚から2マナ）`"5U"`、制限付きは `{"color": "U", "amount": 5, "note": "abilities only"}`、
+  タップせずに出す（ETB でマナが出るなど）は `{"color": "B", "tap": false}`
+- `pay` のキーは id（`#` は省略可）。出したマナは全部使う前提。余らせて浮かせるなら基本の `tap` / `mana_add` を使う
+
 ## カード参照
 
 | 書き方 | 意味 |

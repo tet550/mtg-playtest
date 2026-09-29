@@ -1120,6 +1120,171 @@ def op_declare(ctx: Context, p: dict) -> dict:
 
 # ---------------------------------------------------------------- registry
 
+# ---------------------------------------------------------------- composite operations
+# よく使う手順をまとめた op。中で基本の op を順に適用するだけで、ルールの判定はしない。
+# log には書いたとおり（複合 op のまま）残り、Replay も同じ手順を適用し直す。
+
+_MANA_SPEC = re.compile(r"^(\d+)([WUBRGC])$")
+_PAY_KEYS = ("from", "pool", "life")
+
+
+def _sub(ctx: Context, op: dict) -> dict:
+    return apply_operation(ctx, op)
+
+
+def _mana_items(spec) -> list:
+    """"U" / "UU" / "RG" / "5U" / {"color": "U", "amount": 5, "note": "..."} を [(色, 量, note)] に。"""
+    if isinstance(spec, dict):
+        return [(str(spec.get("color", "C")), int(spec.get("amount", 1)), spec.get("note"))]
+    spec = str(spec).strip().replace("{", "").replace("}", "")
+    m = _MANA_SPEC.match(spec)
+    if m:
+        return [(m.group(2), int(m.group(1)), None)]
+    if not spec or any(ch not in "WUBRGC" for ch in spec):
+        raise OperationError("mana spec %r: use letters of WUBRGC (e.g. U, UU, RG, 5U) or an object" % spec)
+    out = {}
+    for ch in spec:
+        out[ch] = out.get(ch, 0) + 1
+    return [(c, n, None) for c, n in out.items()]
+
+
+def _pay(ctx: Context, pay, player=None) -> dict:
+    """支払い。{"#c103": "U", "#c63": "G"}（タップしてマナを出し、全部使う）に、
+    "pool": "UG" / {"U": 2}（既にプールにあるマナを使う）、"life": 1（ライフを払う）を足せる。
+    {"from": {...}} と書いてもよい。マナを出すだけでタップしない発生源は {"color": .., "tap": false}。"""
+    if not pay:
+        return {}
+    if not isinstance(pay, dict):
+        raise OperationError("pay must be an object like {\"#c103\": \"U\", \"life\": 1}")
+    sources = dict(pay.get("from") or {})
+    sources.update({k: v for k, v in pay.items() if k not in _PAY_KEYS})
+    pl = {"player": player} if player else {}
+    added = []
+    for ref, spec in sources.items():
+        ref = normalize_refs(ctx.state, ref)
+        if not (isinstance(spec, dict) and spec.get("tap") is False):
+            _sub(ctx, {"op": "tap", "card": ref})
+        for color, amount, note in _mana_items(spec):
+            r = _sub(ctx, {"op": "mana_add", "color": color, "amount": amount, "source": ref,
+                           **({"note": note} if note else {}), **pl})
+            added.append((r["mana"], amount))
+    for mid, amount in added:
+        _sub(ctx, {"op": "mana_spend", "mana": mid, "amount": amount, **pl})
+    pool = pay.get("pool")
+    if pool:
+        items = [(c, n) for c, n in pool.items()] if isinstance(pool, dict) else \
+            [(c, n) for c, n, _ in _mana_items(pool)]
+        for color, amount in items:
+            _sub(ctx, {"op": "mana_spend", "color": color, "amount": int(amount), **pl})
+    if pay.get("life"):
+        _sub(ctx, {"op": "life", "amount": -int(pay["life"]), **pl})
+    return {"paid": [m for m, _ in added]}
+
+
+def op_pay(ctx: Context, p: dict) -> dict:
+    """コストを払う（複合）: {"#c103": "U", "#c63": "G"} をタップしてマナを出して使う。pool / life も書ける。"""
+    body = {k: v for k, v in p.items() if k not in ("player", "as")}
+    return _pay(ctx, body, p.get("player"))
+
+
+def _spell_destination(ctx: Context, card: str) -> str:
+    front = ctx.state.cards[card].type_line.split("//")[0]
+    if not front.strip():
+        raise OperationError("type line of %s is unknown; give 'to'" % card)
+    return "graveyard" if ("Instant" in front or "Sorcery" in front) else "battlefield"
+
+
+def op_cast(ctx: Context, p: dict) -> dict:
+    """呪文を唱えて解決する（複合）: pay → stack_push → then の処理 → stack_remove（パーマネントは戦場、
+    インスタント・ソーサリーは墓地。to で変えられる）。resolve: false なら積むところまで。"""
+    card = _single(ctx, p.get("card"))
+    _pay(ctx, p.get("pay"))
+    push = {"op": "stack_push", "card": card}
+    for k in ("targets", "text", "controller"):
+        if p.get(k):
+            push[k] = p[k]
+    sid = _sub(ctx, push)["item"]
+    if p.get("as"):
+        ctx.aliases[p["as"]] = [card]
+    if p.get("resolve", True) is False:
+        return {"card": card, "item": sid}
+    for op in p.get("then") or []:
+        _sub(ctx, op)
+    _sub(ctx, {"op": "stack_remove", "item": sid, "card_to": p.get("to") or _spell_destination(ctx, card)})
+    return {"card": card, "item": sid}
+
+
+def op_push_resolve(ctx: Context, p: dict) -> dict:
+    """スタックに積んで即座に解決する（複合。能力用）: pay（起動コスト）→ stack_push → then の処理 → stack_remove。
+    kind は triggered（既定）/ activated など。積むだけなら pay と stack_push を使う。"""
+    _pay(ctx, p.get("pay"))
+    push = {"op": "stack_push", "kind": p.get("kind", "triggered"), "text": p.get("text", "")}
+    for k in ("source", "targets", "controller"):
+        if p.get(k):
+            push[k] = p[k]
+    sid = _sub(ctx, push)["item"]
+    if p.get("as"):
+        ctx.aliases[p["as"]] = [sid]
+    for op in p.get("then") or []:
+        _sub(ctx, op)
+    _sub(ctx, {"op": "stack_remove", "item": sid})
+    return {"item": sid}
+
+
+def op_land(ctx: Context, p: dict) -> dict:
+    """土地を戦場に出し、出せるマナを Note に書く（複合）。mana: "{U} or {R}"、tapped: true でタップイン。"""
+    card = _single(ctx, p.get("card"))
+    if not p.get("mana"):
+        raise OperationError("land needs 'mana' (e.g. \"{U} or {R}\")")
+    move = {"op": "move", "card": card, "to": "battlefield"}
+    if p.get("tapped"):
+        move["tapped"] = True
+    _sub(ctx, move)
+    text = str(p["mana"])
+    note = _sub(ctx, {"op": "note_add", "target": card,
+                      "text": text if text.startswith("mana:") else "mana: " + text})["notes"][0]
+    if p.get("as"):
+        ctx.aliases[p["as"]] = [card]
+    if p.get("note_as"):
+        ctx.aliases[p["note_as"]] = [note]
+    return {"card": card, "note": note}
+
+
+def op_turn_start(ctx: Context, p: dict) -> dict:
+    """次のターンを始める（複合）: untap（ゲーム前からは先攻の T1）→ untap_all → upkeep（upkeep の処理）→
+    draw ステップで引く → to のステップへ（省略でドロー・ステップに留まる）。
+    draw: 引く枚数（既定1。ゲームの最初のターンは0）。"""
+    _sub(ctx, {"op": "step", "to": "untap"})
+    active = ctx.state.turn.active
+    _sub(ctx, {"op": "untap_all", "player": active})
+    _sub(ctx, {"op": "step", "to": "upkeep"})
+    for op in p.get("upkeep") or []:
+        _sub(ctx, op)
+    _sub(ctx, {"op": "step", "to": "draw"})
+    n = p.get("draw", 0 if ctx.state.turn.turn == 1 else 1)
+    n = int(n if not isinstance(n, bool) else (1 if n else 0))
+    drawn = _sub(ctx, {"op": "draw", "player": active, "count": n})["cards"] if n else []
+    if p.get("as"):
+        ctx.aliases[p["as"]] = drawn
+    if p.get("to") and p["to"] != "draw":
+        _sub(ctx, {"op": "step", "to": p["to"]})
+    return {"turn": ctx.state.turn.turn, "active": active, "drawn": drawn}
+
+
+def op_turn_end(ctx: Context, p: dict) -> dict:
+    """ターンを終える（複合）: end（end の処理）→ cleanup（cleanup の処理。手札の上限など）→
+    until=end_of_turn の Note を外す → 全員のマナ・プールを空にする。"""
+    _sub(ctx, {"op": "step", "to": "end"})
+    for op in p.get("end") or []:
+        _sub(ctx, op)
+    _sub(ctx, {"op": "step", "to": "cleanup"})
+    for op in p.get("cleanup") or []:
+        _sub(ctx, op)
+    _sub(ctx, {"op": "note_remove", "until": "end_of_turn"})
+    _sub(ctx, {"op": "mana_clear"})
+    return {"turn": ctx.state.turn.turn}
+
+
 OPERATIONS: dict = {
     # カード移動
     "move": op_move, "draw": op_draw, "shuffle": op_shuffle,
@@ -1144,6 +1309,9 @@ OPERATIONS: dict = {
     "life": op_life, "player_set": op_player_set, "turn_set": op_turn_set,
     "step": op_step, "priority": op_priority,
     "pass": op_pass, "hold": op_hold, "declare": op_declare,
+    # 複合（よく使う手順をまとめたもの）
+    "pay": op_pay, "cast": op_cast, "push_resolve": op_push_resolve, "land": op_land,
+    "turn_start": op_turn_start, "turn_end": op_turn_end,
 }
 
 
