@@ -305,7 +305,7 @@ function withUnder(c, under) {
   box.style.setProperty("--n", cards.length);
   cards.forEach((u, i) => {
     const t = cardTile(u, " under");
-    t.style.top = `calc(${i} * var(--h, 151px) * .12)`;
+    t.style.top = `calc(${i} * var(--h, 151px) * var(--peek, .12))`;
     box.append(t);
   });
   box.append(tile);
@@ -333,7 +333,8 @@ function pile(label, count, top, opts) {
   }
   if (count) stackBox.append(face);
   stackBox.append(el("span", "chip strong pcount", String(count)));
-  p.append(stackBox, el("div", "plabel", label));
+  stackBox.append(el("div", "plabel", label));  // 名前はカードの上に重ねる（縦の幅を取らない）
+  p.append(stackBox);
   if (opts.note) p.title = (p.title ? p.title + "\n" : "") + opts.note;
   if (opts.onclick && count) p.onclick = opts.onclick;
   if (top) p.title = `一番上: <${top.name}>`;
@@ -373,11 +374,28 @@ function handRow(v, pid) {
   return box;
 }
 
-function playerSide(v, pid, mirrored) {
+// ライフ: 「LIFE」と数のプレート。5 以下は警告色、0 以下は敗北の色
+// 直前の位置（1件前）からライフが変わっていれば、その差を横に出す（減ったら赤、増えたら緑）
+function lifeBadge(p, before) {
+  const level = p.life <= 0 ? " dead" : p.life <= 5 ? " low" : "";
+  const box = el("span", "life" + level);
+  box.title = `ライフ ${p.life}`;
+  box.append(el("span", "llbl", "LIFE"), el("span", "lnum", String(p.life)));
+  const delta = before === undefined ? 0 : p.life - before;
+  if (!delta) return box;
+  const wrap = el("span", "lifewrap");
+  const d = el("span", "ldelta " + (delta < 0 ? "minus" : "plus"), delta < 0 ? `−${-delta}` : `+${delta}`);
+  d.title = `${before} → ${p.life}`;
+  wrap.append(box, d);
+  return wrap;
+}
+
+function playerSide(v, pid, mirrored, prev) {
   const p = v.players.find((x) => x.id === pid);
   const box = el("div");
   const head = el("div", "phead");
-  head.append(el("span", "pname", `${p.name}（${p.id}）`), el("span", "life", `♥ ${p.life}`));
+  const before = prev && prev.players.find((x) => x.id === pid);
+  head.append(el("span", "pname", `${p.name}（${p.id}）`), lifeBadge(p, before && before.life));
   if (p.status && p.status !== "playing") head.append(el("span", "status", p.status));
   if (v.turn.active === pid) head.append(el("span", "chip", "アクティブ"));
   if (v.turn.priority === pid) head.append(el("span", "chip", "優先権"));
@@ -525,9 +543,10 @@ function render() {
   const me = v.viewer && order.includes(v.viewer) ? v.viewer : order[order.length - 1];
   const opp = order.find((p) => p !== me) || me;
   ui.sides = { top: opp, bottom: me };
+  const from = ui.deltaBase && ui.deltaBase.pos === ui.pos ? ui.deltaBase.from : ui.pos - 1;
   for (const [slot, pid] of [["top", opp], ["bottom", me]]) {
     const side = $(slot);
-    side.replaceChildren(playerSide(v, pid, slot === "top"));
+    side.replaceChildren(playerSide(v, pid, slot === "top", from >= 0 && from < ui.pos ? viewAt(from) : null));
     side.classList.toggle("active", t.active === pid);
   }
 
@@ -628,7 +647,9 @@ function startPlay() {
       ui.live = true;
       return show();
     }
+    const from = ui.pos;
     ui.pos = Math.min(nextPos(), ui.cursor);
+    ui.deltaBase = { pos: ui.pos, from };  // 自動再生では、ライフの差を1回前に表示した位置から数える
     ui.live = false;
     show();
     if (ui.timer !== null) ui.timer = setTimeout(step, Number($("speed").value));

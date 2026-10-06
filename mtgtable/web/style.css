@@ -278,3 +278,82 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 /* カードの詳細: 画像は小さく左に置き、横にオラクルを流す */
 .detail img.big { float: left; width: 110px; max-width: 40%; margin: 0 8px 4px 0; border-radius: 6px; }
 .detail .otext { font-size: 12px; }
+
+/* ---- ライフ: LIFE と数のプレート（左の線で状態を示す） ---- */
+.life { display: inline-flex; align-items: baseline; gap: 6px; padding: 1px 10px 1px 9px; border-radius: 7px;
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  background: linear-gradient(180deg, var(--panel), var(--bg)); font-size: 20px; line-height: 1.3; }
+.life .llbl { font-size: 9px; font-weight: 700; letter-spacing: .14em; color: var(--muted); }
+.life .lnum { font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.life.low { border-left-color: var(--warn); }
+.life.low .lnum { color: var(--warn); }
+.life.dead { border-left-color: var(--muted); opacity: .7; }
+@media (min-width: 900px) and (min-height: 560px) { .life { font-size: 17px; } }
+
+/* ---- ライフの増減（1件前からの差） ---- */
+.lifewrap { display: inline-flex; align-items: center; gap: 6px; }
+.ldelta { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; padding: 0 7px; border-radius: 6px;
+  animation: ldpop .45s ease-out; }
+.ldelta.minus { color: #fff; background: #c8414b; }
+.ldelta.plus { color: #fff; background: #3c7a3f; }
+@keyframes ldpop { from { transform: translateY(-6px) scale(1.25); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ldelta { animation: none; } }
+
+/* ---- ライフ（調整）: 左の線をやめ（アクティブの線と紛れる）、ラベルを数の上に重ねた小さな塊に。増減は右上に重ねる ---- */
+.life { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 0;
+  min-width: 44px; padding: 2px 8px 1px; border: none; border-radius: 9px; background: var(--badge);
+  box-shadow: inset 0 0 0 1px var(--line); line-height: 1; }
+.life .llbl { font-size: 8px; letter-spacing: .16em; margin-bottom: 1px; }
+.life .lnum { font-size: 19px; }
+.life.low { box-shadow: inset 0 0 0 1px var(--warn); }
+.life.low .lnum { color: var(--warn); }
+.life.dead { opacity: .6; }
+.lifewrap { position: relative; display: inline-flex; }
+.ldelta { position: absolute; right: 0; top: 0; transform: translate(55%, -45%); z-index: 2;
+  font-size: 11px; padding: 1px 5px; border-radius: 8px; line-height: 1.2; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+@keyframes ldpop { from { transform: translate(55%, -95%) scale(1.3); opacity: 0; } to { transform: translate(55%, -45%); opacity: 1; } }
+@media (min-width: 900px) and (min-height: 560px) { .life { font-size: inherit; } .life .lnum { font-size: 17px; } }
+
+/* ライフ（調整）: 見出しの行の高さに収まるよう、ラベルと数を横に並べた1行に */
+.life { flex-direction: row; align-items: baseline; gap: 4px; min-width: 0; padding: 1px 7px; border-radius: 7px; }
+.life .llbl { margin-bottom: 0; font-size: 8px; }
+.life .lnum, .phead .life .lnum { font-size: 15px; line-height: 1.1; }
+.phead { align-items: center; }
+.ldelta { animation-duration: .18s; }
+
+/* 最上段は1行に収める（入らない分はターン表示を省略） */
+.bar { flex-wrap: nowrap; gap: 10px; white-space: nowrap; padding-top: 6px; padding-bottom: 6px; }
+.bar label { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+#game { max-width: 220px; text-overflow: ellipsis; }
+.bar .turn { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bar .conn { flex: none; }
+
+/* Player の見出しも1行に（長いマナの注記などは省略。全文はマウスを重ねて） */
+.phead { flex-wrap: nowrap; white-space: nowrap; overflow: hidden; min-width: 0; }
+.phead > * { flex: none; }
+.phead .chip { overflow: hidden; text-overflow: ellipsis; }
+.phead .chip.mana { flex: 0 1 auto; min-width: 0; max-width: 260px; }
+.phead .chip.mana img.ms { flex: none; }
+
+/* 束: 名前をカードの上に重ね、3つの束が縦に収まる大きさに */
+.pstack .plabel { position: absolute; left: 0; top: 0; width: calc(var(--h, 100px) * .72); margin: 0; z-index: 3;
+  padding: 1px 0; text-align: center; font-size: 9px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .62);
+  border-radius: 6px 6px 0 0; }
+.pile.empty .pstack .plabel { color: var(--muted); background: none; }
+@media (min-width: 900px) and (min-height: 560px) {
+  .piles { --h: min(16cqh, 100px); gap: 6px; }
+  .sidegrid { grid-template-columns: calc(min(16cqh, 100px) * .72 + 14px) minmax(0, 1fr); }
+}
+
+/* ---- 戦場の行は高さを固定し、枚数が変わっても行の位置が動かないように ---- */
+@media (min-width: 900px) and (min-height: 560px) {
+  .field { justify-content: flex-start; gap: 6px; }
+  .bfrow:not(.lands) { --peek: .05; flex: none; height: calc(var(--h) * 1.16 + 8px); align-items: flex-end; }
+  .lands { flex: none; height: calc(var(--h) + 8px); align-items: center; }
+  .tuck { padding-top: calc(min(var(--n), 3) * var(--h) * var(--peek, .05)); }
+  .bfrow:not(.lands) > .card.tapped, .bfrow:not(.lands) > .tuck { align-self: flex-end; }
+}
+
+/* 開いた束の一覧にもカードの高さを与える（無いと画像の大きさが 0 になって見えない） */
+.zone.opened { --h: 123px; }
+@media (min-width: 900px) and (min-height: 560px) { .zone.opened { --h: min(26cqh, 123px); } }
