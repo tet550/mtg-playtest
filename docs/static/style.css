@@ -368,3 +368,6 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
   .replay { flex-wrap: wrap; }
   .replay input { flex-basis: 100%; order: 10; }
 }
+
+/* 再生位置の文字は幅を固定（桁数が変わってもスライダーの長さが変わらないように） */
+#posText { flex: none; min-width: 12.5em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
