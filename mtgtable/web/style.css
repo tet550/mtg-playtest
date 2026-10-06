@@ -357,3 +357,8 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 /* 開いた束の一覧にもカードの高さを与える（無いと画像の大きさが 0 になって見えない） */
 .zone.opened { --h: 123px; }
 @media (min-width: 900px) and (min-height: 560px) { .zone.opened { --h: min(26cqh, 123px); } }
+
+/* 増減の表示: 見出しの行（はみ出しを切る）に収まるよう、ライフの右端に縦中央で重ねる */
+.lifewrap { margin-right: 16px; }
+.ldelta { top: 50%; transform: translate(70%, -50%); }
+@keyframes ldpop { from { transform: translate(70%, -110%) scale(1.3); opacity: 0; } to { transform: translate(70%, -50%); opacity: 1; } }
