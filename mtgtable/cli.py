@@ -13,6 +13,7 @@ from . import carddb, info
 from .engine import public_result
 from .model import INFO_POLICIES
 from .operations import OperationError, describe_operations, summarize_op
+from .procedures import describe_procedures
 from .render import card_name, render_view, strip_names
 from .setup import load_decklist, new_game
 from .store import GameStore, state_diff
@@ -42,6 +43,15 @@ def _pairs(values, what):
 
 def _emit(obj):
     print(json.dumps(obj, ensure_ascii=False, indent=1))
+
+
+def _emit_result(res):
+    """apply の結果。Act は1つ1行（Act が多いので、字下げで量を増やさない）。"""
+    head = {k: v for k, v in res.items() if k != "acts"}
+    print(json.dumps(head, ensure_ascii=False)[:-1] + ', "acts": [')
+    lines = [" " + json.dumps(x, ensure_ascii=False) for x in res["acts"]]
+    print(",\n".join(lines))
+    print("]}")
 
 
 def _zone_flags(a):
@@ -107,8 +117,6 @@ def cmd_apply(a):
     except json.JSONDecodeError as e:
         raise SystemExit("batch is not valid JSON: %s" % e)
     if a.as_ is not None:
-        if isinstance(batch, list):
-            batch = {"ops": batch}
         if isinstance(batch, dict):
             if "actor" in batch and batch["actor"] != _actor(a.as_):
                 raise SystemExit("--as %s conflicts with actor %r in the batch" % (a.as_, batch["actor"]))
@@ -119,7 +127,7 @@ def cmd_apply(a):
         raise SystemExit("error: %s" % e)
     state = result.pop("_state")
     # learned（新しく知ったカード）は --no-names でも名前を残す。id と名前の対応を知る唯一の機会なので
-    _emit(public_result(result))
+    _emit_result(public_result(result))
     if a.view:
         _view(state, result["actor"], a.json, names=not a.no_names, **_zone_flags(a))
     if result["stopped"] and result["stopped"]["reason"] in ("failed", "precondition_failed"):
@@ -137,21 +145,58 @@ def cmd_redo(a):
     print("cursor -> %d" % GameStore(a.game).redo(a.n))
 
 
+def _entry_text(e) -> str:
+    text = e["label"] or "; ".join(summarize_op(op) for op in e["act"])
+    if e.get("proc"):
+        text = "[%s] %s" % (e["proc"], text)
+    if e.get("proxy_by"):
+        text = "[proxy by %s] %s" % (e["proxy_by"], text)
+    return text
+
+
+def _log_batches(entries, cur, last):
+    """Batch ごとに1行（報告用）。Batch のラベルが無ければ各 Act の表示をつなげる。"""
+    batches = []
+    for e in entries:
+        if batches and e.get("batch") is not None and batches[-1][0].get("batch") == e.get("batch"):
+            batches[-1].append(e)
+        else:
+            batches.append([e])
+    for b in batches[-last:] if last else batches:
+        mark = " " if b[-1]["seq"] <= cur else "~"
+        actors = []
+        for e in b:
+            if (e["actor"] or "judge") not in actors:
+                actors.append(e["actor"] or "judge")
+        seqs = "%d" % b[0]["seq"] if len(b) == 1 else "%d-%d" % (b[0]["seq"], b[-1]["seq"])
+        text = b[0].get("batch_label") or " / ".join(_entry_text(e) for e in b)
+        print("%s%9s v%-4d %-5s %s" % (mark, seqs, b[-1]["version"], ",".join(actors), text))
+
+
 def cmd_log(a):
     store = GameStore(a.game)
     cur = store.cursor()
     entries = store.read_log()
-    if a.last:
-        entries = entries[-a.last:]
-    for e in entries:
+    if a.batches is not None:
+        _log_batches(entries, cur, a.batches)
+        return
+    shown = entries[-a.last:] if a.last else entries
+    for e in shown:
         mark = " " if e["seq"] <= cur else "~"  # ~ = Undo 済み（Redo できる）
-        label = e["label"] or "; ".join(summarize_op(op) for op in e["ops"])
-        if e.get("proxy_by"):
-            label = "[proxy by %s] %s" % (e["proxy_by"], label)
-        print("%s%4d v%-4d %-5s %s" % (mark, e["seq"], e["version"], e["actor"] or "judge", label))
-        if a.events:
-            for ev in e["events"]:
-                print("            " + (strip_names(ev) if a.no_names else ev))
+        if e.get("batch_label"):
+            print("     B%-4d %s" % (e["batch"], e["batch_label"]))
+        text = _entry_text(e)
+        if e["seq"] > 1 and entries[e["seq"] - 2].get("cont"):
+            text = "… " + text  # 前の件から続く Act のパート
+        if e.get("cont"):
+            text += " …"
+        print("%s%4d v%-4d %-5s %s" % (mark, e["seq"], e["version"], e["actor"] or "judge", text))
+        for st in e["steps"] if (a.steps or a.events) else []:
+            if a.steps:
+                print("          > %s%s" % (summarize_op(st["op"]), " (%s)" % st["parent"] if st.get("parent") else ""))
+            if a.events:
+                for ev in st["events"]:
+                    print("            " + (strip_names(ev) if a.no_names else ev))
 
 
 def cmd_replay(a):
@@ -209,6 +254,9 @@ def cmd_ids(a):
 
 def cmd_ops(a):
     for name, doc in describe_operations():
+        print("%-15s %s" % (name, doc))
+    print("\n# 手順（複数の Act になる。acts に {\"proc\": 名前, ...} で書く）")
+    for name, doc in describe_procedures():
         print("%-15s %s" % (name, doc))
 
 
@@ -318,16 +366,19 @@ def build_parser():
     p.set_defaults(fn=cmd_apply)
 
     for name, fn in (("undo", cmd_undo), ("redo", cmd_redo)):
-        p = sub.add_parser(name, help="ActionGroup 単位で%s" % ("戻す" if name == "undo" else "やり直す"))
+        p = sub.add_parser(name, help="Act 単位で%s" % ("戻す" if name == "undo" else "やり直す"))
         p.add_argument("game")
         p.add_argument("n", nargs="?", type=int, default=1)
         if name == "undo":
-            p.add_argument("--to", type=int, help="log の N 件目の直後まで戻す（割り込みの巻き戻し）")
+            p.add_argument("--to", type=int, help="log の N 件目の直後まで戻す（割り込みの巻き戻し。Act の途中なら、その Act の始まりまで）")
         p.set_defaults(fn=fn)
 
     p = sub.add_parser("log", help="Operation Log")
     p.add_argument("game")
     p.add_argument("--last", type=int)
+    p.add_argument("--batches", type=int, nargs="?", const=0, metavar="N",
+                   help="Batch ごとに1行で出す（N で最後の N 個。報告用）")
+    p.add_argument("--steps", action="store_true", help="実際に適用した基本の op も出す（複合 op を展開したもの）")
     p.add_argument("--events", action="store_true", help="全情報のイベントも出す（観戦・デバッグ用）")
     p.add_argument("--no-names", action="store_true", help="イベントにカード名を出さない")
     p.set_defaults(fn=cmd_log)
@@ -366,7 +417,7 @@ def build_parser():
     p.add_argument("--as", dest="as_", default="judge")
     p.set_defaults(fn=cmd_ids)
 
-    p = sub.add_parser("ops", help="Operation の一覧")
+    p = sub.add_parser("ops", help="Operation と手順の一覧")
     p.set_defaults(fn=cmd_ops)
 
     p = sub.add_parser("oracle", help="カードのオラクル・テキスト（Scryfall キャッシュ）")

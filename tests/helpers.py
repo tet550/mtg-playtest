@@ -1,4 +1,4 @@
-"""テストの共通部品: 小さなデッキ2つで対局を作る・ActionGroup を適用して成功を確かめる・カードを探す。"""
+"""テストの共通部品: 小さなデッキ2つで対局を作る・Act を適用して成功を確かめる・カードを探す。"""
 import pathlib
 import sys
 
@@ -25,10 +25,17 @@ def game(seed=1, hand=7, **kw):
     return Engine(new_game(decks, seed=seed, hand=hand, **kw))
 
 
-def ok(engine, actor, *ops, **group):
-    r = engine.apply_group(actor, {"ops": list(ops), **group})
+def ok(engine, actor, *ops, **act):
+    r = engine.apply_act(actor, {"act": list(ops), **act})
     assert r.status == "applied", r.error
     return r
+
+
+def run(engine, actor, *entries, **batch):
+    """Act の並び（手順を含む）を1つの Batch で適用し、全部成功したことを確かめる。"""
+    res = engine.apply_batch({"actor": actor, "acts": list(entries), **batch})
+    assert res["stopped"] is None, res["stopped"]
+    return res
 
 
 def hand(e, pid):

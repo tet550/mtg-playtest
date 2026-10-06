@@ -23,18 +23,21 @@ from .model import (
 
 
 class OperationError(Exception):
-    """Operation を適用できない。ActionGroup ごと取り消される。"""
+    """Operation を適用できない。Act ごと取り消される。"""
 
 
 @dataclass
 class Context:
     state: GameState
     actor: Optional[str]  # Player id。None は全知の Judge / Orchestrator / システム
-    rng: random.Random = None  # ActionGroup ごとに seed と version から決まる（Replay で同じ結果になる）
+    rng: random.Random = None  # Act ごとに seed と version から決まる（Replay で同じ結果になる）
     aliases: dict = field(default_factory=dict)  # "$name" -> list of ids
     events: list = field(default_factory=list)
     created: list = field(default_factory=list)
     links_removed: list = field(default_factory=list)  # 領域移動で外れた Link（AI が張り直せるように返す）
+    # 実際に適用した基本の op（複合 op は展開し、エイリアスは id に置き換えたもの）。log に残し、Replay はこれだけを使う
+    steps: list = field(default_factory=list)
+    parents: list = field(default_factory=list)  # 今展開している複合 op の名前
 
     def event(self, text: str) -> None:
         self.events.append(text)
@@ -68,6 +71,8 @@ def _player(ctx: Context, pid) -> str:
         if ctx.actor is None:
             raise OperationError("player must be given explicitly when acting as judge")
         return ctx.actor
+    if pid == "active":
+        return ctx.state.turn.active
     pid = _single(ctx, pid) if isinstance(pid, str) and pid.startswith("$") else pid
     if pid not in ctx.state.players:
         raise OperationError("unknown player %r" % (pid,))
@@ -726,9 +731,10 @@ def op_stack_push(ctx: Context, p: dict) -> dict:
 
 
 def op_stack_remove(ctx: Context, p: dict) -> dict:
-    """スタックから取り除く（解決・打ち消し後）。card_to を渡すと呪文のカードも動かす。
+    """スタックから取り除く（解決の終わり・打ち消し）。item を省略すると一番上。
 
-    item を省略すると一番上。その StackItem が源の Link（対象など）も外す。
+    呪文のカードは card_to へ動かす。省略するとタイプ行から（パーマネントは戦場、インスタント・ソーサリーは墓地。
+    打ち消しなら card_to: graveyard）。その StackItem が源の Link（対象など）も外す。
     """
     s = ctx.state
     if not s.stack.items:
@@ -745,12 +751,9 @@ def op_stack_remove(ctx: Context, p: dict) -> dict:
     s.turn.passed = []
     ctx.event("stack remove %s" % sid)
     if item.card and item.card in s.cards and s.cards[item.card].zone == "stack":
-        if p.get("card_to"):
-            to = resolve_zone(ctx, p["card_to"], s.cards[item.card].owner)
-            move_card(ctx, item.card, to, p.get("position"),
-                      controller=item.controller if to == "battlefield" else None)
-        else:
-            ctx.event("card %s stays in the stack zone" % item.card)
+        to = resolve_zone(ctx, p.get("card_to") or _spell_destination(ctx, item.card), s.cards[item.card].owner)
+        move_card(ctx, item.card, to, p.get("position"),
+                  controller=item.controller if to == "battlefield" else None)
     return {"item": sid}
 
 
@@ -910,16 +913,70 @@ def op_mana_clear(ctx: Context, p: dict) -> dict:
 
 # ---------------------------------------------------------------- players / turn / declaration
 
-def op_life(ctx: Context, p: dict) -> dict:
-    """ライフを増減（amount）または設定（set）する。"""
-    pl = ctx.state.players[_player(ctx, p.get("player"))]
+_DAMAGE_NOTE = re.compile(r"^damage (\d+)$")
+
+
+def _amount(p: dict) -> int:
+    """ダメージ・ライフの量。負の値は書けない（計算で負になったら 0 として扱うのは AI。107.1b）。"""
+    try:
+        n = int(p.get("amount"))
+    except (TypeError, ValueError):
+        raise OperationError("amount must be an integer >= 0")
+    if n < 0:
+        raise OperationError("amount must be >= 0 (a negative result counts as 0)")
+    return n
+
+
+def _change_life(ctx: Context, pid: str, delta: int, what: str) -> dict:
+    pl = ctx.state.players[pid]
     before = pl.life
-    if "set" in p:
-        pl.life = int(p["set"])
-    else:
-        pl.life += int(p.get("amount", 0))
-    ctx.event("life %s: %d -> %d" % (pl.id, before, pl.life))
+    pl.life += delta
+    ctx.event("%s: life %s %d -> %d" % (what, pid, before, pl.life))
     return {"life": pl.life}
+
+
+def op_damage(ctx: Context, p: dict) -> dict:
+    """ダメージを与える（120）。プレイヤーならライフを減らし、パーマネントなら `damage N`（until: end_of_turn）の
+    Note に足す。apply: false なら与えた記録だけ残す（感染・萎縮・プレインズウォーカーなど、結果は AI が続けて書く）。
+    amount 0 は何もしない（ダメージを与えなかったことになる。120.8）。"""
+    n = _amount(p)
+    target = _single(ctx, p.get("target"))
+    s = ctx.state
+    if target not in s.players and not (target in s.cards and s.cards[target].zone == "battlefield"):
+        raise OperationError("damage target %s is not a player or a permanent on the battlefield" % target)
+    if n == 0:
+        return {}
+    source = _single(ctx, p["source"]) if p.get("source") else None
+    what = "damage %d to %s%s" % (n, _label(s, target), " from %s" % _label(s, source) if source else "")
+    if p.get("apply", True) is False:
+        ctx.event(what + " (result written separately)")
+        return {}
+    if target in s.players:
+        return _change_life(ctx, target, -n, what)
+    for note in s.notes_on(target):
+        m = _DAMAGE_NOTE.match(note.text)
+        if m and note.until == "end_of_turn":
+            note.text = "damage %d" % (int(m.group(1)) + n)
+            ctx.event("%s: note %s %s" % (what, note.id, note.text))
+            return {"note": note.id}
+    nid = s.new_id("n")
+    s.notes[nid] = Note(id=nid, target=target, text="damage %d" % n, until="end_of_turn", turn=s.turn.turn)
+    ctx.event("%s: note %s damage %d" % (what, nid, n))
+    return {"note": nid}
+
+
+def op_life_loss(ctx: Context, p: dict) -> dict:
+    """ライフを失う（119.3。ライフの支払いもこれ）。amount 0 は何もしない。"""
+    n = _amount(p)
+    pid = _player(ctx, p.get("player"))
+    return _change_life(ctx, pid, -n, "life loss %d" % n) if n else {}
+
+
+def op_life_gain(ctx: Context, p: dict) -> dict:
+    """ライフを得る（119.3）。amount 0 は何もしない（ライフを得たことにならない。119.9）。"""
+    n = _amount(p)
+    pid = _player(ctx, p.get("player"))
+    return _change_life(ctx, pid, n, "life gain %d" % n) if n else {}
 
 
 def op_player_set(ctx: Context, p: dict) -> dict:
@@ -1121,8 +1178,9 @@ def op_declare(ctx: Context, p: dict) -> dict:
 # ---------------------------------------------------------------- registry
 
 # ---------------------------------------------------------------- composite operations
-# よく使う手順をまとめた op。中で基本の op を順に適用するだけで、ルールの判定はしない。
+# 1つの Act の中で使う書き方の省略。中で基本の op を順に適用するだけで、ルールの判定はしない。
 # log には書いたとおり（複合 op のまま）残り、Replay も同じ手順を適用し直す。
+# 複数の Act になるもの（turn_start / turn_end）は手順（procedures.py）。
 
 _MANA_SPEC = re.compile(r"^(\d+)([WUBRGC])$")
 _PAY_KEYS = ("from", "pool", "life")
@@ -1177,7 +1235,7 @@ def _pay(ctx: Context, pay, player=None) -> dict:
         for color, amount in items:
             _sub(ctx, {"op": "mana_spend", "color": color, "amount": int(amount), **pl})
     if pay.get("life"):
-        _sub(ctx, {"op": "life", "amount": -int(pay["life"]), **pl})
+        _sub(ctx, {"op": "life_loss", "amount": int(pay["life"]), **pl})
     return {"paid": [m for m, _ in added]}
 
 
@@ -1188,47 +1246,31 @@ def op_pay(ctx: Context, p: dict) -> dict:
 
 
 def _spell_destination(ctx: Context, card: str) -> str:
+    """解決した呪文のカードの行き先。印刷されたタイプ行の表面（// の前）だけを見る。"""
     front = ctx.state.cards[card].type_line.split("//")[0]
     if not front.strip():
-        raise OperationError("type line of %s is unknown; give 'to'" % card)
+        raise OperationError("type line of %s is unknown; give 'card_to'" % card)
     return "graveyard" if ("Instant" in front or "Sorcery" in front) else "battlefield"
 
 
 def op_cast(ctx: Context, p: dict) -> dict:
-    """呪文を唱えて解決する（複合）: pay → stack_push → then の処理 → stack_remove（パーマネントは戦場、
-    インスタント・ソーサリーは墓地。to で変えられる）。resolve: false なら積むところまで。"""
+    """呪文を唱える（複合。601.2）: stack_push（スタックへ移し、対象を張る）→ pay → cost の op（追加コストの
+    生け贄など）。解決は別の Act（効果の op → stack_remove）。as は唱えたカード。"""
     card = _single(ctx, p.get("card"))
-    _pay(ctx, p.get("pay"))
     push = {"op": "stack_push", "card": card}
     for k in ("targets", "text", "controller"):
         if p.get(k):
             push[k] = p[k]
     sid = _sub(ctx, push)["item"]
+    _pay(ctx, p.get("pay"))
+    cost = p.get("cost") or []
+    if not isinstance(cost, list):
+        raise OperationError("cost must be a list of ops")
+    for op in cost:
+        _sub(ctx, op)
     if p.get("as"):
         ctx.aliases[p["as"]] = [card]
-    if p.get("resolve", True) is False:
-        return {"card": card, "item": sid}
-    for op in p.get("then") or []:
-        _sub(ctx, op)
-    _sub(ctx, {"op": "stack_remove", "item": sid, "card_to": p.get("to") or _spell_destination(ctx, card)})
     return {"card": card, "item": sid}
-
-
-def op_push_resolve(ctx: Context, p: dict) -> dict:
-    """スタックに積んで即座に解決する（複合。能力用）: pay（起動コスト）→ stack_push → then の処理 → stack_remove。
-    kind は triggered（既定）/ activated など。積むだけなら pay と stack_push を使う。"""
-    _pay(ctx, p.get("pay"))
-    push = {"op": "stack_push", "kind": p.get("kind", "triggered"), "text": p.get("text", "")}
-    for k in ("source", "targets", "controller"):
-        if p.get(k):
-            push[k] = p[k]
-    sid = _sub(ctx, push)["item"]
-    if p.get("as"):
-        ctx.aliases[p["as"]] = [sid]
-    for op in p.get("then") or []:
-        _sub(ctx, op)
-    _sub(ctx, {"op": "stack_remove", "item": sid})
-    return {"item": sid}
 
 
 def op_land(ctx: Context, p: dict) -> dict:
@@ -1248,41 +1290,6 @@ def op_land(ctx: Context, p: dict) -> dict:
     if p.get("note_as"):
         ctx.aliases[p["note_as"]] = [note]
     return {"card": card, "note": note}
-
-
-def op_turn_start(ctx: Context, p: dict) -> dict:
-    """次のターンを始める（複合）: untap（ゲーム前からは先攻の T1）→ untap_all → upkeep（upkeep の処理）→
-    draw ステップで引く → to のステップへ（省略でドロー・ステップに留まる）。
-    draw: 引く枚数（既定1。ゲームの最初のターンは0）。"""
-    _sub(ctx, {"op": "step", "to": "untap"})
-    active = ctx.state.turn.active
-    _sub(ctx, {"op": "untap_all", "player": active})
-    _sub(ctx, {"op": "step", "to": "upkeep"})
-    for op in p.get("upkeep") or []:
-        _sub(ctx, op)
-    _sub(ctx, {"op": "step", "to": "draw"})
-    n = p.get("draw", 0 if ctx.state.turn.turn == 1 else 1)
-    n = int(n if not isinstance(n, bool) else (1 if n else 0))
-    drawn = _sub(ctx, {"op": "draw", "player": active, "count": n})["cards"] if n else []
-    if p.get("as"):
-        ctx.aliases[p["as"]] = drawn
-    if p.get("to") and p["to"] != "draw":
-        _sub(ctx, {"op": "step", "to": p["to"]})
-    return {"turn": ctx.state.turn.turn, "active": active, "drawn": drawn}
-
-
-def op_turn_end(ctx: Context, p: dict) -> dict:
-    """ターンを終える（複合）: end（end の処理）→ cleanup（cleanup の処理。手札の上限など）→
-    until=end_of_turn の Note を外す → 全員のマナ・プールを空にする。"""
-    _sub(ctx, {"op": "step", "to": "end"})
-    for op in p.get("end") or []:
-        _sub(ctx, op)
-    _sub(ctx, {"op": "step", "to": "cleanup"})
-    for op in p.get("cleanup") or []:
-        _sub(ctx, op)
-    _sub(ctx, {"op": "note_remove", "until": "end_of_turn"})
-    _sub(ctx, {"op": "mana_clear"})
-    return {"turn": ctx.state.turn.turn}
 
 
 OPERATIONS: dict = {
@@ -1306,24 +1313,56 @@ OPERATIONS: dict = {
     # Mana
     "mana_add": op_mana_add, "mana_spend": op_mana_spend, "mana_clear": op_mana_clear,
     # Player / Turn / Declaration
-    "life": op_life, "player_set": op_player_set, "turn_set": op_turn_set,
+    "damage": op_damage, "life_loss": op_life_loss, "life_gain": op_life_gain, "player_set": op_player_set, "turn_set": op_turn_set,
     "step": op_step, "priority": op_priority,
     "pass": op_pass, "hold": op_hold, "declare": op_declare,
-    # 複合（よく使う手順をまとめたもの）
-    "pay": op_pay, "cast": op_cast, "push_resolve": op_push_resolve, "land": op_land,
-    "turn_start": op_turn_start, "turn_end": op_turn_end,
+    # 複合（1つの Act の中で使う書き方の省略）
+    "pay": op_pay, "cast": op_cast, "land": op_land,
 }
 
 
+COMPOSITES = ("pay", "cast", "land")
+
+
+def _bind_aliases(ctx: Context, value, key=None):
+    """"$名前" を、その時点のエイリアスの id に置き換える（1つなら id、複数ならリスト）。"""
+    if key in _TEXT_KEYS:
+        return value
+    if isinstance(value, str) and value.startswith("$") and value[1:] in ctx.aliases:
+        ids = ctx.aliases[value[1:]]
+        return ids[0] if len(ids) == 1 else list(ids)
+    if isinstance(value, list):
+        return [_bind_aliases(ctx, v) for v in value]
+    if isinstance(value, dict):
+        return {k: _bind_aliases(ctx, v, k) for k, v in value.items()}
+    return value
+
+
 def apply_operation(ctx: Context, op: dict) -> dict:
-    """1つの Operation を適用する。"""
+    """1つの Operation を適用する。基本の op は ctx.steps に記録する（複合 op は中の基本の op が記録される）。"""
     if not isinstance(op, dict) or "op" not in op:
         raise OperationError("operation must be an object with 'op': %r" % (op,))
     handler: Callable = OPERATIONS.get(op["op"])
     if handler is None:
         raise OperationError("unknown operation %r (see `ops` command)" % op["op"])
     params = normalize_refs(ctx.state, {k: v for k, v in op.items() if k != "op"})
-    result = handler(ctx, params)
+    composite = op["op"] in COMPOSITES
+    if composite:
+        ctx.parents.append(op["op"])
+        try:
+            result = handler(ctx, params)
+        finally:
+            ctx.parents.pop()
+    else:
+        bound = {k: v for k, v in _bind_aliases(ctx, params).items() if k != "as"}
+        if bound.get("player") == "active":
+            bound["player"] = ctx.state.turn.active
+        start = len(ctx.events)
+        result = handler(ctx, params)
+        step = {"op": {"op": op["op"], **bound}, "events": ctx.events[start:]}
+        if ctx.parents:
+            step["parent"] = ctx.parents[-1]
+        ctx.steps.append(step)
     expire_standing_passes(ctx.state)
     info.refresh_knowledge(ctx.state)
     return result
@@ -1346,7 +1385,7 @@ def _short(v) -> str:
 
 
 def summarize_op(op: dict) -> str:
-    """log 用の短い要約（ラベルの無い ActionGroup を読めるようにする）。例: "move #c14 to=graveyard"。"""
+    """log 用の短い要約（ラベルの無い Act を読めるようにする）。例: "move #c14 to=graveyard"。"""
     if not isinstance(op, dict):
         return str(op)
     parts = [str(op.get("op", "?"))]

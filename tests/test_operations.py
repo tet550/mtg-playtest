@@ -81,9 +81,44 @@ class CardAndLinkTest(unittest.TestCase):
     def test_counters_on_players(self):
         e = game()
         ok(e, "p1", {"op": "counter_add", "target": "p2", "kind": "poison", "amount": 3},
-           {"op": "life", "player": "p2", "amount": -3})
+           {"op": "life_loss", "player": "p2", "amount": 3})
         self.assertEqual(e.state.counters_on("p2"), {"poison": 3})
         self.assertEqual(e.state.players["p2"].life, 17)
+
+
+class LifeAndDamageTest(unittest.TestCase):
+    def test_damage_loss_gain(self):
+        e = game()
+        bear = find(e, "p1", "hand", "Grizzly Bears")
+        ok(e, "p1", {"op": "move", "card": bear, "to": "battlefield"})
+        r = ok(e, "p2", {"op": "damage", "target": "p1", "amount": 3, "source": bear},
+               {"op": "life_loss", "player": "p1", "amount": 2}, {"op": "life_gain", "player": "p1", "amount": 4})
+        self.assertEqual(e.state.players["p1"].life, 19)
+        self.assertEqual(r.events[0], "damage 3 to p1 from %s <Grizzly Bears>: life p1 20 -> 17" % bear)
+        # パーマネントへのダメージは damage N の Note（ターン終了まで）にまとまる
+        ok(e, "p2", {"op": "damage", "target": bear, "amount": 1}, {"op": "damage", "target": bear, "amount": 2})
+        (note,) = e.state.notes_on(bear)
+        self.assertEqual((note.text, note.until), ("damage 3", "end_of_turn"))
+
+    def test_zero_does_nothing_and_negative_is_rejected(self):
+        e = game()
+        r = ok(e, "p1", {"op": "damage", "target": "p2", "amount": 0}, {"op": "life_gain", "amount": 0},
+               {"op": "life_loss", "amount": 0}, {"op": "pay", "life": 0})
+        self.assertEqual(r.events, [])
+        self.assertEqual(e.state.players["p1"].life, 20)
+        for op in ({"op": "damage", "target": "p2", "amount": -1}, {"op": "life_gain", "amount": -1},
+                   {"op": "life_loss", "amount": -2}):
+            self.assertEqual(e.apply_act("p1", {"act": [op]}).status, "failed")
+
+    def test_damage_without_applying_the_result(self):
+        # 感染など: 与えた記録だけ残し、結果（毒カウンター）は続けて書く
+        e = game()
+        r = ok(e, "p1", {"op": "damage", "target": "p2", "amount": 2, "apply": False},
+               {"op": "counter_add", "target": "p2", "kind": "poison", "amount": 2})
+        self.assertEqual(e.state.players["p2"].life, 20)
+        self.assertIn("(result written separately)", r.events[0])
+        self.assertEqual(e.apply_act("p1", {"act": [{"op": "damage", "target": hand(e, "p1")[0], "amount": 1}]}).status,
+                         "failed")  # 戦場に無いカードには与えられない
 
 
 class TokenTest(unittest.TestCase):
@@ -163,7 +198,7 @@ class StackAndCombatTest(unittest.TestCase):
            {"op": "move", "card": mountain, "to": "battlefield"})
         ok(e, "p1", {"op": "attack", "attacker": bear, "target": "p2", "tap": True})
         gob = e.state.zones["battlefield"].cards[1]
-        bad = e.apply_group("p2", {"ops": [{"op": "block", "blocker": gob, "attacker": mountain}]})
+        bad = e.apply_act("p2", {"act": [{"op": "block", "blocker": gob, "attacker": mountain}]})
         self.assertEqual(bad.status, "failed")
         ok(e, "p2", {"op": "block", "blocker": gob, "attacker": bear})
         self.assertEqual(len(e.state.combat.blocks), 1)
@@ -184,7 +219,7 @@ class NoteAndManaTest(unittest.TestCase):
         pool = e.state.players["p1"].mana_pool.mana
         self.assertEqual(len(pool), 1)
         self.assertEqual(e.state.notes_on(pool[0].id)[0].text, "creature spells only")
-        r = e.apply_group("p1", {"ops": [{"op": "mana_spend", "color": "G", "amount": 2}]})
+        r = e.apply_act("p1", {"act": [{"op": "mana_spend", "color": "G", "amount": 2}]})
         self.assertEqual(r.status, "failed")
         ok(e, "p1", {"op": "mana_clear"})
         self.assertEqual(e.state.players["p1"].mana_pool.mana, [])
@@ -228,7 +263,7 @@ class LibraryTest(unittest.TestCase):
         # 残りのライブラリーは覚えない（シャッフル済みで位置も分からない）
         self.assertEqual(player_view(e.state, "p1")["zones"]["p1.library"].get("known_positions_count"), None)
         # 見つからない・足りないなら失敗
-        self.assertEqual(e.apply_group("p1", {"ops": [{"op": "search", "name": "Nope", "to": "hand"}]}).status,
+        self.assertEqual(e.apply_act("p1", {"act": [{"op": "search", "name": "Nope", "to": "hand"}]}).status,
                          "failed")
 
     def test_search_to_battlefield_and_to_top(self):
@@ -260,14 +295,14 @@ class LibraryTest(unittest.TestCase):
         v = player_view(e.state, "p1", library=True)["zones"]["p1.library"]
         self.assertNotIn("known_positions", v)
         self.assertEqual({c["id"] for c in v["known_unordered"]}, seen)
-        bad = e.apply_group("p1", {"ops": [{"op": "move", "card": hand(e, "p1")[0], "to": "exile", "order": "x"}]})
+        bad = e.apply_act("p1", {"act": [{"op": "move", "card": hand(e, "p1")[0], "to": "exile", "order": "x"}]})
         self.assertEqual(bad.status, "failed")
 
 
 class LogTextTest(unittest.TestCase):
     def test_event_lists_are_plain_text(self):
         e = game()
-        r = e.apply_group("p1", {"ops": [{"op": "look", "cards": {"zone": "library", "top": 2}}]})
+        r = e.apply_act("p1", {"act": [{"op": "look", "cards": {"zone": "library", "top": 2}}]})
         line = [x for x in r.events if "looks at" in x][0]
         self.assertNotIn("[", line)
         self.assertRegex(line, r"^p1 looks at #c\d+ <[^<>]+>, #c\d+ <[^<>]+>$")
@@ -288,7 +323,7 @@ class IdTest(unittest.TestCase):
         ok(e, "p1", {"op": "move", "card": cid[1:], "to": "battlefield"},
            {"op": "counter_add", "target": cid[1:], "kind": "+1/+1"})
         self.assertEqual(e.state.counters_on(cid), {"+1/+1": 1})
-        r = e.apply_group("p1", {"pre": [{"card": cid[1:], "zone": "battlefield"}], "ops": [{"op": "draw"}]})
+        r = e.apply_act("p1", {"pre": [{"card": cid[1:], "zone": "battlefield"}], "act": [{"op": "draw"}]})
         self.assertEqual(r.status, "applied")
 
     def test_id_ranges(self):

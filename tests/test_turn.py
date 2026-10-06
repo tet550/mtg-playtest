@@ -28,7 +28,7 @@ class TurnTest(unittest.TestCase):
         ok(e, None, {"op": "step", "to": "untap"})
         for bad in ({"op": "step"}, {"op": "step", "to": "main"}, {"op": "step", "to": "untap"},
                     {"op": "step", "to": "second_main"}):
-            self.assertEqual(e.apply_group(None, {"ops": [bad]}).status, "failed", bad)
+            self.assertEqual(e.apply_act(None, {"act": [bad]}).status, "failed", bad)
 
     def test_declarations(self):
         e = game()
@@ -72,9 +72,9 @@ class PriorityTest(unittest.TestCase):
         # 優先権ではエンジンは止めない（相手の応答は AI がパスの宣言を求めて確かめる）
         e = game()
         cid = hand(e, "p1")[0]
-        res = e.apply_batch({"actor": "p1", "groups": [
-            {"ops": [{"op": "stack_push", "card": cid, "as": "spell"}, {"op": "pass"}]},
-            {"ops": [{"op": "stack_remove", "item": "$spell", "card_to": "graveyard"}]},
+        res = e.apply_batch({"actor": "p1", "acts": [
+            {"act": [{"op": "stack_push", "card": cid, "as": "spell"}, {"op": "pass"}]},
+            {"act": [{"op": "stack_remove", "item": "$spell", "card_to": "graveyard"}]},
         ]})
         self.assertIsNone(res["stopped"])
         self.assertEqual(e.state.cards[cid].zone, "p1.graveyard")
@@ -83,15 +83,15 @@ class PriorityTest(unittest.TestCase):
         e = game()
         ok(e, "p2", {"op": "pass", "until": "turn"})
         a, b = hand(e, "p1")[:2]
-        res = e.apply_batch({"actor": "p1", "groups": [
-            {"ops": [{"op": "stack_push", "card": a, "as": "x"}, {"op": "pass"}]},
-            {"ops": [{"op": "stack_remove", "item": "$x", "card_to": "graveyard"}]},
-            {"ops": [{"op": "stack_push", "card": b, "as": "y"}, {"op": "pass"}]},
-            {"ops": [{"op": "stack_remove", "item": "$y", "card_to": "graveyard"}]},
+        res = e.apply_batch({"actor": "p1", "acts": [
+            {"act": [{"op": "stack_push", "card": a, "as": "x"}, {"op": "pass"}]},
+            {"act": [{"op": "stack_remove", "item": "$x", "card_to": "graveyard"}]},
+            {"act": [{"op": "stack_push", "card": b, "as": "y"}, {"op": "pass"}]},
+            {"act": [{"op": "stack_remove", "item": "$y", "card_to": "graveyard"}]},
         ]})
         self.assertIsNone(res["stopped"])
-        self.assertEqual(res["groups"][0].results[1]["auto_passed"], ["p2"])
-        self.assertTrue(res["groups"][0].results[1]["all_passed"])
+        self.assertEqual(res["acts"][0].results[1]["auto_passed"], ["p2"])
+        self.assertTrue(res["acts"][0].results[1]["all_passed"])
         self.assertEqual(e.state.turn.priority, "p1")  # 解決後はアクティブ・プレイヤー
         kinds = [(d.player, d.text) for d in e.state.declarations if d.kind == "pass"]
         self.assertIn(("p2", "standing: until turn"), kinds)

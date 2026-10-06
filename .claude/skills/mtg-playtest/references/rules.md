@@ -119,8 +119,8 @@
 - トランプル: ブロッカー全員に致死ダメージ（接死なら1点で致死）を割り振れば、残りをプレイヤーなどへ
 - 先制攻撃・二段攻撃: 先制攻撃ダメージ・ステップで先に与える（二段攻撃は両方のステップで与える）
 - 戦闘ダメージは同時。受けたダメージはクリンナップまで残る
-  → `attack {tap: true}`（警戒は付けない）→ ブロックは防御側の判断で `block` → ダメージはプレイヤーなら `life`、
-  クリーチャーなら Note（`damage 3`, `until: end_of_turn`）で記録し、状況起因処理を確かめる。
+  → `attack {tap: true}`（警戒は付けない）→ ブロックは防御側の判断で `block` → ダメージは `damage`（プレイヤーはライフが減り、
+  クリーチャーには `damage 3`（`until: end_of_turn`）の Note が付く）で書き、状況起因処理を確かめる。
   先制攻撃があるときは `turn_set {phase: combat, step: first_strike_damage}` → `turn_set {step: combat_damage}`。
   終了ステップで `combat_clear`
 

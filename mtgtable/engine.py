@@ -1,10 +1,13 @@
-"""ActionGroup / Batch / Precondition（20〜23節）。
+"""Act / 手順 / Batch / Precondition（20〜23節）。
 
-- ActionGroup: ゲーム上意味のある一まとまりの Operation。途中で失敗したら丸ごと取り消す
+- Act: ルール上一体として行う処理の1セット（呪文を唱える、解決する、「捨てる。そうしたなら引く」）。
+  途中で失敗したら丸ごと取り消す。log の1件・Undo の1単位。見てから選ぶときは cont でパートに分ける
+  （パートごとに適用・log の1件。Undo は Act 単位）
+- 手順（procedures.py）: 複数の Act の並びの省略（turn_start / turn_end）。順番が来たときの状態で展開する
 - Batch: 往復を減らすための実行単位。ゲーム上の意味は持たない
 - Precondition: AI が判断した時点の前提がまだ成り立っているかの確認（ルールの合法性ではない）
 
-Batch が止まるのは、ActionGroup の失敗と前提不成立だけ。新しい意思決定が要る所（知らないカードを
+Batch が止まるのは、Act の失敗と前提不成立だけ。新しい意思決定が要る所（知らないカードを
 見てから選ぶ、相手の応答を待つ）で Batch を区切るのは操作する側（AI）の責任で、エンジンは止めない。
 操作者が新しく知ったカードは結果の learned で返す。エイリアス（"as"）は Batch の間ずっと有効。
 """
@@ -17,7 +20,8 @@ from typing import Optional
 from . import info
 from .model import GameState
 from .operations import (Context, OperationError, apply_operation, normalize_refs, resolve_cards,
-                         resolve_zone, _single)
+                         resolve_zone, summarize_op, _single)
+from .procedures import expand
 
 
 class PreconditionFailed(Exception):
@@ -26,53 +30,60 @@ class PreconditionFailed(Exception):
 
 # ---------------------------------------------------------------- normalization
 
-def normalize_batch(raw) -> dict:
-    """Batch の略記を正規形 {"actor", "groups": [{"label", "pre", "ops"}]} にする。
+_ENTRY_KEYS = ("label", "pre", "actor", "proxy", "cont")
 
-    受け付ける形:
-    - [op, op, ...]                         Operation の列 = 1つの ActionGroup
-    - {"ops": [...], ...}                   1つの ActionGroup
-    - {"groups": [{...}, ...], "actor": p}  Batch
+
+def normalize_entry(e, where: str = "act") -> dict:
+    """Act の並びの要素1つを正規形にする。
+
+    - {"act": [op, ...], "label"?, "pre"?, "actor"?, "proxy"?, "cont"?}  Act（パート）。cont: true は
+      「この Act は次のパートに続く」（解決の途中で、新しく見た情報で選ぶために区切るとき）
+    - {"proc": "turn_start", ...}                               手順（label / pre / actor / proxy も書ける）
     """
-    if isinstance(raw, list):
-        raw = {"ops": raw}
-    if not isinstance(raw, dict):
-        raise OperationError("batch must be a JSON object or list")
-    if "groups" in raw:
-        groups = raw["groups"]
-    elif "ops" in raw:
-        groups = [{k: v for k, v in raw.items() if k not in ("actor",)}]
+    if not isinstance(e, dict) or ("act" in e) == ("proc" in e):
+        raise OperationError("%s must be an object with either 'act' or 'proc'" % where)
+    pre = e.get("pre", [])
+    out = {"label": e.get("label", ""), "pre": pre if isinstance(pre, list) else [pre]}
+    if "act" in e:
+        if not isinstance(e["act"], list) or not e["act"]:
+            raise OperationError("%s has no ops" % where)
+        out["act"] = e["act"]
+        if e.get("cont"):
+            out["cont"] = True
     else:
-        raise OperationError("batch needs 'groups' or 'ops'")
+        if "cont" in e:
+            raise OperationError("%s: cont is for an act, not a proc" % where)
+        out["proc"] = {k: v for k, v in e.items() if k not in _ENTRY_KEYS}
+    for k in ("actor", "proxy"):
+        if k in e:
+            out[k] = e[k]
+    return out
+
+
+def normalize_batch(raw) -> dict:
+    """Batch {"actor", "label"?, "acts": [...]} を正規形にする（要素は normalize_entry の形）。"""
+    if not isinstance(raw, dict) or not isinstance(raw.get("acts"), list) or not raw["acts"]:
+        raise OperationError("batch must be an object with a non-empty 'acts' list")
     out = []
-    for i, g in enumerate(groups):
-        if isinstance(g, list):
-            g = {"ops": g}
-        ops = g.get("ops")
-        if not isinstance(ops, list) or not ops:
-            raise OperationError("group %d has no ops" % i)
-        pre = g.get("pre", g.get("preconditions", []))
-        ng = {"label": g.get("label", ""), "pre": pre if isinstance(pre, list) else [pre], "ops": ops}
-        if "actor" in g and "proxy" in g:
-            raise OperationError("group %d sets both actor and proxy" % i)
-        if "actor" in g:
-            # ActionGroup ごとの操作者（AI 同士の対戦で、相手の手番まで1つの Batch に入れるとき）
-            if raw.get("actor") is not None:
-                raise OperationError("group %d sets actor; per-group actors need the batch actor to be judge"
-                                     " (to declare for another player, use \"proxy\")" % i)
-            ng["actor"] = g["actor"]
-        if "proxy" in g:
+    for i, e in enumerate(raw["acts"]):
+        ng = normalize_entry(e, "act %d" % i)
+        if "actor" in ng and "proxy" in ng:
+            raise OperationError("act %d sets both actor and proxy" % i)
+        if "actor" in ng and raw.get("actor") is not None:
+            # Act ごとの操作者（AI 同士の対戦で、相手の手番まで1つの Batch に入れるとき）
+            raise OperationError("act %d sets actor; per-act actors need the batch actor to be judge"
+                                 " (to declare for another player, use \"proxy\")" % i)
+        if "proxy" in ng:
             # 代理の宣言: 操作者（Batch の actor）が相手の宣言（ブロック・パスなど）を代わりに書く。
             # その Player として適用し log にも代理と残すが、結果（learned・id の伏せ字）は操作者から見た形で返す。
             # 妥当かどうかはエンジンは判定しない（指摘があれば AI が Undo で巻き戻す）
             if raw.get("actor") is None:
-                raise OperationError("group %d sets proxy; proxy needs a player as the batch actor"
-                                     " (a judge batch uses per-group \"actor\")" % i)
-            if g["proxy"] == raw.get("actor"):
-                raise OperationError("group %d: proxy %s is the batch actor itself" % (i, g["proxy"]))
-            ng["proxy"] = g["proxy"]
+                raise OperationError("act %d sets proxy; proxy needs a player as the batch actor"
+                                     " (a judge batch uses per-act \"actor\")" % i)
+            if ng["proxy"] == raw.get("actor"):
+                raise OperationError("act %d: proxy %s is the batch actor itself" % (i, ng["proxy"]))
         out.append(ng)
-    return {"actor": raw.get("actor"), "groups": out}
+    return {"actor": raw.get("actor"), "label": raw.get("label", ""), "acts": out}
 
 
 # ---------------------------------------------------------------- preconditions
@@ -152,34 +163,33 @@ def check_precondition(ctx: Context, pre: dict) -> None:
 # ---------------------------------------------------------------- engine
 
 @dataclass
-class GroupResult:
+class ActResult:
     label: str
     status: str  # applied / failed / precondition_failed / skipped
     actor: Optional[str] = None
     proxy_by: Optional[str] = None  # 代理の宣言なら、代わりに書いた Player
+    proc: str = ""  # 手順から展開した Act なら、その手順（"turn_start to=main1 2/4" など）
     error: str = ""
     results: list = field(default_factory=list)
     created: list = field(default_factory=list)
-    aliases: dict = field(default_factory=dict)  # この ActionGroup で付けた・変わったエイリアス
-    aliases_in: dict = field(default_factory=dict)  # 開始時に有効だったエイリアス（Replay 用）
+    aliases: dict = field(default_factory=dict)  # この Act で付けた・変わったエイリアス
     aliases_out: dict = field(default_factory=dict)
     learned: list = field(default_factory=list)  # 操作者が新しく知ったカード
     links_removed: list = field(default_factory=list)  # 領域移動で外れた Link
-    events: list = field(default_factory=list)  # 全情報を含む。ログ用で AI には渡さない
+    steps: list = field(default_factory=list)  # 適用した基本の op と event（全情報。ログ用で AI には渡さない）
     version: int = 0
 
+    @property
+    def events(self) -> list:
+        return [ev for st in self.steps for ev in st["events"]]
+
     def public(self) -> dict:
-        d = {"label": self.label, "status": self.status}
-        if self.actor is not None:
-            d["actor"] = self.actor
-        if self.proxy_by is not None:
-            d["proxy_by"] = self.proxy_by
-        for k in ("error", "created", "aliases", "learned", "links_removed", "results"):
+        d = {"status": self.status}
+        for k in ("label", "proc", "actor", "proxy_by", "error", "created", "aliases", "learned",
+                  "links_removed", "results"):
             v = getattr(self, k)
             if v:
                 d[k] = v
-        if self.status == "applied":
-            d["version"] = self.version
         return d
 
 
@@ -195,8 +205,13 @@ def _mask(state: GameState, actor: Optional[str], value):
     return value
 
 
+def _summary(g: dict) -> str:
+    return summarize_op({"op": g["proc"]["proc"], **g["proc"]}) if "proc" in g else \
+        "; ".join(summarize_op(op) for op in g["act"])
+
+
 class Engine:
-    """GameState に ActionGroup / Batch を適用する。永続化は store.GameStore が担う。"""
+    """GameState に Act / Batch を適用する。永続化は store.GameStore が担う。"""
 
     def __init__(self, state: GameState):
         self.state = state
@@ -204,9 +219,9 @@ class Engine:
     def _rng(self) -> random.Random:
         return random.Random("%s:%s" % (self.state.seed, self.state.version))
 
-    def apply_group(self, actor: Optional[str], group: dict, aliases: Optional[dict] = None,
-                    viewer: Optional[str] = "") -> GroupResult:
-        """ActionGroup を1つ、丸ごと適用するか丸ごと取り消す。aliases は Batch 内で前から引き継ぐもの。
+    def apply_act(self, actor: Optional[str], act: dict, aliases: Optional[dict] = None,
+                  viewer: Optional[str] = "") -> ActResult:
+        """Act を1つ、丸ごと適用するか丸ごと取り消す。aliases は Batch 内で前から引き継ぐもの。
 
         viewer は結果を受け取る Player（代理の宣言では操作者。省略で actor）。learned と id の伏せ字は viewer から見た形。"""
         s = self.state
@@ -214,19 +229,19 @@ class Engine:
             raise OperationError("unknown actor %r" % actor)
         if viewer == "":
             viewer = actor
-        res = GroupResult(label=group.get("label", ""), status="applied")
+        res = ActResult(label=act.get("label", ""), status="applied", proc=act.get("proc_of", ""))
         before_state = s.clone()
         before_known = info.known_set(s, viewer)
-        res.aliases_in = {k: list(v) for k, v in (aliases or {}).items()}
-        ctx = Context(state=s, actor=actor, rng=self._rng(), aliases={k: list(v) for k, v in res.aliases_in.items()})
+        aliases_in = {k: list(v) for k, v in (aliases or {}).items()}
+        ctx = Context(state=s, actor=actor, rng=self._rng(), aliases={k: list(v) for k, v in aliases_in.items()})
         try:
-            for pre in group.get("pre", []):
+            for pre in act.get("pre", []):
                 check_precondition(ctx, pre)
         except PreconditionFailed as e:
             res.status, res.error = "precondition_failed", str(e)
             return res
         try:
-            for i, op in enumerate(group["ops"]):
+            for i, op in enumerate(act["act"]):
                 try:
                     res.results.append(apply_operation(ctx, op))
                 except OperationError as e:
@@ -237,12 +252,12 @@ class Engine:
             return res
         s.version += 1
         res.version = s.version
-        res.events = ctx.events
+        res.steps = ctx.steps
         res.created = [x for x in ctx.created]
         # 無作為に非公開領域へ動いたカードなど、操作者が知り得ない id は結果に出さない
         res.results = _mask(s, viewer, res.results)
         res.aliases_out = dict(ctx.aliases)
-        res.aliases = _mask(s, viewer, {k: v for k, v in ctx.aliases.items() if res.aliases_in.get(k) != v})
+        res.aliases = _mask(s, viewer, {k: v for k, v in ctx.aliases.items() if aliases_in.get(k) != v})
         res.links_removed = _mask(s, viewer, ctx.links_removed)
         created = set(ctx.created)
         for cid in sorted(info.known_set(s, viewer) - before_known - created,
@@ -251,37 +266,66 @@ class Engine:
             res.learned.append({"id": cid, "name": c.name, "zone": c.zone})
         return res
 
+    def _expand(self, g: dict, actor: Optional[str]) -> list:
+        """手順の要素 g を、今の状態で Act の並び（正規形）に展開する。手順の pre は最初の要素に、
+        actor / proxy / label は全部に引き継ぐ。"""
+        items = expand(Context(state=self.state, actor=actor), g["proc"])
+        name = _summary(g)
+        new = [normalize_entry(x, "%s: act %d" % (g["proc"]["proc"], i)) for i, x in enumerate(items)]
+        for i, ng in enumerate(new):
+            for k in ("actor", "proxy"):
+                if k in g:
+                    ng[k] = g[k]
+            if g["label"] and not ng["label"]:
+                ng["label"] = g["label"]
+            if "act" in ng:
+                ng["proc_of"] = "%s %d/%d" % (name, i + 1, len(new))
+        if new:
+            new[0]["pre"] = g["pre"] + new[0]["pre"]
+        return new
+
     def apply_batch(self, raw) -> dict:
         """Batch を先頭から順に適用する。止まるのは失敗と前提不成立だけ。
 
+        手順は、その順番が来たときの状態で Act の並びに展開してから適用する。
         優先権では止めない。相手の応答が要る場面では、AI が相手にパスの宣言を求めてから進める
         （宣言をもらわずに進めた場合、相手は割り込みたかった時点までの巻き戻しを請求できる）。"""
         batch = normalize_batch(raw)
         actor = batch["actor"]
-        out = {"actor": actor, "groups": [], "applied": 0, "stopped": None}
+        out = {"actor": actor, "label": batch["label"], "acts": [], "applied": 0, "stopped": None}
         applied = []
-        groups = batch["groups"]
+        queue = list(batch["acts"])
         aliases = {}
 
         def actor_of(g):
             return g.get("actor", g.get("proxy", actor))
 
-        for i, g in enumerate(groups):
-            r = self.apply_group(actor_of(g), g, aliases, viewer=actor if "proxy" in g else "")
+        while queue:
+            g = queue.pop(0)
+            if "proc" in g:
+                try:
+                    queue[0:0] = self._expand(g, actor_of(g))
+                except OperationError as e:
+                    r = ActResult(label=g["label"], status="failed", proc=_summary(g), error=str(e))
+                    out["acts"].append(r)
+                    out["stopped"] = {"at": len(out["acts"]) - 1, "reason": r.status, "error": r.error}
+                    break
+                continue
+            r = self.apply_act(actor_of(g), g, aliases, viewer=actor if "proxy" in g else "")
             if "actor" in g:
                 r.actor = g["actor"]
             if "proxy" in g:
                 r.actor, r.proxy_by = g["proxy"], actor
-            out["groups"].append(r)
+            out["acts"].append(r)
             if r.status != "applied":
-                out["stopped"] = {"at": i, "reason": r.status, "error": r.error}
+                out["stopped"] = {"at": len(out["acts"]) - 1, "reason": r.status, "error": r.error}
                 break
             aliases = r.aliases_out
             applied.append((g, r))
             out["applied"] += 1
-        skip_from = out["stopped"]["at"] + 1 if out["stopped"] else len(groups)
-        for g in groups[skip_from:]:
-            out["groups"].append(GroupResult(label=g.get("label", ""), status="skipped"))
+        for g in queue:
+            out["acts"].append(ActResult(label=g["label"] or _summary(g), status="skipped",
+                                         proc=g.get("proc_of", "")))
         out["version"] = self.state.version
         out["_applied"] = applied  # store が log に書く
         return out
@@ -290,4 +334,4 @@ class Engine:
 def public_result(result: dict) -> dict:
     """AI に返してよい形（events 等の全情報を除く）。"""
     return {"actor": result["actor"], "applied": result["applied"], "version": result["version"],
-            "stopped": result["stopped"], "groups": [g.public() for g in result["groups"]]}
+            "stopped": result["stopped"], "acts": [g.public() for g in result["acts"]]}

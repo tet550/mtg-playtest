@@ -7,7 +7,7 @@
 
 - [コマンド](#コマンド)
 - [id と名前](#id-と名前)
-- [Batch と ActionGroup](#batch-と-actiongroup)
+- [Batch と Act](#batch-と-act)
 - [apply の結果](#apply-の結果)
 - [Operation](#operation)
 - [カード参照](#カード参照)
@@ -23,13 +23,13 @@
 | `view GAME --as pN` | Player View。ライブラリー・墓地は枚数だけ、サイドボードは出さない | `--no-names` `--library` `--graveyard` `--sideboard` `--full` `--json` `--oracle` |
 | `apply GAME [FILE] --as pN` | Batch を適用（FILE 省略で標準入力） | `--view`（と view の表示オプション） |
 | `ids GAME --as pN [#c12 ...]` | id とカード名の対応（知っているカードだけ。省略で手札・戦場・スタック・墓地・追放） | |
-| `undo GAME [n]` / `redo GAME [n]` | ActionGroup 単位で戻す／やり直す | `undo --to N`（log の N 件目の直後まで。割り込みの巻き戻しに） |
-| `log GAME` | Operation Log。1行 `番号 v版 actor ラベル`（`~` は Undo 済み、代理の宣言は `[proxy by pX]`。ラベルの無いグループは Operation の要約） | `--last N` `--events`（全情報。判断には使わない） `--no-names` |
+| `undo GAME [n]` / `redo GAME [n]` | Act 単位で戻す／やり直す | `undo --to N`（log の N 件目の直後まで。割り込みの巻き戻しに。Act の途中なら、その Act の始まりまで） |
+| `log GAME` | Operation Log。1行 `番号 v版 actor ラベル`（`~` は Undo 済み、代理の宣言は `[proxy by pX]`、手順から展開した Act は `[turn_start to=main1 2/4]`、`cont` で続く Act のパートは `…` でつながる。ラベルの無い Act は Operation の要約。Batch のラベルは `B番号` の行） | `--last N` `--batches [N]`（Batch ごとに1行。報告用） `--steps`（実際に適用した基本の op） `--events`（全情報。判断には使わない） `--no-names` |
 | `replay GAME --to N` | log の N 件目時点 | `--as` `--json` `--no-names` `--full` |
 | `diff GAME --from A [--to B]` | 2時点の状態差分 | `--all`（knowledge も） |
 | `fork GAME DEST [--at N]` | 途中時点から別の対局 | `--force` |
 | `policy GAME p1=omniscient` | Information Policy を変える | |
-| `ops` | Operation の一覧 | |
+| `ops` | Operation と手順の一覧 | |
 | `oracle NAME...` | カードのオラクル（初回は Scryfall から取得してキャッシュ） | `--offline` `--refresh` `--brief` `--json` |
 | `oracle --deck FILE` | デッキの全カードを1枚の一覧で（デッキ・キャッシュから） | `--no-sideboard` `--brief` `--offline` |
 | `oracle --game GAME --as pN [--card #c12 ...]` | 対局の中で pN が知っているカード（`--card` 省略でサイドボード以外の全部） | `--brief` |
@@ -63,29 +63,47 @@
   `move` の `to` ではそのカードの持ち主の領域、それ以外では操作者の領域
 - 順序付き領域（library / graveyard / stack）は index 0 が一番上
 
-## Batch と ActionGroup
+## Batch と Act
 
 ```json
-{"actor": "p1", "groups": [
-  {"label": "説明", "pre": [{"step": "main"}], "ops": [ ... ]}
+{"actor": "p1", "label": "T5: Forest、Lightning Bolt", "acts": [
+  {"proc": "turn_start", "to": "main1"},
+  {"act": [{"op": "land", "card": "#c33", "mana": "{R}"}]},
+  {"act": [{"op": "cast", "card": "#c41", "targets": ["p2"], "pay": {"#c33": "R"}}]},
+  {"act": [{"op": "damage", "target": "p2", "amount": 3, "source": "#c41"}, {"op": "stack_remove"}], "label": "解決"},
+  {"proc": "turn_end"}
 ]}
 ```
 
-- `actor` は `--as` で渡してもよい（両方書くなら一致させる）。`[op, ...]` や `{"ops": [...]}` は1グループの略記
-- **グループごとの actor**: Batch の actor を judge（`--as judge`）にすると、各グループに `"actor": "p2"` を書ける。
-  AI 同士の対戦で、相手の手番まで1つの Batch に入れるときに使う。各グループはその actor として適用され
-  （知らないカードの id は使えない）、log にもその actor で残る。actor を書かないグループは judge になるので、
-  この形では全グループに actor を書く
-- **代理の宣言（`"proxy": "p1"`）**: Batch の actor が Player のとき、グループに `"proxy"` を書くと、そのグループを
+- **Act**（`{"act": [op, ...]}`）: ルール上一体として行う処理の1セット。呪文を唱える（スタックへ移す〜コストの支払い）、
+  呪文・能力の解決（効果の op → `stack_remove`）、ステップの開始とターン起因処理、宣言など。「1枚捨てる。そうしたなら
+  1枚引く」も1つ。1つでも Operation が失敗したら丸ごと取り消す。Undo の1単位。
+  `label` / `pre` / `actor` / `proxy` / `cont` を書ける（`label` は任意。無ければ log に Operation の要約が出る）
+- **`cont: true`**: 「この Act は次のパートに続く」。解決の途中で、新しく見た情報（引いた・公開された・見たカード）で
+  選ぶときや、相手が選ぶときに、Act を区切って Batch を止める。続きは次の Batch の最初の Act に書く（`cont` を付けない
+  パートで Act が終わる）。パートは1つずつ適用・取り消しされ、log の1件になる。Undo は Act 単位（途中のパートには戻らない）
+
+```json
+{"act": [{"op": "draw", "count": 2}], "cont": true}
+{"act": [{"op": "move", "cards": ["#c54", "#c55"], "to": "graveyard"}, {"op": "stack_remove", "card_to": "exile"}]}
+```
+- **手順**（`{"proc": "turn_start", ...}` / `{"proc": "turn_end", ...}`）: 複数の Act の並びの省略。順番が来たときの状態で
+  Act の並びに展開して適用する（[手順](#手順複数の-act-になるもの)）
+- `acts` の要素は Act か手順のどちらか。Batch の `label` は報告用の説明（log の最初の件に残り、`log --batches` に出る）
+- `actor` は `--as` で渡してもよい（両方書くなら一致させる）
+- **Act ごとの actor**: Batch の actor を judge（`--as judge`）にすると、各 Act に `"actor": "p2"` を書ける。
+  AI 同士の対戦で、相手の手番まで1つの Batch に入れるときに使う。各 Act はその actor として適用され
+  （知らないカードの id は使えない）、log にもその actor で残る。actor を書かない Act は judge になるので、
+  この形では全部に actor を書く（手順に書けば、展開した Act 全部に付く）
+- **代理の宣言（`"proxy": "p1"`）**: Batch の actor が Player のとき、Act に `"proxy"` を書くと、その Act を
   相手の Player として適用する（人間が相手の対局で、相手の宣言を同じ Batch に入れるとき）。log には
   `p1  [proxy by p2] ...` と残り、結果にも `"proxy_by"` が付く。`learned` と id の伏せ字は操作者（Batch の actor）
   から見た形。エンジンは妥当かどうかを判定しない（止めない）。使ってよい場面と巻き戻しは SKILL.md の「代理の宣言」
-- **ActionGroup**: 1つでも Operation が失敗したら丸ごと取り消す。log の1件・Undo の1単位
 - **Batch**: 先頭から順に適用し、次で止まる
 
-| `stopped.reason` | いつ | 止まったグループ |
+| `stopped.reason` | いつ | 止まった Act |
 |---|---|---|
-| `failed` | Operation が適用できない | 取り消し。以降は `skipped` |
+| `failed` | Operation が適用できない・手順を展開できない | 取り消し。以降は `skipped`（前の Act は残る） |
 | `precondition_failed` | `pre` が成り立たない | 適用しない。以降は `skipped` |
 
 - **止まるのはこの2つだけ。** 知らないカードを見たとき（ドロー・公開・サーチ）も、優先権が相手に渡ったときも
@@ -98,16 +116,18 @@
 ## apply の結果
 
 ```json
-{"actor": "p1", "applied": 2, "version": 17, "stopped": null,
- "groups": [{"label": "...", "status": "applied", "version": 16,
-             "created": ["#s3"], "aliases": {"spell": ["#s3"]},
-             "learned": [{"id": "#c40", "name": "Forest", "zone": "p1.hand"}],
-             "links_removed": [...], "results": [...]}]}
+{"actor": "p1", "applied": 2, "version": 17, "stopped": null, "acts": [
+ {"status": "applied", "proc": "turn_start to=main1 3/4", "aliases": {"d": ["#c41"]},
+  "learned": [{"id": "#c41", "name": "Forest", "zone": "p1.hand"}], "results": [...]},
+ {"status": "applied", "created": ["#s3", "#m1"], "results": [{"card": "#c40", "item": "#s3"}]}
+]}
 ```
 
-- `learned`: このグループで操作者が新しく知ったカード（`--no-names` でも名前が出る）
-- `results`: 各 Operation の戻り値（`stack_push` → `{"item"}`、`draw` → `{"cards", "short"}`、`cast` → `{"card", "item"}` など）
-- `actor` / `proxy_by`: グループごとの actor・代理の宣言のときだけ付く
+- Act 1つが1行。空の項目は出さない。`version` は Batch の後の版（`pre` の `version` に使う）
+- `proc`: 手順から展開した Act なら、その手順と何番目か
+- `learned`: この Act で操作者が新しく知ったカード（`--no-names` でも名前が出る）
+- `results`: 各 Operation の戻り値（`cast` → `{"card", "item"}`、`stack_push` → `{"item"}`、`draw` → `{"cards", "short"}` など）
+- `actor` / `proxy_by`: Act ごとの actor・代理の宣言のときだけ付く
 - `links_removed`: 領域移動で外れた Link（張り直すかは AI が決める）
 - 操作者が知り得ないカードの id は `"hidden"` に置き換わる
 
@@ -148,7 +168,7 @@
 | op | パラメーター | 内容 |
 |---|---|---|
 | `stack_push` | `card?` または `source?`, `kind?, controller?, text?, targets?, as?` | `card` を渡すとそのカードをスタック領域へ（呪文）。`kind`: `spell` / `activated` / `triggered` など（省略で `card` があれば `spell`、無ければ `ability`）。`targets` を渡すと `target` Link を張る。積んだ Player が優先権を持つ |
-| `stack_remove` | `item?`（省略で一番上）, `card_to?, position?` | 解決・打ち消し。`card_to` で呪文のカードも動かす。その項目が source の Link も外す。アクティブ・プレイヤーが優先権を持つ |
+| `stack_remove` | `item?`（省略で一番上）, `card_to?, position?` | 解決の終わり・打ち消し。呪文のカードは `card_to` へ（省略でタイプ行から: インスタント・ソーサリーは墓地、他は戦場。印刷されたタイプ行の表面（`//` の前）だけを見るので、出来事・分割・両面の裏面などは `card_to` を書く）。打ち消しは `card_to: graveyard`。その項目が source の Link も外す。アクティブ・プレイヤーが優先権を持つ |
 | `stack_move` | `item, index` | 順番の入れ替え（index 0 が一番上） |
 
 ### Combat
@@ -172,7 +192,9 @@
 
 | op | パラメーター | 内容 |
 |---|---|---|
-| `life` | `amount`（増減）または `set`, `player?` | |
+| `damage` | `target, amount, source?, apply?` | ダメージを与える（120）。プレイヤーならライフを減らし、パーマネント（戦場のみ）なら `damage N`（`until: end_of_turn`）の Note に足す。`apply: false` は与えた記録だけ残す（感染・萎縮・プレインズウォーカー・バトルなど、結果は続けてカウンターの op で書く） |
+| `life_loss` | `amount, player?` | ライフを失う（119.3。ダメージではない）。ライフの支払いもこれ（`pay` の `life`） |
+| `life_gain` | `amount, player?` | ライフを得る（119.3） |
 | `player_set` | `status?, name?, player?` | `status`: `playing` / `lost` / `won` / `conceded` / `draw` |
 | `step` | `to` | 名前で進める: `untap` `upkeep` `draw` `main1` `beginning_of_combat` `declare_attackers` `declare_blockers` `combat_damage` `end_of_combat` `main2` `end` `cleanup`。今より前を指定すると次のターン（アクティブ交代）。途中のステップは飛ばす。ゲーム前（`new` の直後、turn 0 / `pregame`）からは先攻の T1 のそのステップへ |
 | `turn_set` | `turn?, phase?, step?, active?, priority?` | 標準に無い進行（追加ターン、`first_strike_damage` など） |
@@ -181,31 +203,43 @@
 | `hold` | `player?` | 継続的なパスを取り消す |
 | `declare` | `kind, text?, player?` | `keep` / `mulligan` / `no_block` など。`concede` は status も変える。`pass` は `pass` と同じ |
 
-### 複合（よく使う手順をまとめたもの）
+- `damage` / `life_loss` / `life_gain` の `amount` は 0 以上（負の値はエラー。計算で負になったら 0 として扱う。107.1b）。
+  0 は何もしない（ダメージを与えた・ライフを得た・失ったことにならない。120.8、119.9）
+
+### 複合（1つの Act の中で使う書き方の省略）
 
 中で基本の op を順に適用するだけで、ルールの判定はしない。log には書いたとおり（複合 op のまま）残る。
-途中で失敗したら ActionGroup ごと取り消し（基本の op と同じ）。
+途中で失敗したら Act ごと取り消し（基本の op と同じ）。
 
 | op | パラメーター | 中でやること |
 |---|---|---|
 | `pay` | `{"#c103": "U", "#c63": "G", "pool"?: "UG", "life"?: 1, "player"?: "p1"}` | 各カードを `tap` → `mana_add`（source 付き）→ 出したマナを全部 `mana_spend`。`pool` はプールにあるマナを使う、`life` はライフを払う |
-| `cast` | `card, pay?, targets?, text?, controller?, then?, to?, resolve?=true, as?` | `pay` → `stack_push` → `then` の op（解決時の処理）→ `stack_remove`。行き先はタイプ行から（インスタント・ソーサリーは墓地、他は戦場。分からなければ `to` が要る）。`resolve: false` で積むだけ |
-| `push_resolve` | `source, text, kind?=triggered, targets?, controller?, pay?, then?, as?` | スタックに積んで即座に解決する（能力用）: `pay`（起動コスト）→ `stack_push` → `then` → `stack_remove`。`as` はスタックの項目。積むだけ（相手の応答を待つ）なら `pay` と `stack_push` |
+| `cast` | `card, targets?, text?, controller?, pay?, cost?, as?` | 呪文を唱える（601.2）: `stack_push`（スタックへ移し、対象を張る）→ `pay` → `cost` の op（追加コストの生け贄など）。モード・X は `text` に書く。解決は別の Act |
 | `land` | `card, mana, tapped?, as?, note_as?` | 戦場に出して `mana: ...` の Note を付ける（`mana: "{U} or {R}"`） |
-| `turn_start` | `draw?, upkeep?, to?, as?` | `step untap`（ゲーム前からは先攻の T1）→ `untap_all` → `step upkeep` → `upkeep` の op → `step draw` → `draw`（既定1枚。ゲームの最初のターンは0）→ `to` のステップへ（省略でドロー・ステップ） |
-| `turn_end` | `end?, cleanup?` | `step end` → `end` の op → `step cleanup` → `cleanup` の op（手札の上限など）→ `note_remove until=end_of_turn` → 全員の `mana_clear` |
 
 - マナの書き方: `"U"` `"UU"` `"RG"`（1枚から2マナ）`"5U"`、制限付きは `{"color": "U", "amount": 5, "note": "abilities only"}`、
   タップせずに出す（ETB でマナが出るなど）は `{"color": "B", "tap": false}`
 - `pay` のキーは id（`#` は省略可）。出したマナは全部使う前提。余らせて浮かせるなら基本の `tap` / `mana_add` を使う
-- `then` / `upkeep` / `end` / `cleanup` は op のリスト（複合 op も書ける）。操作者として順に適用し、中で付けた `as` は
-  同じ Batch の後ろでも使える
-- `as` の中身: `cast` → 唱えたカード、`push_resolve` → スタックの項目、`land` → 土地（`note_as` → mana の Note）、
-  `turn_start` → 引いたカード
-- 戻り値（`results`）: `pay` → `{"paid": [マナ]}`、`cast` → `{"card", "item"}`、`push_resolve` → `{"item"}`、
-  `land` → `{"card", "note"}`、`turn_start` → `{"turn", "active", "drawn"}`、`turn_end` → `{"turn"}`
-- 行き先の自動判定（`cast`）は印刷されたタイプ行の表面（`//` の前）だけを見る。唱える面が違う
-  （出来事・分割・両面の裏面など）ときは `to` を書く
+- 戻り値（`results`）: `pay` → `{"paid": [マナ]}`、`cast` → `{"card", "item"}`、`land` → `{"card", "note"}`
+- `as` の中身: `cast` → 唱えたカード、`land` → 土地（`note_as` → mana の Note）
+
+**解決**は効果の op と `stack_remove` を1つの Act に書く（解決できるのは一番上だけなので `item` は省く）:
+`{"act": [{"op": "damage", "target": "p2", "amount": 3, "source": "#c41"}, {"op": "stack_remove"}]}`。
+打ち消しは、打ち消す呪文の解決の Act で、打ち消される項目を `stack_remove {item: "#s1", card_to: "graveyard"}` で取り除く。
+
+### 手順（複数の Act になるもの）
+
+`acts` に `{"proc": 名前, ...}` で書く。順番が来たときの状態で Act の並びに展開し、1つずつ適用する。
+
+| proc | パラメーター | 展開した Act の並び |
+|---|---|---|
+| `turn_start` | `draw?, upkeep?, to?, as?` | アンタップ（`step untap` → `untap_all`。ゲーム前からは先攻の T1）→ アップキープの開始 → `upkeep` の各 Act → ドロー・ステップ（`step draw` → `draw`。既定1枚、ゲームの最初のターンは0）→ `to` のステップへ（省略でドロー・ステップに留まる） |
+| `turn_end` | `end?, cleanup?` | 終了ステップの開始 → `end` の各 Act → クリンナップの開始 → `cleanup` の各 Act（手札の上限など）→ `note_remove until=end_of_turn` と全員の `mana_clear` |
+
+- `upkeep` / `end` / `cleanup` は `acts` と同じ並び（`{"act": [...]}` か手順）
+- `as`（`turn_start`）は引いたカード。同じ Batch の後ろで使える
+- 手順の `pre` は最初の Act に、`label` / `actor` / `proxy` は展開した Act 全部に付く
+- 途中の Act で失敗したら、その Act だけを取り消して止まる。前の Act は残る
 
 ## カード参照
 

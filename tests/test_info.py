@@ -43,7 +43,7 @@ class InformationTest(unittest.TestCase):
         self.assertNotIn("known_positions", lib)
         self.assertEqual([c["id"] for c in lib["known_unordered"]], [top])
         # 位置が分からなくなったカードは id で指定できない
-        r = e.apply_group("p1", {"ops": [{"op": "move", "card": top, "to": "hand"}]})
+        r = e.apply_act("p1", {"act": [{"op": "move", "card": top, "to": "hand"}]})
         self.assertEqual(r.status, "failed")
 
     def test_public_card_to_library_is_known_to_everyone(self):
@@ -57,7 +57,7 @@ class InformationTest(unittest.TestCase):
     def test_unknown_card_reference_is_rejected(self):
         e = game()
         secret = e.state.zones["p2.library"].cards[0]
-        r = e.apply_group("p1", {"ops": [{"op": "move", "card": secret, "to": "exile"}]})
+        r = e.apply_act("p1", {"act": [{"op": "move", "card": secret, "to": "exile"}]})
         self.assertEqual(r.status, "failed")
         self.assertIn("not known", r.error)
         # 位置指定なら知らないカードでも操作できる（紙で一番上を追放するのと同じ）

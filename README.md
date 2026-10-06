@@ -15,7 +15,8 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/model.py` | Player / Card / Zone / ManaPool / Mana / Counter / Note / Link / Stack / Combat / TurnState / Declaration / GameState | 5〜15, 30節 |
 | `mtgtable/info.py` | 公開範囲・KnownInformation・InformationPolicy・PlayerView | 16〜18節 |
 | `mtgtable/operations.py` | Operation（卓上の基本操作）とカード参照 | 19節 |
-| `mtgtable/engine.py` | ActionGroup・Batch・Precondition | 20〜23節 |
+| `mtgtable/engine.py` | Act・Batch・Precondition | 20〜23節 |
+| `mtgtable/procedures.py` | 手順（複数の Act の並びの省略: `turn_start` `turn_end`） | 20節 |
 | `mtgtable/store.py` | Operation Log・Undo/Redo・Replay・Snapshot(fork)・State Diff | 29節 |
 | `mtgtable/setup.py` | デッキリスト読み込みと初期状態 | — |
 | `mtgtable/carddb.py` | Rule Reference（Scryfall のオラクルをローカルにキャッシュ） | 28節 |
@@ -23,6 +24,27 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/cli.py` | コマンドライン | 26節 |
 
 ## 使い方
+
+### Windows / PowerShell の Python 起動
+
+最初に `Get-Command python, py -ErrorAction SilentlyContinue` で実行環境を確認する。
+`python` が無ければ、Python Launcher がある環境では以下の `python` を `py -3` に読み替える。
+どちらも無い Codex 環境では `load_workspace_dependencies` ツールが返す Python executable の絶対パスを使う。
+同梱ランタイムのパスは環境ごとに取得し、再インストールや PATH 変更は不要。
+
+PowerShell では取得したパスを変数に入れ、呼び出し演算子 `&` で起動する。
+JSONをパイプする場合も同じ形式を使う（リポジトリ直下で実行）。
+
+```powershell
+$mtgPython = '取得した Python executable の絶対パス'
+$env:PYTHONIOENCODING = 'utf-8'
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+& $mtgPython -m mtgtable --help
+# JSON を標準入力で渡す場合:
+# $batchJson | & $mtgPython -m mtgtable apply playtest/g1 --as p1
+```
+
+### 対局の作成と操作
 
 ```bash
 python -m mtgtable new playtest/g1 --deck p1=decklists/piza.txt --deck p2=decklists/jund-sacrifice.txt --seed 1
@@ -60,9 +82,9 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 
 | コマンド | 内容 |
 |---|---|
-| `ops` | Operation の一覧 |
-| `undo` / `redo [n]` | ActionGroup 単位で戻す／やり直す |
-| `log [--events]` | Operation Log（`--events` は全情報。観戦・デバッグ用で AI には見せない） |
+| `ops` | Operation と手順の一覧 |
+| `undo` / `redo [n]` | Act 単位で戻す／やり直す |
+| `log [--batches [N]] [--events]` | Operation Log（`--batches` は Batch ごとに1行。`--events` は全情報。観戦・デバッグ用で AI には見せない） |
 | `replay --to N` | log の N 件目時点の状態 |
 | `diff --from A [--to B]` | 2時点の State Diff |
 | `fork DEST [--at N]` | 途中時点から別の対局を作る（Snapshot からの分岐） |
@@ -90,22 +112,24 @@ AI は Batch（JSON）を `apply` に渡して卓を動かす。書式・Operati
 MTG の基本ルールの要点は [references/rules.md](.claude/skills/mtg-playtest/references/rules.md)。
 
 ```json
-{"actor": "p1", "groups": [
-  {"label": "T3 開始", "ops": [{"op": "turn_start", "to": "main1"}]},
-  {"label": "Forest, Llanowar Elves", "pre": [{"step": "main"}], "ops": [
-     {"op": "land", "card": "#c12", "mana": "{G}"},
-     {"op": "cast", "card": "#c40", "pay": {"#c12": "G"}}]},
-  {"label": "T3 終了", "ops": [{"op": "turn_end"}]}
+{"actor": "p1", "label": "T3: Forest, Llanowar Elves", "acts": [
+  {"proc": "turn_start", "to": "main1"},
+  {"act": [{"op": "land", "card": "#c12", "mana": "{G}"}]},
+  {"act": [{"op": "cast", "card": "#c40", "pay": {"#c12": "G"}}]},
+  {"act": [{"op": "stack_remove"}], "label": "解決"},
+  {"proc": "turn_end"}
 ]}
 ```
 
-- `land` `cast` `push_resolve` `pay` `turn_start` `turn_end` は、基本の Operation（`tap` `mana_add` `stack_push`
-  `stack_remove` `step` など）をまとめた複合 Operation。ルールの判定はしない
-
-- **ActionGroup**（`groups` の1要素）は丸ごと適用するか丸ごと取り消す。log の1件・Undo の1単位
+- **Act**（`{"act": [op, ...]}`）は、ルール上一体として行う処理の1セット（呪文を唱える、解決する、
+  「1枚捨てる。そうしたなら1枚引く」など）。丸ごと適用するか丸ごと取り消す。log の1件・Undo の1単位
+  （解決の途中で見てから選ぶときは `cont: true` でパートに分け、次の Batch に続きを書く。Undo は Act 単位）
+- **手順**（`{"proc": "turn_start"}` / `{"proc": "turn_end"}`）は、複数の Act の並びの省略。順番が来たときの状態で
+  Act の並びに展開する。**複合 op**（`cast` `land` `pay`）は1つの Act の中で使う省略。どちらもルールの判定はしない
 - **Batch** が止まるのは、失敗と前提不成立だけ。知らないカードを見たときも、優先権が動いたときも止めない。
-  どこで区切るか（見てから選ぶ所、相手の応答を待つ所）は操作する AI が決める。人間が相手なら、クリティカルな
-  場面でパスの宣言を求め、もらわずに進めた場面は相手が巻き戻し（`undo --to N`）を請求できる
+  どこで区切るか（見てから選ぶ所、相手の応答を待つ所）は操作する AI が決める。人間が相手なら、対応が予想されない
+  場面は確認を省いて進める。対応の可能性があるクリティカルな場面や相手の選択が必要な場面では止める。
+  確認を省いた旨はラベルに残し、ユーザーが明示的にパスした記録とは区別する。相手は巻き戻し（`undo --to N`）を請求できる
 
 ## 情報公開
 
@@ -125,8 +149,10 @@ MTG の基本ルールの要点は [references/rules.md](.claude/skills/mtg-play
 
 ## 記録と再現
 
-`playtest/<対局>/` に `initial.json`・`log.jsonl`・`state.json` を置く。乱数（シャッフル・無作為選択）は
-`(seed, version)` から決まるので、初期状態から log を適用し直せば同じ状態になる。Undo はこれで cursor を戻す。
+`playtest/<対局>/` に `initial.json`・`log.jsonl`・`state.json` を置く。log の各件（Act）は、AI が書いた `act` と、
+実際に適用した基本の op（`steps`。複合 op を展開し、エイリアスを id に置き換えたもの）と event を持つ。
+Replay は初期状態に `steps` だけを適用し直す。乱数（シャッフル・無作為選択）は `(seed, version)` から決まるので、
+同じ状態になる。Undo はこれで cursor を戻す。
 
 ## 未実装（今後）
 
@@ -146,9 +172,9 @@ python -m unittest discover -s tests
 | `test_setup.py` | デッキリスト・初期状態 |
 | `test_info.py` | 公開範囲・記憶・Player View・表示 |
 | `test_operations.py` | 基本の Operation（カード・Link・トークン・スタック・戦闘・マナ・ライブラリー・ログの文字列） |
-| `test_composite.py` | 複合 Operation（`pay` `cast` `push_resolve` `land` `turn_start` `turn_end`） |
+| `test_composite.py` | 複合 op（`pay` `cast` `land`）と手順（`turn_start` `turn_end`） |
 | `test_turn.py` | ターン・ステップ・ゲーム前・宣言・優先権のパス |
-| `test_batch.py` | ActionGroup・Batch・エイリアス・グループごとの actor・代理の宣言 |
+| `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
 | `test_carddb.py` | オラクルのキャッシュ |
 

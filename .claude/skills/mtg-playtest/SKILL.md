@@ -38,11 +38,15 @@ description: mtgtable（このリポジトリのデジタル卓）で MTG の対
 3. **Batch は止まらないように計画する。** 1回の `apply` に、次に本当に判断が要る所までを全部入れる。
    **割り込み（相手の応答・選択）や未知のドローが無いなら、1ターン1回の `apply` を目標にする。**
    両方 AI で、ライブラリーの順が分かっている（Information Policy で開示している）なら、序盤は相手の手番まで
-   1つの Batch に入れてよい（`--as judge` と、グループごとの `"actor"`。[cli.md](references/cli.md#batch-と-actiongroup)）
+   1つの Batch に入れてよい（`--as judge` と、Act ごとの `"actor"`。[cli.md](references/cli.md#batch-と-act)）
+   **1ターン1回なのは Batch で、Act ではない。** Act（`{"act": [op, ...]}`）はルール上一体の処理の1セット
+   （呪文を唱える、解決する、ステップの開始など。「捨てる。そうしたなら引く」は1つ）。Batch の `acts` に Act と
+   手順（`{"proc": "turn_start"}` など）を並べて書き、Batch に `label` を1つ付ける
    エンジンが止めるのは計画の誤り（`failed` / `precondition_failed`）だけで、誤りはエンジンではなく計画を直す。
    知らないカードを見たときも、優先権が動いたときも止まらない。**どこで区切るかは AI が決める**:
    - 知らないカード（ドロー・公開・サーチ）を見てから次の手を選ぶなら、その所で `apply` を区切る。
-     何が見えても次の手が同じなら区切らない
+     何が見えても次の手が同じなら区切らない。解決の途中（「引いてから捨てる」など）で区切るときは、
+     見る所までのパートに `"cont": true` を付け、次の Batch の最初の Act に続きを書く（2つで1つの Act）
    - 相手の応答・選択が要る所（ブロック、相手が選ぶ効果、人間が相手のクリティカルな場面のパス）で区切る
    - 新しく知ったカードは結果の `learned` で確かめる
    - エイリアス（`$名前`）はその Batch の中だけ有効。後で参照するものは同じ Batch に入れるか、id で書く
@@ -53,9 +57,9 @@ description: mtgtable（このリポジトリのデジタル卓）で MTG の対
    `apply` の `learned` に id と一緒に出るので、そこで覚える。忘れた・相手の新しいカードなど、必要なときだけ
    `ids GAME --as pN #c12` / `oracle --game GAME --as pN --card #c12` で照会する。
    ライブラリー・墓地の中身も必要なときだけ `--library` / `--graveyard` で出す
-6. **土地には、今出せるマナを常に Note で書いておく。** 土地を戦場に出す ActionGroup の中で
+6. **土地には、今出せるマナを常に Note で書いておく。** 土地を戦場に出す Act の中で
    `note_add {target: 土地, text: "mana: {R} or {W}"}` を付ける（`until` は付けない）。条件で変わる土地
-   （Verge 系・Training Compound・Cavern of Souls・Starting Town など）は、条件が変わった ActionGroup の中で
+   （Verge 系・Training Compound・Cavern of Souls・Starting Town など）は、条件が変わった Act の中で
    `note_update` する（例: Mountain が出たら Sunbillow Verge を `mana: {W} or {R}` に）。名前無しの view でも、
    どの土地から何が出るかを Note だけで判断できる状態を保つ
 
@@ -74,6 +78,12 @@ description: mtgtable（このリポジトリのデジタル卓）で MTG の対
 
 ### 1. 準備
 
+- Windows では最初に `Get-Command python, py -ErrorAction SilentlyContinue` で Python の起動方法を確認する。
+  `python` が無ければ `py -3`、どちらも無い Codex 環境では `load_workspace_dependencies` が返す Python executable を
+  `& '絶対パス' -m mtgtable ...` で使う。確認した起動方法は対局中再利用する。
+  PowerShell では `$env:PYTHONIOENCODING='utf-8'` と `$OutputEncoding = [System.Text.UTF8Encoding]::new($false)` を設定する。
+  詳細は [README](../../../README.md#windows--powershell-の-python-起動)。
+
 ```bash
 python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p2=decklists/<B>.txt --seed <乱数> --first <コイントスの結果>
 ```
@@ -89,7 +99,7 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 ### 2. マリガン
 
 各 Player について、自分の view だけを見てキープかマリガンを決める。マリガンは
-`declare kind=mulligan` → 手札を全部ライブラリーへ → `shuffle` → `draw 7` → 枚数分を下へ、を1グループで行う。
+`declare kind=mulligan` → 手札を全部ライブラリーへ → `shuffle` → `draw 7` → 枚数分を下へ、を1つの Act で行う。
 
 `new` の直後は **ゲーム前**（view に `Pregame  first pN`。turn 0）。マリガンはここで行う。全員のマリガン（下に置く処理まで）が
 終わったら、開始時の手札から使えるカード（<Leyline Axe> など「開始時の手札にあるなら、戦場に出た状態でゲームを始めてよい」）を
@@ -97,14 +107,24 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 
 ### 3. ターンの進め方
 
-アクティブ・プレイヤーが進行を持つ。1ターンを原則この単位で `apply` する:
+アクティブ・プレイヤーが進行を持つ。1ターンを原則1つの Batch で `apply` する:
 
-1. **ターン開始**: `turn_start`（untap → untap_all → upkeep → draw。ゲーム前からは先攻の T1 へ。最初のターンは引かない）
-2. **メイン・戦闘・終了**: 土地は `land`、呪文は `cast`、能力は `push_resolve`（積んで即座に解決。コストは `pay`）。相手の応答を待つ所は
-   `cast {resolve: false}` / `stack_push` で積んで区切る
-3. **終了**: `turn_end`（end → cleanup → `until: end_of_turn` の Note を外す → マナ・プールを空に）
+1. **ターン開始**: `{"proc": "turn_start"}`（untap → untap_all → upkeep → draw。ゲーム前からは先攻の T1 へ。最初のターンは引かない）
+2. **メイン・戦闘・終了**: 土地は `land`、呪文は `cast`（唱える Act）、能力は `pay` と `stack_push`（積む Act）。
+   解決は別の Act で、効果の op の後に `stack_remove`。相手の応答を待つ所は、積んだ Act の後で区切る
+3. **終了**: `{"proc": "turn_end"}`（end → cleanup → `until: end_of_turn` の Note を外す → マナ・プールを空に）
 
-複合 op は基本の op をまとめたもの（[cli.md](references/cli.md#複合よく使う手順をまとめたもの)）。書けない所だけ基本の op を使う。
+```json
+{"actor": "p1", "label": "T5: <Forest>、<Lightning Bolt>", "acts": [
+  {"proc": "turn_start", "to": "main1"},
+  {"act": [{"op": "land", "card": "#c33", "mana": "{R}"}]},
+  {"act": [{"op": "cast", "card": "#c41", "targets": ["p2"], "pay": {"#c33": "R"}}]},
+  {"act": [{"op": "damage", "target": "p2", "amount": 3, "source": "#c41"}, {"op": "stack_remove"}]},
+  {"proc": "turn_end"}]}
+```
+
+手順（`turn_start` `turn_end`）は複数の Act に展開される。複合 op（`cast` `land` `pay`）は1つの Act の中で使う
+（[cli.md](references/cli.md#複合1つの-act-の中で使う書き方の省略)）。書けない所だけ基本の op を使う。
 
 書き方の定型は [patterns.md](references/patterns.md)。優先権が動く前（`pass` の前）に、状況起因処理
 （ライフ0、致死ダメージ、タフネス0、レジェンド・ルール、戦場外のトークンなど）を毎回確かめる。
@@ -117,9 +137,12 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 
 - **AI 同士の対戦では、パスを確認も記録もしない。** 呪文・能力は `stack_push` の後、そのまま解決してよい
   （相手が対応するなら、その Player として判断してから積む）
-- **人間が相手の対戦では、クリティカルな場面で AI から相手にパスを求め、パスの宣言をもらってから進める**
-  （例: 致死になる攻撃の前、コンボの起点、除去の解決前）。相手の宣言は `pass`（「このステップは」
-  「このターンは」なら `pass {until: ...}`）で記録する
+- **人間が相手の対戦でも、対応が予想されない場面は確認を省いて進める。** 除去・コンボという理由だけで止めない。
+  使用可能なマナ・能力・既知のカードから判断し、土地がタップ状態という理由だけで対応不能とは断定しない。
+  対応の可能性があるクリティカルな場面や判断に迷う場面では、パスを求めてから進める。
+  ブロック・モード・対象など相手の選択は省略しない。ユーザーが毎回の確認を指定した場合はそれに従う。
+- 確認を省いた場合はラベルに「対応なしと判断し進行」と残す。明示的なパスや代理の宣言を捏造しない。
+  実際にもらったパスは `pass`（「このステップは」「このターンは」なら `pass {until: ...}`）で記録する。
 - パスの宣言をもらわずに進めた場面では、相手は割り込みたかった時点までの**巻き戻しを請求できる**。
   請求されたら `undo --to N`（N は割り込みたかった直前の log 番号）で戻し、相手の対応から続ける
 
@@ -127,10 +150,11 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 誰が見ても同じ判断になるとき**だけ（例: アンタップのクリーチャーがいないのでブロック無し、応答できるマナも
 手札も無い場面のパス）。書くときは:
 
-- 同じ Batch の中で、そのグループに `"proxy": "p1"` を付ける（log に `[proxy by p2]` と出る）。ラベルに理由を書く
+- 同じ Batch の中で、その Act に `"proxy": "p1"` を付ける（log に `[proxy by p2]` と出る）。ラベルに理由を書く
 - 報告で「代理で宣言した」ことと、その内容を明示する
-- 相手から指摘があれば、その代理のグループの直前まで `undo --to N` で巻き戻し、相手の宣言から続ける
-- 判断が分かれうる宣言（ブロックするか、どれでブロックするか、対応するか）は代理にせず、そこで区切って聞く
+- 相手から指摘があれば、その代理の Act の直前まで `undo --to N` で巻き戻し、相手の宣言から続ける
+- 判断が分かれうる宣言（ブロックするか、どれでブロックするか、対応するか）は代理にしない。
+  対応確認の省略は上の「優先権のパス」に従い、それ以外の選択はそこで区切って聞く
 
 **生け贄は `move` で墓地へ送る**（トークンも同じ。紙でもいったん墓地へ行く）。コストとして生け贄にした
 パーマネントは墓地にあるので、そのまま能力の `source` に指定できる。トークンは、その能力を積んだ後に
@@ -143,6 +167,7 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 
 - 同じ効果が重なるときは Note を1枚にまとめて `note_update` で更新する（例: `+2/+2` ×10 → `+20/+20`）
 - カード名は `<Hired Claw>` のように `<>` で囲んで書く（スクリプトの表示と同じ。報告・質問・ラベル・Note の text も）
-- 報告は日本語。各ターンは `log --last N` の生出力と、要点（何を唱え、何が起きたか）を短く書く
+- 報告は日本語。各ターンは `log --batches N` の生出力と、要点（何を唱え、何が起きたか）を短く書く。
+  巻き戻しの請求などで Act ごとの番号が要るときは `log --last N`
 - 対局の最後に、勝敗・決め手・エンジンで気づいた問題（不具合・書きにくかった操作）をまとめる
 - エンジンの不具合を見つけたら、直すかどうかはユーザーに確認する（対局中に勝手に直さない）

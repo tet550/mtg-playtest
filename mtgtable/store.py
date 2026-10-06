@@ -4,11 +4,11 @@
 
 対局フォルダの中身:
     initial.json   初期状態
-    log.jsonl      適用した ActionGroup を1行1件（actor・ops・events）
+    log.jsonl      適用した Act を1行1件（actor・AI が書いた act・実際に適用した基本の op と event（steps）・Batch の番号・手順）
     state.json     現在状態のキャッシュと、log のどこまでが有効か（cursor）
 
-乱数は ActionGroup ごとに (seed, version) から決まるので、initial.json と log を
-先頭から適用し直せば同じ状態に戻る。Undo はこの Replay で cursor を戻すだけ。
+Replay は各件の steps（複合 op を展開し、エイリアスを id に置き換えた基本の op）だけを適用し直す。
+乱数は Act ごとに (seed, version) から決まるので、initial.json と log を先頭から適用し直せば同じ状態に戻る。Undo はこの Replay で cursor を戻すだけ。
 """
 from __future__ import annotations
 
@@ -91,14 +91,20 @@ class GameStore:
         if applied:
             entries = self.read_log()[:cursor]
             now = datetime.datetime.now().isoformat(timespec="seconds")
-            for group, r in applied:
-                entry = {"seq": len(entries) + 1, "version": r.version, "time": now,
-                         "actor": group.get("actor", group.get("proxy", result["actor"])),
-                         "label": group.get("label", ""),
-                         "pre": group.get("pre", []), "ops": group["ops"],
-                         "aliases_in": r.aliases_in,
-                         "events": r.events}
-                if "proxy" in group:
+            batch = max([e.get("batch", 0) for e in entries] or [0]) + 1
+            for i, (act, r) in enumerate(applied):
+                entry = {"seq": len(entries) + 1, "version": r.version, "time": now, "batch": batch,
+                         "actor": act.get("actor", act.get("proxy", result["actor"])),
+                         "label": act.get("label", ""),
+                         "pre": act.get("pre", []), "act": act["act"],
+                         "steps": r.steps}
+                if act.get("cont"):
+                    entry["cont"] = True  # この Act は次の件に続く
+                if act.get("proc_of"):
+                    entry["proc"] = act["proc_of"]  # 手順から展開した Act
+                if i == 0 and result.get("label"):
+                    entry["batch_label"] = result["label"]
+                if "proxy" in act:
                     entry["proxy_by"] = result["actor"]  # 代理の宣言（指摘があれば Undo で巻き戻す）
                 entries.append(entry)
             self._write_log(entries)
@@ -130,23 +136,43 @@ class GameStore:
             raise ValueError("log has %d entries; cannot replay to %d" % (len(entries), upto))
         engine = Engine(self.initial())
         for e in entries[:upto]:
-            r = engine.apply_group(e["actor"], {"label": e["label"], "pre": [], "ops": e["ops"]},
-                                   e.get("aliases_in"))
+            r = engine.apply_act(e["actor"], {"label": e["label"], "act": [s["op"] for s in e["steps"]]})
             if r.status != "applied":
                 raise RuntimeError("replay diverged at entry %d: %s" % (e["seq"], r.error))
         return engine.state
 
+    @staticmethod
+    def _act_start(entries: list, i: int) -> int:
+        """log の i 件目の直後が Act の途中（cont の件の後）なら、その Act の始まりまで戻した位置。"""
+        while i > 0 and entries[i - 1].get("cont"):
+            i -= 1
+        return i
+
     def undo(self, n: int = 1, to: Optional[int] = None) -> int:
-        """n 件戻す。to を渡すと log の to 件目を適用した直後の時点まで戻す（巻き戻しの請求用）。"""
-        cur = max(0, self.cursor() - n) if to is None else to
-        if not 0 <= cur <= self.cursor():
-            raise ValueError("cannot undo to %d (cursor is %d)" % (cur, self.cursor()))
+        """Act を n 個戻す。to を渡すと log の to 件目を適用した直後の時点まで戻す（巻き戻しの請求用）。
+        戻す先は Act の境目（Act の途中を指したら、その Act の始まり）。"""
+        entries = self.read_log()
+        cur = self.cursor()
+        if to is not None:
+            if not 0 <= to <= cur:
+                raise ValueError("cannot undo to %d (cursor is %d)" % (to, cur))
+            cur = self._act_start(entries, to)
+        else:
+            for _ in range(n):
+                if cur > 0:
+                    cur = self._act_start(entries, cur - 1)
         self._save_state(self.replay(cur), cur)
         return cur
 
     def redo(self, n: int = 1) -> int:
-        total = len(self.read_log())
-        cur = min(total, self.cursor() + n)
+        """Act を n 個やり直す。"""
+        entries = self.read_log()
+        cur = self.cursor()
+        for _ in range(n):
+            if cur < len(entries):
+                cur += 1
+                while cur < len(entries) and entries[cur - 1].get("cont"):
+                    cur += 1
         self._save_state(self.replay(cur), cur)
         return cur
 

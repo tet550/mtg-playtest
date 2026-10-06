@@ -21,9 +21,9 @@ class StoreTest(unittest.TestCase):
 
     def test_undo_redo_replay(self):
         st = self.store
-        st.apply({"actor": "p1", "ops": [{"op": "shuffle", "zone": "library"}]})
-        st.apply({"actor": "p1", "ops": [{"op": "move", "card": {"zone": "hand", "random": 2},
-                                          "to": "graveyard"}]})
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "shuffle", "zone": "library"}]}]})
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "move", "card": {"zone": "hand", "random": 2},
+                                                    "to": "graveyard"}]}]})
         after = st.load().to_dict()
         self.assertEqual(st.replay().to_dict(), after)
         self.assertEqual(st.undo(), 1)
@@ -31,22 +31,45 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(st.redo(), 2)
         self.assertEqual(st.load().to_dict(), after)
         st.undo()
-        st.apply({"actor": "p1", "ops": [{"op": "draw"}]})
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "draw"}]}]})
         self.assertEqual(len(st.read_log()), 2)  # Redo 履歴は捨てられる
-        self.assertEqual(st.read_log()[-1]["ops"][0]["op"], "draw")
+        self.assertEqual(st.read_log()[-1]["act"][0]["op"], "draw")
 
     def test_undo_to(self):
         st = self.store
-        for amount in (-1, -2, -3):
-            st.apply({"actor": "p1", "ops": [{"op": "life", "amount": amount}]})
+        for amount in (1, 2, 3):
+            st.apply({"actor": "p1", "acts": [{"act": [{"op": "life_loss", "amount": amount}]}]})
         self.assertEqual(st.undo(to=1), 1)
         self.assertEqual(st.load().players["p1"].life, 19)
         with self.assertRaises(ValueError):
             st.undo(to=5)
 
+    def test_continued_act_is_one_undo_unit(self):
+        # 「2枚引く。その後2枚捨てる」: 引いたカードを見てから捨てるので、cont で区切って続きを次の Batch に書く
+        st = self.store
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "life_loss", "amount": 1}]}]})
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "draw", "count": 2}], "cont": True}]})
+        drawn = st.read_log()[-1]["steps"][0]["op"]
+        self.assertEqual(st.read_log()[-1]["cont"], True)
+        hand = st.load().zones["p1.hand"].cards
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "move", "cards": hand[-2:], "to": "graveyard"}]}]})
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "life_loss", "amount": 2}]}]})
+        self.assertEqual(st.undo(), 3)
+        self.assertEqual(st.undo(), 1)  # 引く・捨てるの2件を1つの Act として戻す
+        self.assertEqual(st.redo(), 3)
+        self.assertEqual(st.undo(to=2), 1)  # Act の途中を指したら、その Act の始まりへ
+        self.assertEqual(st.redo(2), 4)
+        self.assertEqual(drawn["op"], "draw")
+
+    def test_open_act_at_the_end_is_undone_as_a_whole(self):
+        st = self.store
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "draw"}], "cont": True},
+                                          {"act": [{"op": "draw"}], "cont": True}]})
+        self.assertEqual(st.undo(), 0)
+
     def test_diff_and_fork(self):
         st = self.store
-        st.apply({"actor": "p1", "ops": [{"op": "life", "amount": -2}]})
+        st.apply({"actor": "p1", "acts": [{"act": [{"op": "life_loss", "amount": 2}]}]})
         diff = state_diff(st.replay(0), st.replay(1))
         self.assertIn(("players.p1.life", 20, 18), diff)
         other = st.fork(pathlib.Path(self.tmp.name) / "f")
