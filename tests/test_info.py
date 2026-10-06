@@ -73,7 +73,7 @@ class InformationTest(unittest.TestCase):
         self.assertIn("name", mine)
         # 裏向きのパーマネントはクリーチャーとして扱うので、出たターンは召喚酔いの表示が付く
         self.assertEqual(theirs, {"id": cid, "hidden": True, "owner": "p1", "controller": "p1",
-                                  "face_down": True, "sick": True})
+                                  "face_down": True, "new": True})
 
     def test_face_down_card_turns_face_up_when_it_moves(self):
         e = game()
@@ -180,23 +180,23 @@ class SicknessAndLandsTest(unittest.TestCase):
     def _bf(self, e, viewer="p1"):
         return {c["id"]: c for c in player_view(e.state, viewer)["zones"]["battlefield"]["cards"]}
 
-    def test_sick_until_controllers_next_turn(self):
+    def test_new_until_controllers_next_turn(self):
         e = self._game()
         bear = find(e, "p1", "hand", "Grizzly Bears")
         forest = find(e, "p1", "hand", "Forest")
         ok(e, "p1", {"op": "step", "to": "main1"},
            {"op": "move", "cards": [bear, forest], "to": "battlefield"})
         bf = self._bf(e)
-        self.assertTrue(bf[bear]["sick"])
+        self.assertTrue(bf[bear]["new"])
         self.assertTrue(bf[forest]["land"])
-        self.assertNotIn("sick", bf[forest])
+        self.assertNotIn("new", bf[forest])
         ok(e, None, {"op": "step", "to": "untap"})  # p2 のターン: まだ p1 のターンは来ていない
-        self.assertTrue(self._bf(e)[bear]["sick"])
+        self.assertTrue(self._bf(e)[bear]["new"])
         ok(e, None, {"op": "step", "to": "cleanup"}, {"op": "step", "to": "untap"})  # p1 のターン
-        self.assertNotIn("sick", self._bf(e)[bear])
+        self.assertNotIn("new", self._bf(e)[bear])
         # コントロールが移ると、新しいコントローラーの次のターンまで召喚酔い
         ok(e, None, {"op": "set", "card": bear, "controller": "p2"})
-        self.assertTrue(self._bf(e)[bear]["sick"])
+        self.assertTrue(self._bf(e)[bear]["new"])
 
     def test_lands_listed_first(self):
         e = self._game()

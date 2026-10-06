@@ -81,8 +81,8 @@ def _card(cv: dict, ids: str = None, count: int = 1) -> str:
         flags.append("token")
     if cv.get("tapped"):
         flags.append("tapped")
-    if cv.get("sick"):
-        flags.append("sick")
+    if cv.get("new"):
+        flags.append("new")
     if cv.get("face_down") and not cv.get("hidden"):
         flags.append("face-down")
     if cv.get("face"):

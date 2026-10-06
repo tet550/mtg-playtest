@@ -150,6 +150,23 @@ class ProcedureTest(unittest.TestCase):
         self.assertEqual(len(res["acts"]), 5)
         self.assertEqual(e.state.players["p2"].life, 18)
 
+    def test_inner_act_keeps_its_own_actor(self):
+        # 相手の終了ステップに、もう一方の Player がインスタントを唱える
+        e = game()
+        run(e, "p1", {"proc": "turn_start", "to": "main1"})
+        bolt = find(e, "p2", "hand", "Lightning Bolt")
+        e.state.cards[bolt].type_line = "Instant"
+        res = run(e, None, {"actor": "p1", "proc": "turn_end", "end": [
+            {"actor": "p2", "act": [{"op": "cast", "card": bolt, "targets": ["p1"]}]},
+            {"actor": "p2", "act": [{"op": "damage", "target": "p1", "amount": 3, "source": bolt},
+                                    {"op": "stack_remove"}]}]})
+        self.assertEqual([a.actor for a in res["acts"]], ["p1", "p2", "p2", "p1", "p1"])
+        self.assertEqual(e.state.players["p1"].life, 17)
+        # Player の Batch の中で actor を書くのは、最上位と同じくエラー
+        res = e.apply_batch({"actor": "p2", "acts": [{"proc": "turn_start", "upkeep": [
+            {"actor": "p1", "act": [{"op": "draw"}]}]}]})
+        self.assertEqual(res["stopped"]["reason"], "failed")
+
     def test_failure_keeps_earlier_acts(self):
         e = game()
         res = e.apply_batch({"actor": "p1", "acts": [

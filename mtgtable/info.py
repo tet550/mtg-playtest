@@ -153,8 +153,8 @@ def _card_view(state: GameState, viewer, cid: str, full: bool, names: bool = Tru
     if state.zones[c.zone].kind == "battlefield":
         if full and not c.face_down and "Land" in c.type_line:
             v["land"] = True
-        elif summoning_sick(state, c):
-            v["sick"] = True
+        elif is_new(state, c):
+            v["new"] = True
     counters = state.counters_on(cid)
     if counters:
         v["counters"] = counters
@@ -173,10 +173,10 @@ def _card_view(state: GameState, viewer, cid: str, full: bool, names: bool = Tru
     return v
 
 
-def summoning_sick(state: GameState, c) -> bool:
-    """戦場のクリーチャーが、コントローラーの直近のターンの開始時からコントロールされていないか。
+def is_new(state: GameState, c) -> bool:
+    """戦場のクリーチャーが、コントローラーの直近のターンの開始より後にコントロールされ始めたか（事実だけ）。
 
-    表示用の目安で、速攻などの能力は考えない（攻撃・{T} できるかの判断は AI が行う）。
+    召喚酔いかどうか（速攻などの能力を含めて、攻撃・{T} できるか）はルールの判断なので AI が行う。
     タイプ行が分かっていてクリーチャーでないものは対象外。裏向きのパーマネントはクリーチャーとして扱う。
     """
     if not c.face_down and c.type_line and "Creature" not in c.type_line:

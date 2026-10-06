@@ -266,16 +266,21 @@ class Engine:
             res.learned.append({"id": cid, "name": c.name, "zone": c.zone})
         return res
 
-    def _expand(self, g: dict, actor: Optional[str]) -> list:
+    def _expand(self, g: dict, actor: Optional[str], batch_actor: Optional[str]) -> list:
         """手順の要素 g を、今の状態で Act の並び（正規形）に展開する。手順の pre は最初の要素に、
-        actor / proxy / label は全部に引き継ぐ。"""
+        label は全部に、actor / proxy は自分で書いていない要素に引き継ぐ（upkeep / end / cleanup に
+        相手の Act を書けるように）。"""
         items = expand(Context(state=self.state, actor=actor), g["proc"])
         name = _summary(g)
         new = [normalize_entry(x, "%s: act %d" % (g["proc"]["proc"], i)) for i, x in enumerate(items)]
         for i, ng in enumerate(new):
-            for k in ("actor", "proxy"):
-                if k in g:
-                    ng[k] = g[k]
+            if "actor" in ng and batch_actor is not None:
+                raise OperationError("%s: act %d sets actor; per-act actors need the batch actor to be judge"
+                                     " (to declare for another player, use \"proxy\")" % (g["proc"]["proc"], i))
+            if "actor" not in ng and "proxy" not in ng:
+                for k in ("actor", "proxy"):
+                    if k in g:
+                        ng[k] = g[k]
             if g["label"] and not ng["label"]:
                 ng["label"] = g["label"]
             if "act" in ng:
@@ -304,7 +309,7 @@ class Engine:
             g = queue.pop(0)
             if "proc" in g:
                 try:
-                    queue[0:0] = self._expand(g, actor_of(g))
+                    queue[0:0] = self._expand(g, actor_of(g), actor)
                 except OperationError as e:
                     r = ActResult(label=g["label"], status="failed", proc=_summary(g), error=str(e))
                     out["acts"].append(r)

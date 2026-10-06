@@ -398,7 +398,9 @@ def _set_flags(ctx: Context, p: dict, **fixed) -> dict:
         if p.get("name"):
             c.name = p["name"]
         ctx.event("set %s %s" % (_label(ctx.state, cid),
-                                 {k: v for k, v in {**p, **fixed}.items() if k not in ("card", "cards")}))
+                                 {k: v for k, v in {**p, **fixed}.items() if k not in ("card", "cards", "as")}))
+    if p.get("as"):
+        ctx.aliases[p["as"]] = list(ids)
     return {"cards": ids}
 
 

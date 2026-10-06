@@ -94,7 +94,7 @@
 - **Act ごとの actor**: Batch の actor を judge（`--as judge`）にすると、各 Act に `"actor": "p2"` を書ける。
   AI 同士の対戦で、相手の手番まで1つの Batch に入れるときに使う。各 Act はその actor として適用され
   （知らないカードの id は使えない）、log にもその actor で残る。actor を書かない Act は judge になるので、
-  この形では全部に actor を書く（手順に書けば、展開した Act 全部に付く）
+  この形では全部に actor を書く（手順に書けば、展開した Act のうち actor / proxy を書いていないものに付く）
 - **代理の宣言（`"proxy": "p1"`）**: Batch の actor が Player のとき、Act に `"proxy"` を書くと、その Act を
   相手の Player として適用する（人間が相手の対局で、相手の宣言を同じ Batch に入れるとき）。log には
   `p1  [proxy by p2] ...` と残り、結果にも `"proxy_by"` が付く。`learned` と id の伏せ字は操作者（Batch の actor）
@@ -143,7 +143,7 @@
 | `move` | `card, to, position?, order?, face_down?, tapped?, controller?, keep?, as?` | 領域を移す。`position`: `top`（既定）/ `bottom` / 数値。複数を `top` に置くと先頭が一番上。`order: "random"` で無作為の順に置き、全員その位置を知らない扱いになる |
 | `draw` | `player?, count?=1, as?` | ライブラリーの上から手札へ。空なら `short` に足りない枚数 |
 | `shuffle` | `zone?=library, owner?` | 全員その領域の位置の記憶を失う |
-| `tap` / `untap` | `card` | |
+| `tap` / `untap` | `card, as?` | |
 | `untap_all` | `player?` | そのプレイヤーがコントロールする戦場のパーマネント全部 |
 | `set` | `card, tapped?, face_down?, face?, controller?, name?` | 物理状態を直接設定 |
 | `create` | `name` または `copy_of`, `definition?, zone?=battlefield, controller?, owner?, count?=1, token?=true, tapped?, face_down?, as?` | トークン等。`copy_of` は元カードを参照（コピーのコピーも大元を指す）。`definition` は解釈しない辞書 |
@@ -238,7 +238,8 @@
 
 - `upkeep` / `end` / `cleanup` は `acts` と同じ並び（`{"act": [...]}` か手順）
 - `as`（`turn_start`）は引いたカード。同じ Batch の後ろで使える
-- 手順の `pre` は最初の Act に、`label` / `actor` / `proxy` は展開した Act 全部に付く
+- 手順の `pre` は最初の Act に、`label` は展開した Act 全部に、`actor` / `proxy` は自分で書いていない Act に付く
+  （judge の Batch なら、`end` などの中に相手の Act を `"actor": "p2"` で書ける。例: 相手の終了ステップに唱える）
 - 途中の Act で失敗したら、その Act だけを取り消して止まる。前の Act は残る
 
 ## カード参照
@@ -303,8 +304,8 @@ Player として操作するとき、中身を知らない非公開カードは 
   違うものはまとめない
 - ライブラリー・墓地は既定では枚数だけ（`library (44, known positions: 3)`）。中身は `--library` / `--graveyard`
 - 戦場は土地を先に並べる。カードは印刷されたタイプ行（`type_line`。`new` がデッキのオラクル・キャッシュから入れる。
-  トークンは `definition.type_line`、コピーは元から）を持ち、表示の `land` と `sick` にだけ使う
-- **`sick`（召喚酔いの目安）**: 戦場のクリーチャー（タイプ不明と裏向きも含む）が、コントローラーの直近のターンの
-  開始より後にコントロールされ始めたときに付く。コントロールが変わるとやり直し。**速攻は考えない**
-  （攻撃・`{T}` できるかは AI が判断する）。ターンの開始は `step` で新しいターンに入ったときと、`turn_set` で
+  トークンは `definition.type_line`、コピーは元から）を持ち、表示の `land` と `new` にだけ使う
+- **`new`**: 戦場のクリーチャー（タイプ不明と裏向きも含む）が、コントローラーの直近のターンの
+  開始より後にコントロールされ始めたときに付く（事実だけ）。コントロールが変わるとやり直し。召喚酔いかどうか
+  （速攻を含めて、攻撃・`{T}` できるか）はルールの判断なので AI が行う。ターンの開始は `step` で新しいターンに入ったときと、`turn_set` で
   `turn` / `active` を変えたとき

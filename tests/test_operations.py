@@ -86,6 +86,18 @@ class CardAndLinkTest(unittest.TestCase):
         self.assertEqual(e.state.players["p2"].life, 17)
 
 
+class TapAliasTest(unittest.TestCase):
+    def test_tap_and_untap_set_alias(self):
+        e = game()
+        forest = find(e, "p1", "hand", "Forest")
+        ok(e, "p1", {"op": "move", "card": forest, "to": "battlefield"})
+        r = ok(e, "p1", {"op": "tap", "card": {"zone": "battlefield", "name": "Forest"}, "as": "f"},
+               {"op": "untap", "card": "$f"})
+        self.assertEqual(r.aliases["f"], [forest])
+        self.assertFalse(e.state.cards[forest].tapped)
+        self.assertNotIn("'as'", r.events[0])
+
+
 class LifeAndDamageTest(unittest.TestCase):
     def test_damage_loss_gain(self):
         e = game()
@@ -150,7 +162,7 @@ class TokenTest(unittest.TestCase):
         newest = [c for c in e.state.cards.values() if c.token][-1]
         self.assertEqual(newest.definition["copy_of"], cid)
         text = render_view(player_view(e.state, "p1"))
-        self.assertIn("#t1..#t4 <Grizzly Bears> ×4 (token, sick)  {copy of %s}" % cid, text)
+        self.assertIn("#t1..#t4 <Grizzly Bears> ×4 (token, new)  {copy of %s}" % cid, text)
 
     def test_sacrificed_token_can_be_ability_source(self):
         e = game()

@@ -51,15 +51,15 @@ class PregameTest(unittest.TestCase):
         ok(e, None, {"op": "step", "to": "cleanup"}, {"op": "step", "to": "untap"})
         self.assertEqual((e.state.turn.turn, e.state.turn.active), (2, "p1"))
 
-    def test_opening_hand_permanent_is_not_sick_on_turn_1(self):
-        from mtgtable.info import summoning_sick
+    def test_opening_hand_permanent_is_not_new_on_turn_1(self):
+        from mtgtable.info import is_new
         e = game()
         # 開始時の手札から戦場へ（Leyline など）はゲーム前
         bear = find(e, "p1", "hand", "Grizzly Bears")
         ok(e, "p1", {"op": "declare", "kind": "keep"}, {"op": "move", "card": bear, "to": "battlefield"})
-        self.assertTrue(summoning_sick(e.state, e.state.cards[bear]))
+        self.assertTrue(is_new(e.state, e.state.cards[bear]))
         ok(e, None, {"op": "step", "to": "untap"})
-        self.assertFalse(summoning_sick(e.state, e.state.cards[bear]))
+        self.assertFalse(is_new(e.state, e.state.cards[bear]))
 
     def test_pregame_to_any_step(self):
         e = game()
