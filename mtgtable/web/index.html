@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mtgtable 観戦</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="bar">
+  <strong class="brand">mtgtable</strong>
+  <label>対局 <select id="game"></select></label>
+  <label>席 <select id="seat">
+    <option value="judge">judge（全知）</option>
+    <option value="p1">p1</option>
+    <option value="p2">p2</option>
+  </select></label>
+  <label><input id="images" type="checkbox" checked> 画像</label>
+  <span id="turn" class="turn"></span>
+  <span id="conn" class="conn" title="更新の受信状態"></span>
+</header>
+
+<div class="replay">
+  <button id="first" title="最初">⏮</button>
+  <button id="prev" title="1 Act 戻る">◀</button>
+  <input id="pos" type="range" min="0" max="0" value="0">
+  <button id="next" title="1 Act 進む">▶</button>
+  <button id="play" title="自動再生（スペースキー）">▶ 再生</button>
+  <select id="unit" title="1回に進める単位">
+    <option value="act">Act ごと</option>
+    <option value="batch">Batch ごと</option>
+  </select>
+  <select id="speed" title="進める間隔">
+    <option value="150">とても速い</option>
+    <option value="400">速い</option>
+    <option value="1000" selected>普通</option>
+    <option value="2500">遅い</option>
+  </select>
+  <button id="live" class="on" title="最新を追う">Live</button>
+  <span id="posText" class="muted"></span>
+</div>
+
+<main class="layout">
+  <section class="board">
+    <div id="top" class="side"></div>
+    <div id="combatbox" class="combatbox" hidden><h3>戦闘</h3><div id="combat" class="combat"></div></div>
+    <div id="bottom" class="side"></div>
+  </section>
+  <aside class="sidepanel">
+    <div id="detail" class="detail muted">カードをクリックするとオラクルを表示</div>
+    <h3>スタック</h3>
+    <ol id="stack" class="stack panel"></ol>
+    <h3>宣言</h3>
+    <ul id="decl" class="plain decl"></ul>
+    <h3>Log</h3>
+    <div id="log" class="log"></div>
+  </aside>
+</main>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

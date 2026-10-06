@@ -5,6 +5,8 @@ Rules Engine ではなく参照情報。Scryfall から英語名で取得し、�
 - カード: `cards/<名前>-<hash>.json`（1枚1ファイル）
 - デッキ: `cards/decks/<デッキ名>-<hash>.json`（そのデッキの全カードを1ファイルに束ねたもの。
   hash はデッキリストの中身から作るので、リストを直すと別のキャッシュになる）
+- 画像: `cards/images/<名前>-<hash>[-<面>].jpg`（Scryfall の normal。観戦ビューアが表示に使う）
+- マナ・シンボル: `cards/symbols/<記号>.svg`（{G} → G.svg、{W/U} → WU.svg）
 
 置き場所はリポジトリ直下の `cards/`（環境変数 MTG_CARDS_DIR で変更可）。カードテキストは
 第三者の著作物なのでリポジトリには含めない（.gitignore 済み）。
@@ -50,6 +52,11 @@ def _slim(data: dict) -> dict:
     if data.get("card_faces"):
         rec["faces"] = [{k: f.get(k) for k in FIELDS if f.get(k) not in (None, "", [])}
                         for f in data["card_faces"]]
+        for face, f in zip(rec["faces"], data["card_faces"]):
+            if (f.get("image_uris") or {}).get("normal"):
+                face["image"] = f["image_uris"]["normal"]
+    if (data.get("image_uris") or {}).get("normal"):
+        rec["image"] = data["image_uris"]["normal"]
     rec["scryfall_uri"] = data.get("scryfall_uri")
     return rec
 
@@ -115,6 +122,95 @@ def format_card(rec: dict) -> str:
     if rec.get("faces"):
         return "\n----\n".join(one(f) for f in rec["faces"])
     return one(rec)
+
+
+# ---------------------------------------------------------------- images
+
+IMAGE_HOSTS = (".scryfall.io",)  # 画像は Scryfall の画像サーバーからだけ取る
+
+
+def image_path(name: str, face: int = 0) -> pathlib.Path:
+    p = _path(name)
+    return cache_dir() / "images" / (p.stem + ("-%d" % face if face else "") + ".jpg")
+
+
+def _image_url(rec: dict, face: int) -> str:
+    if face == 0 and rec.get("image"):
+        return rec["image"]
+    faces = rec.get("faces") or []
+    return faces[face].get("image", "") if face < len(faces) else ""
+
+
+def image(name: str, face: int = 0, offline: bool = False):
+    """カード画像のキャッシュのパス。無ければ Scryfall から取って保存する（offline なら None）。
+
+    画像の URL を持たない古いオラクルのキャッシュは、画像が要るときに取り直す。"""
+    p = image_path(name, face)
+    if p.exists():
+        return p
+    if offline:
+        return None
+    rec = lookup(name)
+    if rec and "image" not in rec and not any("image" in f for f in rec.get("faces") or []):
+        rec = lookup(name, refresh=True)
+    if rec and face == 0:
+        # 名前が片方の面だけのとき（"Treasure" が "Dinosaur // Treasure" に当たるなど）は、その面の画像
+        for i, f in enumerate(rec.get("faces") or []):
+            if f.get("name", "").casefold() == name.strip().casefold() and rec.get("name") != name:
+                face = i
+    url = _image_url(rec or {}, face)
+    host = urllib.parse.urlparse(url).hostname or ""
+    if not url or not host.endswith(IMAGE_HOSTS):
+        return None
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        body = r.read()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(body)
+    tmp.replace(p)
+    return p
+
+
+SYMBOL_URL = "https://svgs.scryfall.io/card-symbols/%s.svg"
+_SYMBOL = re.compile(r"^[A-Z0-9]{1,4}$")
+
+
+def symbol(code: str, offline: bool = False):
+    """マナ・シンボルの SVG のキャッシュのパス。code は {} と / を除いたもの（"G"、"WU"、"2W"、"T"）。"""
+    code = code.replace("/", "").upper()
+    if not _SYMBOL.match(code):
+        return None
+    p = cache_dir() / "symbols" / ("%s.svg" % code)
+    if p.exists():
+        return p
+    if offline:
+        return None
+    req = urllib.request.Request(SYMBOL_URL % code, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            body = r.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(body)
+    tmp.replace(p)
+    return p
+
+
+def fetch_deck_images(deck) -> dict:
+    """デッキの全カードの画像を先に取っておく。{名前: エラー} を返す。"""
+    errors = {}
+    for _, _, name in _entries(deck):
+        try:
+            if image(name) is None:
+                errors[name] = "no image"
+        except (LookupError, OSError) as e:
+            errors[name] = str(e)
+    return errors
 
 
 # ---------------------------------------------------------------- deck cache

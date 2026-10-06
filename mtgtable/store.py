@@ -128,18 +128,27 @@ class GameStore:
 
     # ---- replay / undo / redo
 
-    def replay(self, upto: Optional[int] = None) -> GameState:
-        """初期状態から log を upto 件（省略で cursor まで）適用し直した状態。"""
+    def replay_iter(self, upto: Optional[int] = None):
+        """初期状態から log を1件ずつ適用し直し、(件数, 状態) を順に返す（0件目は初期状態）。
+        状態は同じオブジェクトを書き換えて進むので、受け取った側でその場で使う。"""
         entries = self.read_log()
         upto = self.cursor() if upto is None else upto
         if not 0 <= upto <= len(entries):
             raise ValueError("log has %d entries; cannot replay to %d" % (len(entries), upto))
         engine = Engine(self.initial())
+        yield 0, engine.state
         for e in entries[:upto]:
             r = engine.apply_act(e["actor"], {"label": e["label"], "act": [s["op"] for s in e["steps"]]})
             if r.status != "applied":
                 raise RuntimeError("replay diverged at entry %d: %s" % (e["seq"], r.error))
-        return engine.state
+            yield e["seq"], engine.state
+
+    def replay(self, upto: Optional[int] = None) -> GameState:
+        """初期状態から log を upto 件（省略で cursor まで）適用し直した状態。"""
+        state = None
+        for _, state in self.replay_iter(upto):
+            pass
+        return state
 
     @staticmethod
     def _act_start(entries: list, i: int) -> int:

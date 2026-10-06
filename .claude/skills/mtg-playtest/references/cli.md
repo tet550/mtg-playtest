@@ -30,10 +30,11 @@
 | `fork GAME DEST [--at N]` | 途中時点から別の対局 | `--force` |
 | `policy GAME p1=omniscient` | Information Policy を変える | |
 | `ops` | Operation と手順の一覧 | |
+| `serve` | 観戦ビューア（ブラウザ。読み取り専用）。http://127.0.0.1:8765/。カード画像は初めて表示するときに Scryfall から取って `cards/images/` に保存する | `--root playtest` `--port 8765` `--offline`（画像を取りに行かない） |
 | `oracle NAME...` | カードのオラクル（初回は Scryfall から取得してキャッシュ） | `--offline` `--refresh` `--brief` `--json` |
 | `oracle --deck FILE` | デッキの全カードを1枚の一覧で（デッキ・キャッシュから） | `--no-sideboard` `--brief` `--offline` |
 | `oracle --game GAME --as pN [--card #c12 ...]` | 対局の中で pN が知っているカード（`--card` 省略でサイドボード以外の全部） | `--brief` |
-| `deck FILE` | 枚数の確認とデッキ・キャッシュの作成 | `--fetch`（無いカードを取得） `--refresh` |
+| `deck FILE` | 枚数の確認とデッキ・キャッシュの作成 | `--fetch`（無いカードを取得） `--refresh` `--images`（カード画像も取っておく） |
 
 - `--as` は `p1` / `p2` / `judge`（全知）。Player の判断に `judge` を使わない。`view` `replay` `ids` `oracle --game` は
   **省略すると judge**（全部見える）なので、Player として見るときは必ず `--as pN` を付ける
@@ -50,6 +51,7 @@
 |---|---|
 | `cards/<名前>-<hash>.json` | 1枚ごと。Scryfall から取った名前・コスト・タイプ・本文・P/T など |
 | `cards/decks/<デッキ名>-<hash>.json` | デッキの全カードを束ねたもの。hash はデッキリストの中身から作る（リストを直すと別ファイル） |
+| `cards/images/<名前>-<hash>.jpg` | カード画像（Scryfall の normal）。観戦ビューアが使う |
 
 `new` は各デッキのキャッシュを作って `initial.json` の `meta.decks.<pN>.oracle` に記録する。
 キャッシュに無いカードだけ Scryfall に取りに行く（`--offline` で取りに行かない）。

@@ -312,6 +312,11 @@ def cmd_oracle(a):
     sys.exit(status)
 
 
+def cmd_serve(a):
+    from .web import serve
+    serve(a.root, a.host, a.port, offline=a.offline)
+
+
 def cmd_deck(a):
     d = load_decklist(a.file)
     print("%s: main %d, sideboard %d" % (d.name, d.main_count, sum(n for n, _ in d.sideboard)))
@@ -322,6 +327,10 @@ def cmd_deck(a):
         print("  %s: %s" % (name, err))
     if data["missing"] and not a.fetch:
         print("  (--fetch で Scryfall から取得)")
+    if a.images:
+        errors = carddb.fetch_deck_images(d)
+        print("images: %s%s" % (carddb.cache_dir() / "images",
+                                "  failed: " + ", ".join("%s (%s)" % kv for kv in errors.items()) if errors else ""))
 
 
 def build_parser():
@@ -433,10 +442,18 @@ def build_parser():
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_oracle)
 
+    p = sub.add_parser("serve", help="観戦ビューア（ブラウザで対局を見る。読み取り専用）")
+    p.add_argument("--root", default="playtest", help="対局フォルダを置く場所")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--offline", action="store_true", help="キャッシュに無いカード画像を取りに行かない")
+    p.set_defaults(fn=cmd_serve)
+
     p = sub.add_parser("deck", help="デッキリストを読んで枚数を確かめる")
     p.add_argument("file")
     p.add_argument("--fetch", action="store_true", help="キャッシュに無いカードを Scryfall から取得する")
     p.add_argument("--refresh", action="store_true", help="キャッシュを無視して取り直す")
+    p.add_argument("--images", action="store_true", help="カード画像も取っておく（観戦ビューア用）")
     p.set_defaults(fn=cmd_deck)
     return ap
 

@@ -22,6 +22,7 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/carddb.py` | Rule Reference（Scryfall のオラクルをローカルにキャッシュ） | 28節 |
 | `mtgtable/render.py` | PlayerView のテキスト表示 | 24節（表示とモデルの分離） |
 | `mtgtable/cli.py` | コマンドライン | 26節 |
+| `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`。読み取り専用のブラウザ画面） | 24〜25節 |
 
 ## 使い方
 
@@ -83,6 +84,7 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 | コマンド | 内容 |
 |---|---|
 | `ops` | Operation と手順の一覧 |
+| `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない |
 | `undo` / `redo [n]` | Act 単位で戻す／やり直す |
 | `log [--batches [N]] [--events]` | Operation Log（`--batches` は Batch ごとに1行。`--events` は全情報。観戦・デバッグ用で AI には見せない） |
 | `replay --to N` | log の N 件目時点の状態 |
@@ -156,7 +158,7 @@ Replay は初期状態に `steps` だけを適用し直す。乱数（シャッ�
 
 ## 未実装（今後）
 
-- GUI（24〜25節）
+- GUI の操作（24〜26節）。今は観戦ビューア（`serve`）だけ
 - Judge / Orchestrator の自動進行（27節）。現状は `--as judge` での手動操作だけ
 - 旧実装にあった対局記録の集計・ベンチマーク・Goldfish の統計
 
@@ -177,6 +179,7 @@ python -m unittest discover -s tests
 | `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
 | `test_carddb.py` | オラクルのキャッシュ |
+| `test_web.py` | 観戦ビューアのサーバー（席ごとの view・log・静的ファイル） |
 
 ## 権利
 
