@@ -115,5 +115,20 @@ class ViewerServerTest(unittest.TestCase):
         self.assertEqual(self.get("/api/symbol?s=..%2Fx")[0], 404)  # 記号以外は受け付けない
 
 
+    def test_export_static_site(self):
+        from mtgtable.web import export_site
+        out = pathlib.Path(self.tmp.name) / "site"
+        self.assertEqual(export_site(self.tmp.name, out, offline=True), ["g1"])
+        index = (out / "index.html").read_text(encoding="utf-8")
+        self.assertIn('data-static="1"', index)
+        self.assertIn('src="static/app.js"', index)  # 相対パス（GitHub Pages のサブパスでも動く）
+        tl = json.loads((out / "data" / "g1" / "timeline.json").read_text(encoding="utf-8"))
+        self.assertEqual((tl["seat"], len(tl["frames"])), ("judge", 6))
+        self.assertTrue((out / "data" / "g1" / "log.json").exists())
+        cards = json.loads((out / "data" / "cards.json").read_text(encoding="utf-8"))
+        self.assertIn("Forest", cards)  # offline でキャッシュに無いカードも、名前だけは載る
+        self.assertTrue((out / "static" / "style.css").exists() and (out / ".nojekyll").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,36 @@ const el = (tag, cls, text) => {
 
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], es: null, names: {},
   images: true, open: new Set(), attacking: new Set(), blocking: new Set(), sides: {}, timer: null };
-const imageURL = (name) => `/api/image?name=${encodeURIComponent(name)}`;
+// 静的サイト（mtgtable export）では、サーバーの API の代わりに data/ の JSON と Scryfall の URL を使う
+const STATIC = document.documentElement.dataset.static === "1";
+let staticCards = {};
+const imageURL = (name) => (STATIC ? (staticCards[name] || {}).image || "data:," : `/api/image?name=${encodeURIComponent(name)}`);
+const symbolURL = (code) => (STATIC ? `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(code)}.svg`
+  : `/api/symbol?s=${encodeURIComponent(code)}`);
+// 静的サイトでは、カードの文を見る人のブラウザが Scryfall から取る（サイトには含めない）
+async function scryfallOracle(name) {
+  const r = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`,
+    { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error(r.statusText);
+  const card = await r.json();
+  const faces = card.card_faces && card.card_faces.some((f) => f.oracle_text !== undefined) ? card.card_faces : [card];
+  // "Treasure" が "Dinosaur // Treasure" に当たるときなどは、名前が一致する面だけ
+  const hit = faces.filter((f) => f.name.toLowerCase() === name.toLowerCase());
+  return (hit.length ? hit : faces).map((f) => {
+    const lines = [`<${f.name}> ${f.mana_cost || ""}`.trim(), f.type_line || card.type_line || ""];
+    if (f.oracle_text) lines.push(f.oracle_text);
+    const pt = f.power !== undefined ? `${f.power}/${f.toughness}` : (f.loyalty ? `loyalty ${f.loyalty}` : (f.defense ? `defense ${f.defense}` : ""));
+    if (pt) lines.push(pt);
+    return lines.join("\n");
+  }).join("\n\n");
+}
+
+const API = {
+  games: () => (STATIC ? "data/games.json" : "/api/games"),
+  timeline: (g, seat) => (STATIC ? `data/${encodeURIComponent(g)}/timeline.json`
+    : `/api/games/${encodeURIComponent(g)}/timeline?seat=${encodeURIComponent(seat)}`),
+  log: (g) => (STATIC ? `data/${encodeURIComponent(g)}/log.json` : `/api/games/${encodeURIComponent(g)}/log`),
+};
 
 // 文の中の {G} {2} {T} {W/U} などをマナ・シンボルの画像にした要素の並び（画像を使わないときは文字のまま）
 function manaNodes(text) {
@@ -23,7 +52,7 @@ function manaNodes(text) {
     const img = el("img", "ms");
     img.alt = m[0];
     img.title = m[0];
-    img.src = `/api/symbol?s=${encodeURIComponent(m[1].replace("/", ""))}`;
+    img.src = symbolURL(m[1].replace("/", ""));
     img.onerror = () => img.replaceWith(document.createTextNode(m[0]));
     out.push(img);
     last = m.index + m[0].length;
@@ -51,7 +80,7 @@ function recall(key) {
 // ---------------------------------------------------------------- 読み込み
 
 async function loadGames() {
-  const games = await getJSON("/api/games");
+  const games = await getJSON(API.games());
   const sel = $("game");
   sel.replaceChildren(...games.map((g) => {
     const o = el("option", null, `${g.id}（T${g.turn}・v${g.version}）`);
@@ -66,9 +95,8 @@ async function loadGames() {
 // 対局（と席）の時系列と Log をまとめて取る。再生はこの時系列から手元で行い、通信しない
 async function load() {
   if (!ui.game) return;
-  const g = encodeURIComponent(ui.game);
-  const tl = await getJSON(`/api/games/${g}/timeline?seat=${encodeURIComponent(ui.seat)}`);
-  ui.log = ui.seat === "judge" ? await getJSON(`/api/games/${g}/log`) : [];
+  const tl = await getJSON(API.timeline(ui.game, ui.seat));
+  ui.log = ui.seat === "judge" ? await getJSON(API.log(ui.game)) : [];
   ui.timeline = tl;
   ui.cursor = tl.cursor;
   ui.views = new Map();
@@ -107,7 +135,7 @@ function show() {
 
 function listen() {
   if (ui.es) ui.es.close();
-  if (!ui.game) return;
+  if (!ui.game || STATIC) return;  // 静的サイトは更新されない
   ui.es = new EventSource(`/api/games/${encodeURIComponent(ui.game)}/events`);
   ui.es.onopen = () => $("conn").classList.add("ok");
   ui.es.onerror = () => $("conn").classList.remove("ok");
@@ -239,8 +267,9 @@ async function showCard(c) {
   if (c.definition) lines.push("definition: " + JSON.stringify(c.definition));
   if (c.name) {
     if (!oracleCache.has(c.name)) {
-      const r = await getJSON(`/api/oracle?name=${encodeURIComponent(c.name)}`).catch(() => ({}));
-      oracleCache.set(c.name, r.text || "（オラクルのキャッシュなし）");
+      const r = STATIC ? { text: await scryfallOracle(c.name).catch(() => "") }
+        : await getJSON(`/api/oracle?name=${encodeURIComponent(c.name)}`).catch(() => ({}));
+      oracleCache.set(c.name, r.text || "（オラクルを取得できなかった）");
     }
     lines.push("", oracleCache.get(c.name));
   }
@@ -679,6 +708,12 @@ document.addEventListener("keydown", (e) => {
 
 (async () => {
   try {
+    if (STATIC) {
+      staticCards = await getJSON("data/cards.json");
+      $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value === "judge"));
+      $("conn").hidden = true;
+      remember("seat", "judge");
+    }
     ui.seat = recall("seat") || "judge";
     $("seat").value = ui.seat;
     ui.images = recall("images") !== "0";

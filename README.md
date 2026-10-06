@@ -84,6 +84,7 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 | コマンド | 内容 |
 |---|---|
 | `ops` | Operation と手順の一覧 |
+| `export DEST [--game ID ...]` | 観戦ビューアを静的サイトに書き出す（GitHub Pages など用。judge の席だけ。カードの画像・文・マナ・シンボルはサイトに含めず、見る人のブラウザが Scryfall から取る） |
 | `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない |
 | `undo` / `redo [n]` | Act 単位で戻す／やり直す |
 | `log [--batches [N]] [--events]` | Operation Log（`--batches` は Batch ごとに1行。`--events` は全情報。観戦・デバッグ用で AI には見せない） |

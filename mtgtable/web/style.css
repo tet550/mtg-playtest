@@ -362,3 +362,9 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .lifewrap { margin-right: 16px; }
 .ldelta { top: 50%; transform: translate(70%, -50%); }
 @keyframes ldpop { from { transform: translate(70%, -110%) scale(1.3); opacity: 0; } to { transform: translate(70%, -50%); opacity: 1; } }
+
+/* 狭い画面では再生バーを折り返す */
+@media (max-width: 899px) {
+  .replay { flex-wrap: wrap; }
+  .replay input { flex-basis: 100%; order: 10; }
+}

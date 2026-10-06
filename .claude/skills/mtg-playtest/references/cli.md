@@ -30,6 +30,7 @@
 | `fork GAME DEST [--at N]` | 途中時点から別の対局 | `--force` |
 | `policy GAME p1=omniscient` | Information Policy を変える | |
 | `ops` | Operation と手順の一覧 | |
+| `export DEST` | 観戦ビューアを静的サイトに書き出す（judge の席だけ。カードの画像・文は見る人のブラウザが Scryfall から取る） | `--game ID`（複数可。省略で全部） `--offline` |
 | `serve` | 観戦ビューア（ブラウザ。読み取り専用）。http://127.0.0.1:8765/。カード画像は初めて表示するときに Scryfall から取って `cards/images/` に保存する | `--root playtest` `--port 8765` `--offline`（画像を取りに行かない） |
 | `oracle NAME...` | カードのオラクル（初回は Scryfall から取得してキャッシュ） | `--offline` `--refresh` `--brief` `--json` |
 | `oracle --deck FILE` | デッキの全カードを1枚の一覧で（デッキ・キャッシュから） | `--no-sideboard` `--brief` `--offline` |

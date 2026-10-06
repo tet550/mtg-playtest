@@ -312,6 +312,12 @@ def cmd_oracle(a):
     sys.exit(status)
 
 
+def cmd_export(a):
+    from .web import export_site
+    games = export_site(a.root, a.dest, a.game or None, offline=a.offline)
+    print("exported %d game(s) to %s: %s" % (len(games), a.dest, ", ".join(games)))
+
+
 def cmd_serve(a):
     from .web import serve
     serve(a.root, a.host, a.port, offline=a.offline)
@@ -441,6 +447,13 @@ def build_parser():
     p.add_argument("--refresh", action="store_true")
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_oracle)
+
+    p = sub.add_parser("export", help="観戦ビューアを静的サイトに書き出す（GitHub Pages 用。judge の席だけ）")
+    p.add_argument("dest", help="書き出し先のフォルダ")
+    p.add_argument("--root", default="playtest", help="対局フォルダを置く場所")
+    p.add_argument("--game", action="append", help="書き出す対局（複数可。省略で全部）")
+    p.add_argument("--offline", action="store_true", help="キャッシュに無いカード情報を取りに行かない")
+    p.set_defaults(fn=cmd_export)
 
     p = sub.add_parser("serve", help="観戦ビューア（ブラウザで対局を見る。読み取り専用）")
     p.add_argument("--root", default="playtest", help="対局フォルダを置く場所")

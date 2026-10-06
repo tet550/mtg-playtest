@@ -141,17 +141,10 @@ def _image_url(rec: dict, face: int) -> str:
     return faces[face].get("image", "") if face < len(faces) else ""
 
 
-def image(name: str, face: int = 0, offline: bool = False):
-    """カード画像のキャッシュのパス。無ければ Scryfall から取って保存する（offline なら None）。
-
-    画像の URL を持たない古いオラクルのキャッシュは、画像が要るときに取り直す。"""
-    p = image_path(name, face)
-    if p.exists():
-        return p
-    if offline:
-        return None
-    rec = lookup(name)
-    if rec and "image" not in rec and not any("image" in f for f in rec.get("faces") or []):
+def image_url(name: str, face: int = 0, offline: bool = False) -> str:
+    """カード画像の Scryfall の URL（無ければ ""）。画像の URL を持たない古いオラクルのキャッシュは取り直す。"""
+    rec = lookup(name, offline=offline)
+    if rec and not offline and "image" not in rec and not any("image" in f for f in rec.get("faces") or []):
         rec = lookup(name, refresh=True)
     if rec and face == 0:
         # 名前が片方の面だけのとき（"Treasure" が "Dinosaur // Treasure" に当たるなど）は、その面の画像
@@ -160,7 +153,18 @@ def image(name: str, face: int = 0, offline: bool = False):
                 face = i
     url = _image_url(rec or {}, face)
     host = urllib.parse.urlparse(url).hostname or ""
-    if not url or not host.endswith(IMAGE_HOSTS):
+    return url if url and host.endswith(IMAGE_HOSTS) else ""
+
+
+def image(name: str, face: int = 0, offline: bool = False):
+    """カード画像のキャッシュのパス。無ければ Scryfall から取って保存する（offline なら None）。"""
+    p = image_path(name, face)
+    if p.exists():
+        return p
+    if offline:
+        return None
+    url = image_url(name, face)
+    if not url:
         return None
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=20) as r:

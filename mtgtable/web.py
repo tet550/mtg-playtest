@@ -275,6 +275,58 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
+# ---------------------------------------------------------------- 静的サイト
+
+def _card_names(value, out: set) -> None:
+    """view（JSON）の中のカード名を集める。"""
+    if isinstance(value, dict):
+        if isinstance(value.get("name"), str) and isinstance(value.get("id"), str) and value["id"].startswith("#"):
+            out.add(value["name"])
+        for v in value.values():
+            _card_names(v, out)
+    elif isinstance(value, list):
+        for v in value:
+            _card_names(v, out)
+
+
+def export_site(root, dest, games=None, offline: bool = False) -> list:
+    """観戦ビューアを静的サイトとして書き出す（GitHub Pages などに置く用）。judge の席だけ。
+
+    dest/index.html・static/・data/games.json・data/<対局>/{timeline,log}.json・data/cards.json を作る。
+    カードの画像・文（オラクル）・マナ・シンボルは含めず、見る人のブラウザが Scryfall から取る
+    （cards.json は画像の URL だけ）。書き出した対局の一覧を返す。"""
+    viewer = Viewer(root, offline)
+    dest = pathlib.Path(dest)
+    ids = games or [g["id"] for g in viewer.games()]
+    listed, names = [], set()
+    for gid in ids:
+        tl = viewer.timeline(gid, None)
+        for f in tl["frames"]:
+            _card_names(f, names)
+        d = dest / "data" / gid
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "timeline.json").write_text(json.dumps(tl, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        (d / "log.json").write_text(json.dumps(viewer.log(gid), ensure_ascii=False, separators=(",", ":")),
+                                    encoding="utf-8")
+        listed.append(next(g for g in viewer.games() if g["id"] == gid))
+    cards = {}
+    for name in sorted(names):
+        try:
+            cards[name] = {"image": carddb.image_url(name, offline=offline)}
+        except (LookupError, OSError):
+            cards[name] = {"image": ""}
+    (dest / "data" / "games.json").write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
+    (dest / "data" / "cards.json").write_text(json.dumps(cards, ensure_ascii=False, separators=(",", ":")),
+                                              encoding="utf-8")
+    (dest / "static").mkdir(parents=True, exist_ok=True)
+    for name in ("app.js", "style.css"):
+        (dest / "static" / name).write_bytes((STATIC / name).read_bytes())
+    index = (STATIC / "index.html").read_text(encoding="utf-8").replace('<html lang="ja">', '<html lang="ja" data-static="1">')
+    (dest / "index.html").write_text(index, encoding="utf-8")
+    (dest / ".nojekyll").write_text("", encoding="utf-8")  # GitHub Pages に、そのまま配らせる
+    return [g["id"] for g in listed]
+
+
 def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False) -> None:
     Handler.viewer = Viewer(root, offline)
     httpd = ThreadingHTTPServer((host, port), Handler)
