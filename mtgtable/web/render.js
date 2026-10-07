@@ -314,10 +314,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     head.append(el("span", "pname", `${p.name}（${p.id}）`), lifeBadge(p, before && before.life));
     // アクティブ Player のライフの横に、今のフェイズ
     if (v.turn.active === pid && v.turn.turn > 0) head.append(phaseStrip(v.turn));
-    if (p.status && p.status !== "playing") head.append(el("span", "status", p.status));
-    if (v.turn.active === pid && v.turn.turn === 0) head.append(el("span", "chip", "先攻"));
-    if (v.turn.priority === pid) head.append(el("span", "chip", "優先権"));
-    for (const [k, n] of Object.entries(p.counters || {})) head.append(el("span", "chip", `${k} ×${n}`));
+    // 優先権の欄はいつも取っておく（持ち主が替わっても横の並びがずれないように）
+    head.append(el("span", "chip prio" + (v.turn.priority === pid ? "" : " off"), "優先権"));
+    // 残り（状態・マナ・カウンターなど）は右の余白の中だけに並べ、入らない分は切る（左の並びを押さない）
+    const extra = el("span", "pextra");
+    head.append(extra);
+    if (p.status && p.status !== "playing") extra.append(el("span", "status", p.status));
+    if (v.turn.active === pid && v.turn.turn === 0) extra.append(el("span", "chip", "先攻"));
+    for (const [k, n] of Object.entries(p.counters || {})) extra.append(el("span", "chip", `${k} ×${n}`));
     for (const m of p.mana) {
       const chip = el("span", "chip mana");
       chip.append(...manaNodes(`{${m.color}}`), document.createTextNode(` ×${m.amount}`));
@@ -326,9 +330,10 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
         chip.append(document.createTextNode(`（${t.length > 40 ? t.slice(0, 38) + "…" : t}）`));
         chip.title = t;
       }
-      head.append(chip);
+      extra.append(chip);
     }
-    for (const n of p.notes || []) head.append(el("span", "chip", n.text));
+    for (const n of p.notes || []) extra.append(el("span", "chip", n.text));
+    extra.title = [...extra.children].map((c) => c.title || c.textContent).join("\n");
 
     // 束: ライブラリー・墓地・追放
     const piles = el("div", "piles");
