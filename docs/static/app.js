@@ -149,6 +149,7 @@ function listen() {
 
 function showError(e) {
   $("detail").textContent = "エラー: " + e.message;
+  $("fl-detail").hidden = false;
 }
 
 // ---------------------------------------------------------------- 描画
@@ -274,6 +275,7 @@ async function showCard(c) {
     lines.push("", oracleCache.get(c.name));
   }
   const detail = $("detail");
+  $("fl-detail").hidden = false;
   detail.replaceChildren();
   if (ui.images && c.name && !c.face_down) {
     const img = el("img", "big");
@@ -410,13 +412,31 @@ function lifeBadge(p, before) {
   const box = el("span", "life" + level);
   box.title = `ライフ ${p.life}`;
   box.append(el("span", "llbl", "LIFE"), el("span", "lnum", String(p.life)));
-  const delta = before === undefined ? 0 : p.life - before;
-  if (!delta) return box;
+  // 増減の欄はいつも取っておく（出た時に横の並びがずれないように）
   const wrap = el("span", "lifewrap");
+  wrap.append(box);
+  const delta = before === undefined ? 0 : p.life - before;
+  if (!delta) return wrap;
   const d = el("span", "ldelta " + (delta < 0 ? "minus" : "plus"), delta < 0 ? `−${-delta}` : `+${delta}`);
   d.title = `${before} → ${p.life}`;
-  wrap.append(box, d);
+  wrap.append(d);
   return wrap;
+}
+
+// 宣言は、その Player の名前の横に吹き出しで出す。今のターン・フェイズ・ステップでの最後の宣言だけ。
+// パスは優先権が続けてパスされている間だけ（スタックが変わる・ステップが進むと消える。turn.passed と同じ）
+const DECL = { pass: "パス", keep: "キープ", mulligan: "マリガン", no_block: "ブロックなし", concede: "投了" };
+function speech(v, pid) {
+  const t = v.turn;
+  const d = v.declarations.filter((x) => x.player === pid && x.turn === t.turn && x.step === t.step
+    && (!x.phase || x.phase === t.phase)).pop();
+  if (!d || (d.kind === "pass" && !t.passed.includes(pid))) return null;
+  const word = DECL[d.kind] || d.kind;
+  const text = d.text && !d.text.startsWith("standing") ? `${word}：${d.text}` : word;
+  const b = el("span", "speech");
+  b.append(el("span", "stx", text));
+  b.title = `${d.player} ${d.kind}${d.text ? "：" + d.text : ""}`;
+  return b;
 }
 
 function playerSide(v, pid, mirrored, prev) {
@@ -425,8 +445,10 @@ function playerSide(v, pid, mirrored, prev) {
   const head = el("div", "phead");
   const before = prev && prev.players.find((x) => x.id === pid);
   head.append(el("span", "pname", `${p.name}（${p.id}）`), lifeBadge(p, before && before.life));
+  // アクティブ Player のライフの横に、今のフェイズ
+  if (v.turn.active === pid && v.turn.turn > 0) head.append(phaseStrip(v.turn));
   if (p.status && p.status !== "playing") head.append(el("span", "status", p.status));
-  if (v.turn.active === pid) head.append(el("span", "chip", "アクティブ"));
+  if (v.turn.active === pid && v.turn.turn === 0) head.append(el("span", "chip", "先攻"));
   if (v.turn.priority === pid) head.append(el("span", "chip", "優先権"));
   for (const [k, n] of Object.entries(p.counters || {})) head.append(el("span", "chip", `${k} ×${n}`));
   for (const m of p.mana) {
@@ -478,7 +500,21 @@ function playerSide(v, pid, mirrored, prev) {
 
   const hand = handRow(v, pid);
   box.append(...(mirrored ? [head, hand, grid, ...opened] : [head, grid, ...opened, hand]));
+  // 宣言の吹き出しは見出しから戦場の側へはみ出す（位置は placeSpeech で合わせる）
+  const said = speech(v, pid);
+  if (said) box.append(said);
   return box;
+}
+
+// 吹き出しをライフの真下に置く（名前の長さで変わるので、描いた後に測る）
+function placeSpeech() {
+  for (const b of document.querySelectorAll(".speech")) {
+    const head = b.parentElement.querySelector(".phead");
+    const life = head && head.querySelector(".life");
+    if (!life) continue;
+    b.style.left = `${life.getBoundingClientRect().left - b.parentElement.getBoundingClientRect().left + 4}px`;
+    b.style.top = `${head.offsetTop + head.offsetHeight + 6}px`;
+  }
 }
 
 // スタック: 上から順に、呪文はそのカード、能力は発生源のカードを小さく出し、横に種類・文・対象を並べる
@@ -486,8 +522,9 @@ const KIND = { spell: "呪文", activated: "起動型能力", triggered: "誘発
 
 function renderStack(v) {
   const box = $("stack");
+  $("fl-stack").hidden = !v.stack.length;
   if (!v.stack.length) {
-    box.replaceChildren(el("li", "muted none", "空"));
+    box.replaceChildren();
     return;
   }
   const cards = new Map();
@@ -557,15 +594,56 @@ function renderCombat(v) {
   }));
 }
 
+// ---------------------------------------------------------------- ターンとフェイズ
+
+const SVG = "http://www.w3.org/2000/svg";
+
+// フェイズのアイコン（線画の SVG。色は文字色に合わせる）
+const PHASE_ICON = {
+  beginning: "M4 17h16M7 17a5 5 0 0 1 10 0M12 4v3M5.6 8.6l2.1 2.1M18.4 8.6l-2.1 2.1M2 13h3M19 13h3",  // 日の出
+  main1: "M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM9 7h6M9 10h6",        // カード
+  combat: "M4 4l11 11M15 15l-2 3M15 15l3-2M20 4L9 15M9 15l2 3M9 15l-3-2M3 21l3-3M21 21l-3-3",          // 剣を交差
+  main2: "M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM9 7h6M9 10h6",
+  ending: "M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z",                                          // 月
+};
+const PHASES = [["beginning", "開始"], ["main1", "メイン1"], ["combat", "戦闘"], ["main2", "メイン2"], ["ending", "終了"]];
+const STEP_JA = {
+  untap: "アンタップ", upkeep: "アップキープ", draw: "ドロー", main: "メイン", beginning_of_combat: "戦闘開始",
+  declare_attackers: "攻撃", declare_blockers: "ブロック", combat_damage: "ダメージ", first_strike_damage: "先制ダメージ",
+  end_of_combat: "戦闘終了", end: "終了ステップ", cleanup: "クリンナップ",
+};
+
+function icon(d) {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS(SVG, "path");
+  path.setAttribute("d", d);
+  svg.append(path);
+  return svg;
+}
+
+function phaseStrip(t) {
+  const strip = el("span", "phases");
+  strip.title = `${t.phase}/${t.step}`;
+  for (const [ph, name] of PHASES) {
+    const cur = ph === t.phase;
+    const p = el("span", "ph" + (cur ? " cur" : ""));
+    p.title = name;
+    p.append(icon(PHASE_ICON[ph]));
+    if (cur) p.append(el("span", "pstep", STEP_JA[t.step] || t.step));
+    strip.append(p);
+  }
+  return strip;
+}
+
 function render() {
   const v = ui.view;
   ui.names = collectNames(v);
   ui.attacking = new Set(v.combat.attacks.map((a) => a.attacker));
   ui.blocking = new Set(v.combat.blocks.map((b) => b.blocker));
   const t = v.turn;
-  $("turn").textContent = t.turn === 0
-    ? `ゲーム前（先攻 ${t.active}）`
-    : `T${t.turn} ${t.phase}/${t.step}　アクティブ ${t.active}　優先権 ${t.priority || "-"}`;
+  $("turn").textContent = t.turn === 0 ? "ゲーム前" : `T${t.turn}`;
 
   // 視点の Player を下に。judge は先攻を上に
   const order = v.players.map((p) => p.id);
@@ -582,8 +660,6 @@ function render() {
   renderStack(v);
 
   renderCombat(v);
-  const decl = v.declarations.slice(-3).reverse().map((d) => el("li", null, `${d.player} ${d.kind}${d.text ? "：" + d.text : ""}`));
-  $("decl").replaceChildren(...(decl.length ? decl : [el("li", "muted", "なし")]));
 
   const pos = $("pos");
   pos.max = ui.cursor;
@@ -591,9 +667,12 @@ function render() {
   $("posText").textContent = `${ui.pos} / ${ui.cursor} 件目の後（v${v.version}）`;
   $("live").classList.toggle("on", ui.live);
   renderLog();
+  placeSpeech();
+  clampFloats();
 }
 
 function renderLog() {
+  if (!document.body.classList.contains("log-open")) return;  // 閉じているときは作らない
   const box = $("log");
   const prevScroll = box.scrollTop;
   if (ui.seat !== "judge") {
@@ -688,6 +767,81 @@ function startPlay() {
 
 const manual = (f) => (...args) => { stopPlay(); return f(...args); };
 
+// ---------------------------------------------------------------- 小窓と Log
+
+// 小窓: 見出しをドラッグで盤面の中を移動（位置は覚える）、– で畳む、× で閉じる
+const floatClamps = [];  // 盤面の大きさが変わったら（Log の開閉・窓の大きさ）、動かした小窓を盤面の中に戻す
+function clampFloats() { floatClamps.forEach((f) => f()); }
+addEventListener("resize", () => { placeSpeech(); clampFloats(); });
+
+function setupFloat(panel) {
+  const key = "float." + panel.id;
+  const board = panel.parentElement;
+  const place = (x, y) => {
+    const b = board.getBoundingClientRect();
+    const nx = Math.max(0, Math.min(x, b.width - panel.offsetWidth));
+    const ny = Math.max(0, Math.min(y, b.height - 28));
+    Object.assign(panel.style, { left: `${nx}px`, top: `${ny}px`, right: "auto", bottom: "auto" });
+    return [nx, ny];
+  };
+  let pending = null;  // 覚えた位置。盤面が描かれて大きさが決まってから当てる
+  try {
+    pending = JSON.parse(recall(key) || "null");
+    if (pending) panel.classList.toggle("min", !!pending.min);
+  } catch (_) { /* 覚えた位置が無くても動く */ }
+  floatClamps.push(() => {
+    const b = board.getBoundingClientRect();
+    if (pending && !panel.hidden && panel.offsetWidth && b.width > panel.offsetWidth && b.height > 60) {
+      place(pending.x, pending.y);
+      pending = null;
+    }
+    else if (panel.style.left) place(panel.offsetLeft, panel.offsetTop);
+  });
+  const save = () => remember(key, JSON.stringify({ x: panel.offsetLeft, y: panel.offsetTop, min: panel.classList.contains("min") }));
+  panel.querySelector(".fmin").onclick = () => { panel.classList.toggle("min"); save(); };
+  const close = panel.querySelector(".fclose");
+  if (close) close.onclick = () => { panel.hidden = true; };
+  panel.querySelector(".fhead").addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button")) return;
+    const pb = panel.getBoundingClientRect(), bb = board.getBoundingClientRect();
+    const start = { x: e.clientX, y: e.clientY, left: pb.left - bb.left, top: pb.top - bb.top };
+    const move = (ev) => place(start.left + ev.clientX - start.x, start.top + ev.clientY - start.y);
+    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); save(); };
+    addEventListener("pointermove", move);
+    addEventListener("pointerup", up);
+    e.preventDefault();
+  });
+}
+document.querySelectorAll(".float").forEach(setupFloat);
+
+// Log: 開発者ツールのように右に寄せて開閉し、境目をドラッグで幅を変える（開閉と幅は覚える）
+function setLog(open) {
+  document.body.classList.toggle("log-open", open);
+  $("logToggle").classList.toggle("on", open);
+  remember("logOpen", open ? "1" : "0");
+  if (open) renderLog();
+  requestAnimationFrame(clampFloats);
+}
+$("logToggle").onclick = () => setLog(!document.body.classList.contains("log-open"));
+$("logClose").onclick = () => setLog(false);
+$("logResizer").addEventListener("pointerdown", (e) => {
+  const move = (ev) => {
+    const w = Math.max(240, Math.min(window.innerWidth - ev.clientX, window.innerWidth * 0.6));
+    document.documentElement.style.setProperty("--logw", `${w}px`);
+  };
+  const up = () => {
+    removeEventListener("pointermove", move); removeEventListener("pointerup", up);
+    placeSpeech();
+  clampFloats();
+    remember("logWidth", getComputedStyle(document.documentElement).getPropertyValue("--logw").trim());
+  };
+  addEventListener("pointermove", move);
+  addEventListener("pointerup", up);
+  e.preventDefault();
+});
+if (recall("logWidth")) document.documentElement.style.setProperty("--logw", recall("logWidth"));
+setLog(recall("logOpen") === "1");
+
 $("game").onchange = (e) => { stopPlay(); ui.open.clear(); ui.game = e.target.value; remember("game", ui.game); ui.live = true; load().then(listen).catch(showError); };
 $("images").onchange = (e) => { ui.images = e.target.checked; remember("images", ui.images ? "1" : "0"); render(); };
 $("seat").onchange = (e) => { ui.seat = e.target.value; remember("seat", ui.seat); load().catch(showError); };
@@ -704,6 +858,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft") manual(() => seek(ui.pos - 1))();
   if (e.key === "ArrowRight") manual(() => seek(ui.pos + 1))();
   if (e.key === " ") { e.preventDefault(); $("play").click(); }
+  if (e.key === "l" || e.key === "L") $("logToggle").click();
 });
 
 (async () => {
