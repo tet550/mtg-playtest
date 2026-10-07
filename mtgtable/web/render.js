@@ -286,14 +286,16 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
   // 宣言は、その Player の名前の横に吹き出しで出す。今のターン・フェイズ・ステップでの最後の宣言だけ。
   // パスは優先権が続けてパスされている間だけ（スタックが変わる・ステップが進むと消える。turn.passed と同じ）
   const DECL = { pass: "パス", keep: "キープ", mulligan: "マリガン", no_block: "ブロックなし", concede: "投了" };
-  function speech(v, pid) {
+  // 出現のアニメーションは、その位置で新しく出た宣言だけ（続いている宣言を描き直すたびに動かさない）
+  function speech(v, pid, prev) {
     const t = v.turn;
     const d = v.declarations.filter((x) => x.player === pid && x.turn === t.turn && x.step === t.step
       && (!x.phase || x.phase === t.phase)).pop();
     if (!d || (d.kind === "pass" && !t.passed.includes(pid))) return null;
     const word = DECL[d.kind] || d.kind;
     const text = d.text && !d.text.startsWith("standing") ? `${word}：${d.text}` : word;
-    const b = el("span", "speech");
+    const fresh = !prev || !prev.declarations.some((x) => x.seq === d.seq);
+    const b = el("span", "speech" + (fresh ? " fresh" : ""));
     b.append(el("span", "stx", text));
     b.title = `${d.player} ${d.kind}${d.text ? "：" + d.text : ""}`;
     return b;
@@ -361,7 +363,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     const hand = handRow(v, pid);
     box.append(...(mirrored ? [head, hand, grid, ...opened] : [head, grid, ...opened, hand]));
     // 宣言の吹き出しは見出しから戦場の側へはみ出す（位置は placeSpeech で合わせる）
-    const said = speech(v, pid);
+    const said = speech(v, pid, prev);
     if (said) box.append(said);
     return box;
   }
