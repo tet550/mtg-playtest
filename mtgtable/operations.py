@@ -1099,7 +1099,7 @@ def _next_player(s: GameState, pid: str) -> Optional[str]:
 def _record_pass(ctx: Context, pid: str, text: str) -> None:
     s = ctx.state
     s.declarations.append(Declaration(seq=len(s.declarations) + 1, player=pid, kind="pass", text=text,
-                                      turn=s.turn.turn, step=s.turn.step))
+                                      turn=s.turn.turn, step=s.turn.step, phase=s.turn.phase))
     if pid not in s.turn.passed:
         s.turn.passed.append(pid)
     ctx.event("%s passes%s" % (pid, " (%s)" % text if text else ""))
@@ -1169,7 +1169,7 @@ def op_declare(ctx: Context, p: dict) -> dict:
     if kind == "pass":
         return op_pass(ctx, p)
     d = Declaration(seq=len(s.declarations) + 1, player=pid, kind=kind, text=str(p.get("text", "")),
-                    turn=s.turn.turn, step=s.turn.step)
+                    turn=s.turn.turn, step=s.turn.step, phase=s.turn.phase)
     s.declarations.append(d)
     if kind == "concede":
         s.players[pid].status = "conceded"

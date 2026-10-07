@@ -179,6 +179,7 @@ class Declaration:
     text: str = ""
     turn: int = 0
     step: str = ""
+    phase: str = ""  # main1 と main2 はどちらも step が main なので、区別に使う
 
 
 # ---------------------------------------------------------------- GameState

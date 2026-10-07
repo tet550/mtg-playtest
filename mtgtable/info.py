@@ -317,7 +317,7 @@ def player_view(state: GameState, viewer: Optional[str], sideboard: bool = False
             lv["text"] = l.text
         view["links"].append(lv)
     view["declarations"] = [
-        {"seq": d.seq, "player": d.player, "kind": d.kind, "text": d.text}
+        {"seq": d.seq, "player": d.player, "kind": d.kind, "text": d.text, "turn": d.turn, "phase": d.phase, "step": d.step}
         for d in state.declarations
         if d.turn == state.turn.turn and d.step == state.turn.step
     ]
