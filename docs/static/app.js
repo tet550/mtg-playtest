@@ -5,7 +5,7 @@ import { Timeline } from "./timeline.js";
 import { createRenderer } from "./render.js";
 
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], names: {},
-  images: true, open: new Set(), attacking: new Set(), blocking: new Set(), sides: {}, timer: null };
+  images: true, motion: true, open: new Set(), attacking: new Set(), blocking: new Set(), sides: {}, timer: null };
 const source = createSource(document.documentElement.dataset.static === "1");
 const loadLatest = latestLoader(source);
 let timeline = null;
@@ -50,6 +50,9 @@ async function load() {
   if (!ui.game) return;
   const result = await loadLatest(ui.game, ui.seat);
   if (!result) return;
+  // Live で見ているときに少しだけ進んだ更新（AI が数件書いた）なら、カードを動かす
+  const added = result.timeline.cursor - ui.cursor;
+  if (timeline && ui.live && added > 0 && added <= 3) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
   ui.log = result.log;
   ui.cursor = timeline.cursor;
@@ -79,6 +82,7 @@ function changeSelection() {
   ui.deltaBase = null;
   timeline = null;
   ui.view = null;
+  ui.shown = null;
   ui.log = [];
   ui.cursor = 0;
   for (const id of ["top", "bottom", "log", "detail"]) $(id).replaceChildren();
@@ -93,6 +97,14 @@ function showError(e) {
 }
 
 // ---------------------------------------------------------------- 操作
+
+const STEP_MS = 280;  // 1件ずつ進める・戻すときのカードの動きの長さ
+
+// 1件ずつの移動。カードを動かす
+function step(delta) {
+  ui.animate = { duration: STEP_MS };
+  seek(ui.pos + delta);
+}
 
 function seek(pos) {
   ui.deltaBase = null;
@@ -138,6 +150,7 @@ function startPlay() {
     ui.pos = Math.min(nextPos(), ui.cursor);
     ui.deltaBase = { pos: ui.pos, from };  // 自動再生では、ライフの差を1回前に表示した位置から数える
     ui.live = false;
+    ui.animate = { duration: Math.min(450, Number($("speed").value) * 0.7) };
     show();
     if (ui.timer !== null) ui.timer = setTimeout(step, Number($("speed").value));
   };
@@ -222,20 +235,25 @@ if (recall("logWidth")) document.documentElement.style.setProperty("--logw", rec
 setLog(recall("logOpen") === "1");
 
 $("game").onchange = (e) => { ui.game = e.target.value; remember("game", ui.game); ui.live = true; changeSelection(); };
+// カードの動き。OS で「動きを減らす」にしている人には動かさない
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const setMotion = () => { ui.motion = $("motion").checked && !reduceMotion.matches; };
+$("motion").onchange = () => { remember("motion", $("motion").checked ? "1" : "0"); setMotion(); };
+reduceMotion.addEventListener("change", setMotion);
 $("images").onchange = (e) => { ui.images = e.target.checked; remember("images", ui.images ? "1" : "0"); render(); };
 $("seat").onchange = (e) => { ui.seat = e.target.value; remember("seat", ui.seat); changeSelection(); };
 $("pos").oninput = manual((e) => seek(Number(e.target.value)));
 $("first").onclick = manual(() => seek(0));
-$("prev").onclick = manual(() => seek(ui.pos - 1));
-$("next").onclick = manual(() => seek(ui.pos + 1));
+$("prev").onclick = manual(() => step(-1));
+$("next").onclick = manual(() => step(1));
 $("live").onclick = manual(() => { ui.live = true; show(); });
 $("play").onclick = () => (ui.timer !== null && ui.timer !== undefined ? stopPlay() : startPlay());
 $("unit").onchange = (e) => remember("unit", e.target.value);
 $("speed").onchange = (e) => remember("speed", e.target.value);
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
-  if (e.key === "ArrowLeft") manual(() => seek(ui.pos - 1))();
-  if (e.key === "ArrowRight") manual(() => seek(ui.pos + 1))();
+  if (e.key === "ArrowLeft") manual(() => step(-1))();
+  if (e.key === "ArrowRight") manual(() => step(1))();
   if (e.key === " ") { e.preventDefault(); $("play").click(); }
   if (e.key === "l" || e.key === "L") $("logToggle").click();
 });
@@ -252,6 +270,8 @@ document.addEventListener("keydown", (e) => {
     $("seat").value = ui.seat;
     ui.images = recall("images") !== "0";
     $("images").checked = ui.images;
+    $("motion").checked = recall("motion") !== "0";
+    setMotion();
     if (recall("unit")) $("unit").value = recall("unit");
     if (recall("speed")) $("speed").value = recall("speed");
     await loadGames();

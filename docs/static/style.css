@@ -511,3 +511,19 @@ body:not(.log-open) #logClose { display: none; }
 /* 見出しの高さはフェイズ列の有無で変えない（変わると戦場が上下にずれる） */
 .phead { height: 24px; }
 @media (max-width: 899px) and (orientation: portrait) { .phead { height: 22px; } }
+
+/* カードの動き（motion.js）: 画面全体に重ねた層で写しを動かす。クリックは下に通す */
+#motionlayer { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: visible; }
+#motionlayer > .card { will-change: transform, opacity; }
+
+/* 見出しの右側: 優先権は決まった欄、マナなどは残りの幅の中だけ（入らない分は切る）。左の名前・ライフ・フェイズを押さない */
+.phead .chip.prio { flex: none; }
+.phead .chip.prio.off { visibility: hidden; }
+.pextra { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); }
+.pextra > * { flex: none; }
+.phead .pextra .chip.mana { max-width: none; }
+@media (max-width: 899px) and (orientation: portrait) {
+  .phead { gap: 5px; }
+  .phead .chip.prio { padding-left: 4px; padding-right: 4px; }
+}

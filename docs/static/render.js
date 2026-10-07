@@ -1,8 +1,10 @@
 import { $, el } from "./dom.js";
+import { createMotion } from "./motion.js";
 
 // DOM 描画。通信と再生操作は呼び出し元から渡す。
 export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
   const { imageURL, symbolURL } = source;
+  const motion = createMotion();
   // 文の中の {G} {2} {T} {W/U} などをマナ・シンボルの画像にした要素の並び（画像を使わないときは文字のまま）
   function manaNodes(text) {
     if (!ui.images) return [document.createTextNode(text)];
@@ -47,7 +49,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
       else groups.push({ key, card: c, ids: [id] });
     }
     return groups.map((g) => (g.ids.length === 1 ? g.card
-      : { ...g.card, id: `${g.ids[0]}..${g.ids[g.ids.length - 1]}`, count: g.ids.length }));
+      : { ...g.card, id: `${g.ids[0]}..${g.ids[g.ids.length - 1]}`, count: g.ids.length, ids: g.ids }));
   }
 
   // 画像の上に、エンジンが持っている情報（カウンター・×N）を重ねる。画像が無ければ名前の文字だけ
@@ -105,6 +107,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     const withArt = ui.images && !small;
     const d = el("div", "card" + (c.tapped ? " tapped" : "") + (c.land ? " land" : "") + (withArt ? " withart" : "") + (extra || ""));
     d.title = (c.name ? `<${c.name}>` : "（裏向き）") + ` ${c.id}`;
+    d.dataset.ids = (c.ids || [c.id]).join(" ");  // カードの動き（motion.js）で前後の描画を対応づける
     d.onclick = () => showCard(c);
     if (withArt) {
       d.append(art(c));
@@ -206,6 +209,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
   // ライブラリー・墓地・追放をカードの束で表す。墓地と追放は一番上のカードを表に、クリックで中身を開く
   function pile(label, count, top, opts) {
     const p = el("div", "pile" + (count ? "" : " empty") + (opts.open ? " open" : ""));
+    p.dataset.zone = opts.zone;
     const stackBox = el("div", "pstack");
     for (let i = Math.min(count, 4) - 1; i >= 1; i--) {
       const layer = el("div", "layer");
@@ -261,6 +265,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     row.append(...shown.map((c) => cardTile(c, " inhand")));
     for (let i = shown.length; i < hand.count; i++) row.append(el("div", "card back inhand"));
     const box = el("div", "handbox");
+    box.dataset.zone = `${pid}.hand`;
     box.append(el("h3", null, `手札 ${hand.count}`), row);
     return box;
   }
@@ -309,10 +314,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     head.append(el("span", "pname", `${p.name}（${p.id}）`), lifeBadge(p, before && before.life));
     // アクティブ Player のライフの横に、今のフェイズ
     if (v.turn.active === pid && v.turn.turn > 0) head.append(phaseStrip(v.turn));
-    if (p.status && p.status !== "playing") head.append(el("span", "status", p.status));
-    if (v.turn.active === pid && v.turn.turn === 0) head.append(el("span", "chip", "先攻"));
-    if (v.turn.priority === pid) head.append(el("span", "chip", "優先権"));
-    for (const [k, n] of Object.entries(p.counters || {})) head.append(el("span", "chip", `${k} ×${n}`));
+    // 優先権の欄はいつも取っておく（持ち主が替わっても横の並びがずれないように）
+    head.append(el("span", "chip prio" + (v.turn.priority === pid ? "" : " off"), "優先権"));
+    // 残り（状態・マナ・カウンターなど）は右の余白の中だけに並べ、入らない分は切る（左の並びを押さない）
+    const extra = el("span", "pextra");
+    head.append(extra);
+    if (p.status && p.status !== "playing") extra.append(el("span", "status", p.status));
+    if (v.turn.active === pid && v.turn.turn === 0) extra.append(el("span", "chip", "先攻"));
+    for (const [k, n] of Object.entries(p.counters || {})) extra.append(el("span", "chip", `${k} ×${n}`));
     for (const m of p.mana) {
       const chip = el("span", "chip mana");
       chip.append(...manaNodes(`{${m.color}}`), document.createTextNode(` ×${m.amount}`));
@@ -321,9 +330,10 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
         chip.append(document.createTextNode(`（${t.length > 40 ? t.slice(0, 38) + "…" : t}）`));
         chip.title = t;
       }
-      head.append(chip);
+      extra.append(chip);
     }
-    for (const n of p.notes || []) head.append(el("span", "chip", n.text));
+    for (const n of p.notes || []) extra.append(el("span", "chip", n.text));
+    extra.title = [...extra.children].map((c) => c.title || c.textContent).join("\n");
 
     // 束: ライブラリー・墓地・追放
     const piles = el("div", "piles");
@@ -331,13 +341,13 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     const libKey = `${pid}.library`;
     piles.append(pile("ライブラリー", lib.count, null,
       { note: (lib.known_positions || []).length ? `位置既知 ${lib.known_positions.length}` : "",
-        open: ui.open.has(libKey), onclick: () => toggleOpen(libKey) }));
+        open: ui.open.has(libKey), onclick: () => toggleOpen(libKey), zone: libKey }));
     const gy = v.zones[`${pid}.graveyard`];
     const gyKey = `${pid}.graveyard`;
-    piles.append(pile("墓地", gy.count, (gy.cards || [])[0], { open: ui.open.has(gyKey), onclick: () => toggleOpen(gyKey) }));
+    piles.append(pile("墓地", gy.count, (gy.cards || [])[0], { open: ui.open.has(gyKey), onclick: () => toggleOpen(gyKey), zone: gyKey }));
     const ex = (v.zones.exile.cards || []).filter((c) => c.owner === pid);
     const exKey = `${pid}.exile`;
-    if (ex.length) piles.append(pile("追放", ex.length, ex[ex.length - 1], { open: ui.open.has(exKey), onclick: () => toggleOpen(exKey) }));
+    if (ex.length) piles.append(pile("追放", ex.length, ex[ex.length - 1], { open: ui.open.has(exKey), onclick: () => toggleOpen(exKey), zone: exKey }));
 
     // 戦場: 土地以外と土地（土地は名前ごとに束ねる）
     const bf = (v.zones.battlefield.cards || []).filter((c) => (c.controller || c.owner) === pid);
@@ -502,6 +512,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
   function render() {
     const v = ui.view;
     if (!v) return;
+    // カードの動きは、呼び出し元が ui.animate を立てた描画（1件ずつの移動・自動再生）だけ
+    const animate = ui.animate && ui.motion ? ui.animate : null;
+    ui.animate = null;
+    motion.stop();
+    const before = animate && ui.shown ? motion.capture() : null;
+    const shown = ui.shown;
     ui.names = collectNames(v);
     ui.attacking = new Set(v.combat.attacks.map((a) => a.attacker));
     ui.blocking = new Set(v.combat.blocks.map((b) => b.blocker));
@@ -532,6 +548,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     renderLog();
     placeSpeech();
     clampFloats();
+    ui.shown = v;
+    if (before && shown !== v) motion.play(before, shown, v, animate.duration);
   }
 
   function renderLog() {
