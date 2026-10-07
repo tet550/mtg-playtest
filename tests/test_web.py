@@ -13,7 +13,7 @@ from http.server import ThreadingHTTPServer
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from mtgtable import GameStore, carddb  # noqa: E402
-from mtgtable.web import Handler, Viewer  # noqa: E402
+from mtgtable.web import Handler, Viewer, STATIC, export_site  # noqa: E402
 from helpers import game  # noqa: E402
 
 
@@ -64,6 +64,8 @@ class ViewerServerTest(unittest.TestCase):
         self.assertEqual(code, 200)
         self.assertIn("mtgtable", body)
         self.assertEqual(self.get("/static/app.js")[0], 200)
+        for asset in STATIC.glob("*.js"):
+            self.assertEqual(self.get("/static/" + asset.name)[0], 200)
         self.assertEqual(self.get("/static/..%2Fweb.py")[0], 404)
 
     def test_view_is_per_seat_and_replayable(self):
@@ -128,6 +130,13 @@ class ViewerServerTest(unittest.TestCase):
         cards = json.loads((out / "data" / "cards.json").read_text(encoding="utf-8"))
         self.assertIn("Forest", cards)  # offline でキャッシュに無いカードも、名前だけは載る
         self.assertTrue((out / "static" / "style.css").exists() and (out / ".nojekyll").exists())
+        for asset in STATIC.glob("*.js"):
+            self.assertEqual((out / "static" / asset.name).read_bytes(), asset.read_bytes())
+
+    def test_export_empty_site(self):
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as dest:
+            self.assertEqual(export_site(root, dest, offline=True), [])
+            self.assertEqual(json.loads((pathlib.Path(dest) / "data/games.json").read_text()), [])
 
 
 if __name__ == "__main__":

@@ -24,6 +24,8 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/cli.py` | コマンドライン | 26節 |
 | `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`。読み取り専用のブラウザ画面） | 24〜25節 |
 
+Web の責務分割と設計判断は [design/web_design.md](design/web_design.md)。ビルド不要の ES modules を使用する。
+
 ## 使い方
 
 ### Windows / PowerShell の Python 起動
@@ -167,6 +169,12 @@ Replay は初期状態に `steps` だけを適用し直す。乱数（シャッ�
 
 ```bash
 python -m unittest discover -s tests
+```
+
+Web の通信・時系列復元のテスト（開発時のみ Node.js 24 が必要）:
+
+```bash
+node --test tests/web.test.mjs
 ```
 
 | ファイル | 対象 |

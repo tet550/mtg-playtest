@@ -297,7 +297,9 @@ def export_site(root, dest, games=None, offline: bool = False) -> list:
     （cards.json は画像の URL だけ）。書き出した対局の一覧を返す。"""
     viewer = Viewer(root, offline)
     dest = pathlib.Path(dest)
-    ids = games or [g["id"] for g in viewer.games()]
+    available = {g["id"]: g for g in viewer.games()}
+    ids = games or list(available)
+    (dest / "data").mkdir(parents=True, exist_ok=True)
     listed, names = [], set()
     for gid in ids:
         tl = viewer.timeline(gid, None)
@@ -308,7 +310,7 @@ def export_site(root, dest, games=None, offline: bool = False) -> list:
         (d / "timeline.json").write_text(json.dumps(tl, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         (d / "log.json").write_text(json.dumps(viewer.log(gid), ensure_ascii=False, separators=(",", ":")),
                                     encoding="utf-8")
-        listed.append(next(g for g in viewer.games() if g["id"] == gid))
+        listed.append(available[gid])
     cards = {}
     for name in sorted(names):
         try:
@@ -319,8 +321,9 @@ def export_site(root, dest, games=None, offline: bool = False) -> list:
     (dest / "data" / "cards.json").write_text(json.dumps(cards, ensure_ascii=False, separators=(",", ":")),
                                               encoding="utf-8")
     (dest / "static").mkdir(parents=True, exist_ok=True)
-    for name in ("app.js", "style.css"):
-        (dest / "static" / name).write_bytes((STATIC / name).read_bytes())
+    for asset in STATIC.iterdir():
+        if asset.suffix in (".js", ".css"):
+            (dest / "static" / asset.name).write_bytes(asset.read_bytes())
     index = (STATIC / "index.html").read_text(encoding="utf-8").replace('<html lang="ja">', '<html lang="ja" data-static="1">')
     (dest / "index.html").write_text(index, encoding="utf-8")
     (dest / ".nojekyll").write_text("", encoding="utf-8")  # GitHub Pages に、そのまま配らせる
