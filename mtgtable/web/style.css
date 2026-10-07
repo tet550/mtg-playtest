@@ -511,3 +511,7 @@ body:not(.log-open) #logClose { display: none; }
 /* 見出しの高さはフェイズ列の有無で変えない（変わると戦場が上下にずれる） */
 .phead { height: 24px; }
 @media (max-width: 899px) and (orientation: portrait) { .phead { height: 22px; } }
+
+/* カードの動き（motion.js）: 画面全体に重ねた層で写しを動かす。クリックは下に通す */
+#motionlayer { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: visible; }
+#motionlayer > .card { will-change: transform, opacity; }
