@@ -1,18 +1,23 @@
-// 観戦ビューアの起動・画面操作・更新を調停する。
+// 観戦ビューア（と GUI の対局）の起動・画面操作・更新を調停する。
 import { $, el } from "./dom.js";
 import { createSource, latestLoader } from "./source.js";
 import { Timeline } from "./timeline.js";
 import { createRenderer } from "./render.js";
+import { createPlay } from "./play.js";
 
+// play: 席の鍵を持って対局しているときの {seat}（無ければ観戦）。marks: 組み立て中の Act で選んだもの
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], names: {},
-  images: true, motion: true, open: new Set(), attacking: new Set(), blocking: new Set(), sides: {}, timer: null };
+  images: true, motion: true, open: new Set(), attacking: new Set(), blocking: new Set(), sides: {}, timer: null,
+  play: null, marks: new Map() };
+let config = { play: false };
 const source = createSource(document.documentElement.dataset.static === "1");
 const loadLatest = latestLoader(source);
 let timeline = null;
 let unsubscribe = () => {};
 const viewAt = (pos) => timeline.at(pos);
-const { render, renderLog, placeSpeech } = createRenderer(ui, {
-  source, viewAt, clampFloats,
+const hooks = {};  // GUI の対局のときだけ play のクリックの受け口を入れる
+const { render, renderLog, placeSpeech, showCard, toggleOpen } = createRenderer(ui, {
+  source, viewAt, clampFloats, hooks,
   onLogSeek(pos) {
     stopPlay();
     ui.keepLogScroll = true;
@@ -30,6 +35,46 @@ function recall(key) {
   try { return localStorage.getItem("mtgtable." + key); } catch (_) { return null; }
 }
 
+const play = createPlay(ui, { source, reload: () => load(), showCard, toggleOpen, render });
+
+// ---------------------------------------------------------------- 席の鍵（GUI の対局）
+
+// invite の URL（?game=G&seat=p1#key=...）から鍵を受け取って覚え、アドレス・バーから消す
+const params = new URLSearchParams(location.search);
+(() => {
+  const key = new URLSearchParams(location.hash.slice(1)).get("key");
+  if (params.get("game") && params.get("seat") && key) {
+    remember("key." + params.get("game"), JSON.stringify({ seat: params.get("seat"), token: key }));
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+})();
+
+function keyOf(game) {
+  try { return JSON.parse(recall("key." + game) || "null"); } catch (_) { return null; }
+}
+
+// 選んだ対局の鍵を持っていれば、その席で対局する（席は固定）。無ければ観戦
+function applySeatMode() {
+  const k = config.play && ui.game ? keyOf(ui.game) : null;
+  ui.play = k ? { seat: k.seat } : null;
+  source.setKey(k ? { game: ui.game, seat: k.seat, token: k.token } : null);
+  for (const name of ["card", "stack", "player", "pile", "after", "preview"]) delete hooks[name];
+  if (k) {
+    Object.assign(hooks, play.hooks);
+    ui.seat = k.seat;
+  } else if ($("seat").disabled) {
+    ui.seat = recall("seat") || "judge";  // 対局の席から観戦に戻ったら、観戦で選んでいた席に
+  }
+  play.reset();
+  $("seat").value = ui.seat;
+  $("seat").disabled = !!k;
+  $("playing").hidden = !k;
+  $("playing").textContent = k ? `${k.seat} で対局中` : "";
+  $("fl-play").hidden = !k;
+  document.body.classList.toggle("playing", !!k);
+  document.title = k ? `mtgtable 対局 ${ui.game}` : "mtgtable 観戦";
+}
+
 // ---------------------------------------------------------------- 読み込み
 
 async function loadGames() {
@@ -40,7 +85,7 @@ async function loadGames() {
     o.value = g.id;
     return o;
   }));
-  const saved = recall("game");
+  const saved = params.get("game") || recall("game");
   ui.game = games.some((g) => g.id === saved) ? saved : (games[0] && games[0].id);
   if (ui.game) sel.value = ui.game;
 }
@@ -50,12 +95,16 @@ async function load() {
   if (!ui.game) return;
   const result = await loadLatest(ui.game, ui.seat);
   if (!result) return;
-  // Live で見ているときに少しだけ進んだ更新（AI が数件書いた）なら、カードを動かす
-  const added = result.timeline.cursor - ui.cursor;
-  if (timeline && ui.live && added > 0 && added <= 3) ui.animate = { duration: STEP_MS };
+  // Live で見ているときの更新: 1件ならカードを動かし、それより多ければ前の最新から再生して遷移を見せる（最後で Live に戻る）。
+  // 再生中に届いた更新は、そのまま再生の続きになる
+  const from = ui.cursor;
+  const added = result.timeline.cursor - from;
+  const follow = timeline && ui.live && added > 1;
+  if (timeline && ui.live && added === 1) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
   ui.log = result.log;
   ui.cursor = timeline.cursor;
+  if (follow) return startPlay(from);
   show();
 }
 
@@ -78,6 +127,7 @@ function listen() {
 
 function changeSelection() {
   stopPlay();
+  applySeatMode();
   ui.open.clear();
   ui.deltaBase = null;
   timeline = null;
@@ -92,7 +142,11 @@ function changeSelection() {
 }
 
 function showError(e) {
-  $("detail").textContent = "エラー: " + e.message;
+  // 鍵で守っている対局を、鍵の無いページ・席で開いたとき（localhost と 127.0.0.1 は別のサイトなので、鍵も別に覚える）
+  $("detail").textContent = /needs its key/.test(e.message)
+    ? `この対局は席の鍵が必要です。invite が出した URL（${location.hostname === "localhost" ? "127.0.0.1 の方" : "#key= 付き"}）を`
+      + `このブラウザで開いてください。作り直すには: python -m mtgtable invite playtest/${ui.game} --seat p1`
+    : "エラー: " + e.message;
   $("fl-detail").hidden = false;
 }
 
@@ -130,14 +184,17 @@ function nextPos() {
 function stopPlay() {
   clearTimeout(ui.timer);
   ui.timer = null;
+  ui.playing = false;
   $("play").textContent = "▶ 再生";
   $("play").classList.remove("on");
 }
 
-function startPlay() {
+function startPlay(from = null) {
   if (!timeline) return;
-  if (ui.pos >= ui.cursor) ui.pos = 0;  // 最後まで見ていたら最初から
+  if (from !== null) ui.pos = from;  // 更新の追いかけ: 前に見ていた最新から
+  else if (ui.pos >= ui.cursor) ui.pos = 0;  // 最後まで見ていたら最初から
   ui.live = false;
+  ui.playing = true;
   $("play").textContent = "⏸ 停止";
   $("play").classList.add("on");
   const step = () => {
@@ -251,7 +308,7 @@ $("play").onclick = () => (ui.timer !== null && ui.timer !== undefined ? stopPla
 $("unit").onchange = (e) => remember("unit", e.target.value);
 $("speed").onchange = (e) => remember("speed", e.target.value);
 document.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || $("ask").open) return;
   if (e.key === "ArrowLeft") manual(() => step(-1))();
   if (e.key === "ArrowRight") manual(() => step(1))();
   if (e.key === " ") { e.preventDefault(); $("play").click(); }
@@ -261,6 +318,7 @@ document.addEventListener("keydown", (e) => {
 (async () => {
   try {
     await source.init();
+    config = await source.config().catch(() => ({ play: false }));
     if (source.isStatic) {
       $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value === "judge"));
       $("conn").hidden = true;
@@ -275,6 +333,7 @@ document.addEventListener("keydown", (e) => {
     if (recall("unit")) $("unit").value = recall("unit");
     if (recall("speed")) $("speed").value = recall("speed");
     await loadGames();
+    applySeatMode();
     await load();
     listen();
   } catch (e) { showError(e); }

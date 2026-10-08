@@ -527,3 +527,143 @@ body:not(.log-open) #logClose { display: none; }
   .phead { gap: 5px; }
   .phead .chip.prio { padding-left: 4px; padding-right: 4px; }
 }
+
+/* ---------------------------------------------------------------- GUI の対局（serve --play・席の鍵） */
+.chip.playing { background: var(--ok); }
+#fl-play { position: fixed; z-index: 30; right: 12px; bottom: 12px; width: 330px; max-height: 70vh; }
+#fl-play .fbody { padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; }
+.pstatus { font-weight: 700; color: var(--muted); }
+.pstatus.mine { color: var(--ok); }
+.prow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.prow.small { font-size: 11px; color: var(--muted); }
+.phead2 { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
+.phead2.sep { border-top: 1px solid var(--line); padding-top: 5px; margin-top: 2px; }
+.phint { font-size: 11px; }
+.pask { font-weight: 700; border-left: 3px solid var(--warn); padding-left: 6px; white-space: pre-wrap; }
+.prow button:disabled { opacity: .45; }
+.compose { border: 1px solid var(--accent); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.compose .ctitle { font-weight: 700; }
+.compose .chelp { font-size: 11px; }
+.compose .crow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.compose .crow input:not([type]) , .compose .crow input[type="text"] { flex: 1; min-width: 0; }
+.compose input { background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 2px 5px; }
+.compose button.chip { border: none; cursor: pointer; }
+.cops { margin: 0; padding-left: 20px; font-size: 12px; }
+.cops li button { margin-left: 4px; }
+.phead.clickable { cursor: pointer; border-radius: 6px; }
+.phead.clickable:hover { background: var(--hl); }
+.phead.m-target { outline: 3px solid var(--warn); }
+.card.m-target .artbox, .card.m-target:not(.withart) { outline: 3px solid var(--warn); outline-offset: 1px; }
+.card.m-pay .artbox, .card.m-pay:not(.withart) { outline: 3px solid var(--ok); outline-offset: 1px; }
+.card.m-casting .artbox, .card.m-casting:not(.withart) { outline: 3px dashed var(--accent); outline-offset: 1px; }
+.card.m-option .artbox, .card.m-option:not(.withart) { outline: 2px dashed var(--warn); outline-offset: 1px; }
+.compose button.chip.cand.on { background: var(--warn); color: #000; font-weight: 700; }
+.sitem.m-target { outline: 3px solid var(--warn); border-radius: 6px; }
+/* 下書き・送った依頼の予定（盤面はまだ動いていない） */
+.card.m-plan .artbox, .card.m-plan:not(.withart) { outline: 3px dotted var(--accent); outline-offset: 1px; }
+.phead.m-plan, .sitem.m-plan { outline: 2px dotted var(--accent); border-radius: 6px; }
+.card.back.planned { display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700;
+  background: var(--panel); color: var(--accent); outline: 2px dashed var(--accent); outline-offset: -2px; }
+.pplan { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--accent); color: #fff; }
+.reqlines li.stale { color: var(--warn); }
+.reqlines li.stale::after { content: "（盤面が変わった）"; font-size: 11px; }
+.menu { position: fixed; z-index: 100; min-width: 200px; max-width: 320px; max-height: 80vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .4); display: flex; flex-direction: column; }
+.menu[hidden] { display: none; }
+.menu .mtitle { font-size: 11px; color: var(--muted); padding: 2px 8px 4px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
+.menu .mitem { text-align: left; border: none; background: none; border-radius: 5px; padding: 4px 8px; cursor: pointer; }
+.menu .mitem:hover { background: var(--hl); }
+.menu .msep { border-top: 1px solid var(--line); margin: 3px 0; }
+.ask { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); color: var(--ink); padding: 12px 14px; min-width: 280px; }
+.ask::backdrop { background: rgba(0, 0, 0, .35); }
+.askform { display: flex; flex-direction: column; gap: 8px; }
+.askform .atitle { font-weight: 700; }
+.askform .arow { display: flex; gap: 8px; align-items: center; }
+.askform .arow span { min-width: 90px; color: var(--muted); }
+.askform .arow input:not([type="checkbox"]) { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
+.askform .achoices, .askform .abuttons { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.toast { position: fixed; z-index: 120; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(90vw, 560px);
+  background: var(--ink); color: var(--bg); padding: 6px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }
+.toast.error { background: var(--warn); color: #fff; }
+.toast[hidden] { display: none; }
+/* 狭い画面では盤面が縦に伸びてページがスクロールするので、操作パネルは画面の下に留める */
+@media (max-width: 899px) {
+  #fl-play { left: 6px !important; right: 6px !important; top: auto !important; bottom: 6px !important;
+    width: auto; max-height: 34vh; }
+  #fl-play .fhead { cursor: default; }
+  .bar .playing { display: none; }  /* 席の欄が p1 で固定されているので、それで分かる */
+}
+/* スマホの縦画面は画面の高さに収めるので、盤面をパネルの分だけ縮めて手札を隠さない */
+@media (max-width: 899px) and (orientation: portrait) {
+  body.playing .layout { margin-bottom: 34vh; }
+  body.playing:has(#fl-play.min) .layout { margin-bottom: 36px; }
+}
+.reqbox { display: flex; flex-direction: column; gap: 4px; }
+.reqbox .crow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.reqbox input { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
+.reqtext { margin: 0; padding: 5px 7px; background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  white-space: pre-wrap; font: 12px/1.45 inherit; max-height: 14em; overflow: auto; }
+.reqtext.old { color: var(--muted); }
+.reqsent summary { cursor: pointer; font-size: 11px; color: var(--muted); }
+
+/* ---- 止める場所: 自分・相手のターンの段 × ステップの列。色のついたマスで止まる ---- */
+.stopsform { width: min(560px, calc(100vw - 60px)); }
+.stopsbody { display: flex; flex-direction: column; gap: 8px; }
+.sgwrap { overflow-x: auto; }
+.stopgrid { display: grid; grid-template-columns: auto repeat(var(--cols), minmax(46px, 1fr)); gap: 3px; align-items: center; }
+.stopgrid .sgcorner { min-width: 34px; }
+.sggroup { font-size: 10px; color: var(--muted); text-align: center; border-bottom: 1px solid var(--line); padding-bottom: 1px; }
+.sgstep { font-size: 11px; text-align: center; color: var(--muted); white-space: nowrap; border-radius: 4px; }
+.sgstep.now { color: var(--accent); font-weight: 700; }
+.sgside { font-size: 11px; font-weight: 700; color: var(--muted); padding-right: 4px; white-space: nowrap; }
+.sgcell { height: 30px; padding: 0; border-radius: 6px; border: 1px dashed var(--line); background: var(--bg); position: relative; }
+button.sgcell { cursor: pointer; }
+button.sgcell:hover { border-color: var(--accent); }
+.sgcell.on { background: var(--accent); border: 1px solid var(--accent); }
+.sgcell.on::after { content: "■"; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-size: 10px; }
+.sgcell.none { border: none; background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--line) 4px, var(--line) 5px); opacity: .5; }
+.sgcell.here { outline: 2px solid var(--warn); outline-offset: 1px; }
+.sgevents { display: flex; flex-wrap: wrap; gap: 6px; }
+.sgevent { border-style: dashed; padding: 5px 10px; }
+.sgevent.on { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+.sgevent.on::before { content: "✓ "; }
+.sgpresets { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; }
+
+/* パネルの小さな表（押すと編集） */
+.stopstrip { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 5px 6px; cursor: pointer; }
+.stopstrip:hover { border-color: var(--accent); }
+.stopstrip .sslabel { font-size: 11px; color: var(--muted); }
+.stopgrid.compact { grid-template-columns: auto repeat(var(--cols), 1fr); gap: 2px; }
+.stopgrid.compact .sgside { font-size: 10px; font-weight: 400; }
+.stopgrid.compact .sgcell { height: 9px; border-radius: 3px; }
+.stopgrid.compact .sgcell.on::after { content: none; }
+.stopgrid.compact .sgcell.here { outline-width: 1.5px; outline-offset: 0; }
+
+/* ---- オーラ・装備: 付いている先のカードの下に差し込む（追放したカードと同じ並べ方。暗くしない） ---- */
+.tuck > .card.under.attached { filter: none; }
+.tuck.hasaura { --peek: .13; }
+.bfrow:not(.lands) .tuck.hasaura { --peek: calc(.13 / min(var(--n), 3)); }
+
+/* ---- 戦闘中の P/T（カードの右下。元より大きければ緑、小さければ赤。ダメージは横に） ---- */
+.ptchip { position: absolute; right: 3px; bottom: 3px; z-index: 2; padding: 1px 6px; border-radius: 6px;
+  font-size: 12px; font-weight: 800; line-height: 1.3; white-space: nowrap;
+  background: rgba(20, 20, 18, .88); color: #fff; border: 1px solid rgba(255, 255, 255, .35); }
+.ptchip.up { background: #2e6b34; }
+.ptchip.down { background: #8a2e24; }
+.ptchip .ptdmg { margin-left: 4px; color: #ffb4a8; font-size: 10px; }
+.card:not(.withart) > .ptchip { position: static; display: inline-block; margin-top: 2px; }
+.card.incombat .ptchip { font-size: 13px; }
+
+/* ---- 戦闘の欄: まだ審判が書いていないブロックの予定 ---- */
+.card.plannedblk { opacity: .6; }
+.card.plannedblk .artbox, .card.plannedblk:not(.withart) { outline: 3px dotted var(--accent); outline-offset: 1px; }
+
+/* ---- 審判の処理の吹き出しは、しばらく出したら消す（RULED_MS と同じ長さ） ---- */
+.speech.fading { animation: speechfade 7s linear forwards; }
+.speech.fresh.fading { animation: speechpop .18s ease-out, speechfade 7s linear forwards; }
+@keyframes speechfade { 0%, 85% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
+/* 下書き・送った依頼で仮に反映したカード・スタックの項目（審判の処理の後に本物になる） */
+.card.pv { opacity: .6; }
+.card.pv .artbox, .card.pv:not(.withart) { outline: 3px dashed var(--accent); outline-offset: 1px; }
+.sitem.pv { opacity: .6; outline: 2px dashed var(--accent); border-radius: 6px; }

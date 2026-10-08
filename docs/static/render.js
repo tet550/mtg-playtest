@@ -2,7 +2,9 @@ import { $, el } from "./dom.js";
 import { createMotion } from "./motion.js";
 
 // DOM 描画。通信と再生操作は呼び出し元から渡す。
-export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
+// hooks（GUI の対局）: card / pile / player / stack はクリックを受け取り、true を返したら既定の動き（詳細・開閉）をしない。
+// after は描画の後に呼ぶ。ui.marks（id → class）で、選んだ対象・支払いなどをカードに色で出す
+export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hooks = {} }) {
   const { imageURL, symbolURL } = source;
   const motion = createMotion();
   // 文の中の {G} {2} {T} {W/U} などをマナ・シンボルの画像にした要素の並び（画像を使わないときは文字のまま）
@@ -38,22 +40,24 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
 
   const ref = (id) => (ui.names[id] ? `<${ui.names[id]}> ${id}` : id);
 
-  // 同じ見た目のパーマネント（Pizza のコピー ×100 など）は1枚にまとめて ×N で出す
+  // 同じ見た目のパーマネント（Pizza のコピー ×100 など）は1枚にまとめて ×N で出す。見た目に出ない id（Note の id）は
+  // 比べない。並びが離れていても（間に別のカードが出ても）まとめ、最初に出た位置に置く
   function groupCards(cards) {
     const groups = [];
+    const byKey = new Map();
     for (const c of cards) {
-      const { id, ...rest } = c;
-      const key = JSON.stringify(rest);
-      const last = groups[groups.length - 1];
-      if (last && last.key === key) last.ids.push(id);
-      else groups.push({ key, card: c, ids: [id] });
+      const { id, notes, ...rest } = c;
+      const key = JSON.stringify({ ...rest, notes: (notes || []).map((n) => [n.text, n.until || null]) });
+      const g = byKey.get(key);
+      if (g) g.ids.push(id);
+      else { const ng = { key, card: c, ids: [id] }; byKey.set(key, ng); groups.push(ng); }
     }
     return groups.map((g) => (g.ids.length === 1 ? g.card
       : { ...g.card, id: `${g.ids[0]}..${g.ids[g.ids.length - 1]}`, count: g.ids.length, ids: g.ids }));
   }
 
   // 画像の上に、エンジンが持っている情報（カウンター・×N）を重ねる。画像が無ければ名前の文字だけ
-  function art(c) {
+  function art(c, pt) {
     const box = el("div", "artbox");
     if (c.face_down || !c.name) {
       box.classList.add("back");
@@ -86,7 +90,49 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     if (c.count) over.append(el("span", "chip strong", `×${c.count}`));
     for (const [k, n] of Object.entries(c.counters || {})) over.append(el("span", "chip strong", `${k} ×${n}`));
     box.append(flags, over);
+    if (pt) box.append(pt);
     return box;
+  }
+
+  // 戦闘中の P/T の目安: 印刷された（トークンは定義の）P/T に、±N/±N のカウンターと Note（「+2/+2」で始まるもの）を足す。
+  // オーラ・常在型能力などは数えない（ルールの判断は審判）。「damage N」の Note はダメージとして横に出す
+  function ptOf(c) {
+    if (!c.base_pt) return null;
+    const base = c.base_pt.map((x) => (/^-?\d+$/.test(x) ? Number(x) : null));
+    let [p, t] = base;
+    const mods = [];
+    const add = (m, n, what) => {
+      if (p !== null) p += Number(m[1]) * n;
+      if (t !== null) t += Number(m[2]) * n;
+      mods.push(n === 1 ? what : `${what} ×${n}`);
+    };
+    for (const [k, n] of Object.entries(c.counters || {})) {
+      const m = /^([+-]\d+)\/([+-]\d+)$/.exec(k);
+      if (m) add(m, n, `${k} カウンター`);
+    }
+    let damage = 0;
+    for (const note of c.notes || []) {
+      const m = /^([+-]\d+)\/([+-]\d+)/.exec(note.text);
+      if (m) add(m, 1, note.text);
+      const d = /^damage (\d+)/i.exec(note.text);
+      if (d) damage += Number(d[1]);
+    }
+    const text = `${p ?? c.base_pt[0]}/${t ?? c.base_pt[1]}`;
+    const known = p !== null && t !== null && base[0] !== null && base[1] !== null;
+    const diff = known ? (p - base[0]) + (t - base[1]) : 0;
+    const title = [`P/T ${text}（元 ${c.base_pt.join("/")}）`, ...mods.map((x) => "・" + x), damage ? `ダメージ ${damage}` : ""]
+      .filter(Boolean).join("\n");
+    return { text, damage, cls: diff > 0 ? " up" : diff < 0 ? " down" : "", title };
+  }
+  // 戦闘フェイズの間（と戦闘の欄）だけ出す
+  const showPT = (extra) => !!ui.view && (ui.view.turn.phase === "combat" || (extra || "").includes("incombat"));
+  function ptChip(c) {
+    const pt = ptOf(c);
+    if (!pt) return null;
+    const chip = el("span", "ptchip" + pt.cls, pt.text);
+    if (pt.damage) chip.append(el("span", "ptdmg", `−${pt.damage}`));
+    chip.title = pt.title;
+    return chip;
   }
 
   // Note と Link を、カードの上に出す短い文に（until は「まで」を付ける。Link の id は名前に）
@@ -108,11 +154,16 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     const d = el("div", "card" + (c.tapped ? " tapped" : "") + (c.land ? " land" : "") + (withArt ? " withart" : "") + (extra || ""));
     d.title = (c.name ? `<${c.name}>` : "（裏向き）") + ` ${c.id}`;
     d.dataset.ids = (c.ids || [c.id]).join(" ");  // カードの動き（motion.js）で前後の描画を対応づける
-    d.onclick = () => showCard(c);
+    const mark = ui.marks && ui.marks.get((c.ids || [c.id])[0]);
+    if (mark) d.classList.add(mark);
+    if (c.planned) d.classList.add("pv");  // 下書きで仮に出したカード（審判の処理の後に本物になる）
+    d.onclick = (ev) => { if (!(hooks.card && hooks.card(c, ev))) showCard(c); };
+    const pt = showPT(extra) && !(extra || "").includes("under") ? ptChip(c) : null;
     if (withArt) {
-      d.append(art(c));
+      d.append(art(c, pt));
       return d;
     }
+    if (pt) d.append(pt);
     d.append(el("div", "nm", (c.name ? `<${c.name}>` : (c.face_down ? "（裏向き）" : "?")) + (c.count ? ` ×${c.count}` : "")));
     const flags = [c.id];
     if (c.token) flags.push("token");
@@ -178,17 +229,25 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     });
   }
 
-  // あるカードによって追放されたカード（exiled_by の Link）を、そのカードの下に差し込んだように出す
-  function exiledUnder(v) {
+  // あるカードによって追放されたカード（exiled_by の Link）を、そのカードの下に差し込んだように出す。
+  // 戦場のパーマネントに付いているオーラ・装備（attached の Link）も、付いている先のカードの下に出す
+  // （コントローラーが違っても、付いている先の側に。attached は付いた側のカードの id の集合）
+  function cardsUnder(v) {
     const exile = new Map((v.zones.exile.cards || []).map((c) => [c.id, c]));
+    const bf = new Map((v.zones.battlefield.cards || []).map((c) => [c.id, c]));
     const under = {};
+    const attached = new Set();
+    const push = (host, c, cls) => { (under[host] = under[host] || []).push({ card: c, cls }); };
     for (const l of v.links) {
-      if (l.kind !== "exiled_by") continue;
-      for (const t of l.targets) {
-        if (exile.has(t)) (under[l.source] = under[l.source] || []).push(exile.get(t));
+      if (l.kind === "exiled_by") {
+        for (const t of l.targets) if (exile.has(t)) push(l.source, exile.get(t), " under");
+      } else if (l.kind === "attached" && ui.images && bf.has(l.source) && bf.has(l.targets[0])
+        && l.targets[0] !== l.source && !attached.has(l.targets[0])) {
+        push(l.targets[0], bf.get(l.source), " under attached");
+        attached.add(l.source);
       }
     }
-    return under;
+    return { under, attached };
   }
 
   function withUnder(c, under) {
@@ -197,8 +256,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     if (!cards.length) return tile;
     const box = el("div", "tuck");
     box.style.setProperty("--n", cards.length);
+    if (cards.some((u) => u.cls.includes("attached"))) box.classList.add("hasaura");  // オーラは少し多めに見せる
     cards.forEach((u, i) => {
-      const t = cardTile(u, " under");
+      const t = cardTile(u.card, u.cls);
       t.style.top = `calc(${i} * var(--h, 151px) * var(--peek, .12))`;
       box.append(t);
     });
@@ -229,6 +289,11 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     if (count) stackBox.append(face);
     stackBox.append(el("span", "chip strong pcount", String(count)));
     stackBox.append(el("div", "plabel", label));  // 名前はカードの上に重ねる（縦の幅を取らない）
+    if (opts.planned) {  // 下書き・送った依頼の予定（引く・見る・切削…）
+      const chip = el("span", "chip pplan", "予定");
+      chip.title = "予定: " + opts.planned;
+      stackBox.append(chip);
+    }
     p.append(stackBox);
     if (opts.note) p.title = (p.title ? p.title + "\n" : "") + opts.note;
     if (opts.onclick && count) p.onclick = opts.onclick;
@@ -264,9 +329,16 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     const row = el("div", "hand" + (ui.images ? " fan" : ""));
     row.append(...shown.map((c) => cardTile(c, " inhand")));
     for (let i = shown.length; i < hand.count; i++) row.append(el("div", "card back inhand"));
+    // 下書き・送った依頼で引く予定の「？」（中身は審判の処理の後に届く。play.js の planned）
+    const extra = (ui.planned && ui.planned.hand[pid]) || 0;
+    for (let i = 0; i < extra; i++) {
+      const q = el("div", "card back inhand planned", "？");
+      q.title = "引く予定（審判が処理するまで中身は分からない）";
+      row.append(q);
+    }
     const box = el("div", "handbox");
     box.dataset.zone = `${pid}.hand`;
-    box.append(el("h3", null, `手札 ${hand.count}`), row);
+    box.append(el("h3", null, `手札 ${hand.count}${extra ? `（＋${extra} 予定）` : ""}`), row);
     return box;
   }
 
@@ -280,7 +352,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     // 増減の欄はいつも取っておく（出た時に横の並びがずれないように）
     const wrap = el("span", "lifewrap");
     wrap.append(box);
-    const delta = before === undefined ? 0 : p.life - before;
+    const delta = before == null ? 0 : p.life - before;
     if (!delta) return wrap;
     const d = el("span", "ldelta " + (delta < 0 ? "minus" : "plus"), delta < 0 ? `−${-delta}` : `+${delta}`);
     d.title = `${before} → ${p.life}`;
@@ -290,17 +362,36 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
 
   // 宣言は、その Player の名前の横に吹き出しで出す。今のターン・フェイズ・ステップでの最後の宣言だけ。
   // パスは優先権が続けてパスされている間だけ（スタックが変わる・ステップが進むと消える。turn.passed と同じ）
-  const DECL = { pass: "パス", keep: "キープ", mulligan: "マリガン", no_block: "ブロックなし", concede: "投了" };
+  const DECL = { pass: "パス", keep: "キープ", mulligan: "マリガン", no_block: "ブロックなし", concede: "投了",
+    intent: "審判に依頼", ask: "審判の質問", answer: "回答", ruled: "審判" };
   // 出現のアニメーションは、その位置で新しく出た宣言だけ（続いている宣言を描き直すたびに動かさない）
+  // 審判の処理（ruled）は、出てから RULED_MS の間だけ出して消す（ステップの間ずっと出したままにしない）。
+  // 過去の盤面を見ているときは、その位置で新しく出たときだけ
+  const RULED_MS = 7000;
+  const ruledSeen = new Map();  // ruled の seq → Live で最初に出した時刻
   function speech(v, pid, prev) {
     const t = v.turn;
     const d = v.declarations.filter((x) => x.player === pid && x.turn === t.turn && x.step === t.step
       && (!x.phase || x.phase === t.phase)).pop();
     if (!d || (d.kind === "pass" && !t.passed.includes(pid))) return null;
+    const freshHere = !prev || !prev.declarations.some((x) => x.seq === d.seq);
+    let ruledAge = null;
+    if (d.kind === "ruled") {
+      if (!ui.live) {
+        if (!freshHere) return null;
+      } else {
+        if (!ruledSeen.has(d.seq)) ruledSeen.set(d.seq, Date.now());
+        ruledAge = Date.now() - ruledSeen.get(d.seq);
+        if (ruledAge >= RULED_MS) return null;
+      }
+    }
     const word = DECL[d.kind] || d.kind;
-    const text = d.text && !d.text.startsWith("standing") ? `${word}：${d.text}` : word;
-    const fresh = !prev || !prev.declarations.some((x) => x.seq === d.seq);
-    const b = el("span", "speech" + (fresh ? " fresh" : ""));
+    // 審判への依頼は長いので、吹き出しには種類だけ（中身は操作パネルと Log に出る）
+    const text = d.text && d.kind !== "intent" && !d.text.startsWith("standing") ? `${word}：${d.text}` : word;
+    const fresh = freshHere && !ruledAge;
+    const b = el("span", "speech" + (fresh ? " fresh" : "") + (ruledAge !== null ? " fading" : ""));
+    // 消えるまでの残りの時間（描き直しても、出た時刻から数える）
+    if (ruledAge !== null) b.style.animationDelay = `${fresh ? "0ms, " : ""}${-ruledAge}ms`;
     b.append(el("span", "stx", text));
     b.title = `${d.player} ${d.kind}${d.text ? "：" + d.text : ""}`;
     return b;
@@ -312,6 +403,11 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     const head = el("div", "phead");
     const before = prev && prev.players.find((x) => x.id === pid);
     head.append(el("span", "pname", `${p.name}（${p.id}）`), lifeBadge(p, before && before.life));
+    if (hooks.player) {
+      head.classList.add("clickable");
+      head.onclick = (ev) => hooks.player(pid, ev);
+    }
+    if (ui.marks && ui.marks.has(pid)) head.classList.add(ui.marks.get(pid));
     // アクティブ Player のライフの横に、今のフェイズ
     if (v.turn.active === pid && v.turn.turn > 0) head.append(phaseStrip(v.turn));
     // 優先権の欄はいつも取っておく（持ち主が替わっても横の並びがずれないように）
@@ -339,19 +435,21 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     const piles = el("div", "piles");
     const lib = v.zones[`${pid}.library`];
     const libKey = `${pid}.library`;
+    const pileClick = (key) => (ev) => { if (!(hooks.pile && hooks.pile(key, ev))) toggleOpen(key); };
     piles.append(pile("ライブラリー", lib.count, null,
       { note: (lib.known_positions || []).length ? `位置既知 ${lib.known_positions.length}` : "",
-        open: ui.open.has(libKey), onclick: () => toggleOpen(libKey), zone: libKey }));
+        planned: ((ui.planned && ui.planned.piles[libKey]) || []).join("・"),
+        open: ui.open.has(libKey), onclick: pileClick(libKey), zone: libKey }));
     const gy = v.zones[`${pid}.graveyard`];
     const gyKey = `${pid}.graveyard`;
-    piles.append(pile("墓地", gy.count, (gy.cards || [])[0], { open: ui.open.has(gyKey), onclick: () => toggleOpen(gyKey), zone: gyKey }));
+    piles.append(pile("墓地", gy.count, (gy.cards || [])[0], { open: ui.open.has(gyKey), onclick: pileClick(gyKey), zone: gyKey }));
     const ex = (v.zones.exile.cards || []).filter((c) => c.owner === pid);
     const exKey = `${pid}.exile`;
-    if (ex.length) piles.append(pile("追放", ex.length, ex[ex.length - 1], { open: ui.open.has(exKey), onclick: () => toggleOpen(exKey), zone: exKey }));
+    if (ex.length) piles.append(pile("追放", ex.length, ex[ex.length - 1], { open: ui.open.has(exKey), onclick: pileClick(exKey), zone: exKey }));
 
     // 戦場: 土地以外と土地（土地は名前ごとに束ねる）
-    const bf = (v.zones.battlefield.cards || []).filter((c) => (c.controller || c.owner) === pid);
-    const under = exiledUnder(v);
+    const { under, attached } = cardsUnder(v);
+    const bf = (v.zones.battlefield.cards || []).filter((c) => (c.controller || c.owner) === pid && !attached.has(c.id));
     const others = el("div", "row bfrow"); others.append(...groupCards(bf.filter((c) => !c.land)).map((c) => withUnder(c, under)));
     const lands = el("div", "row bfrow lands"); lands.append(...landGroups(bf.filter((c) => c.land), under));
     const field = el("div", "field");
@@ -408,6 +506,13 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
       const pic = c ? cardTile({ ...c, tapped: false, counters: {}, notes: [], links: [] }, ui.images ? " instack" : " small")
         : el("div", "card small", "?");
       if (s.kind !== "spell") pic.classList.add("src");
+      if (ui.marks && ui.marks.has(s.id)) li.classList.add(ui.marks.get(s.id));
+      if (s.planned) li.classList.add("pv");
+      if (hooks.stack) {
+        // スタックの項目は、カードの絵を押しても項目として扱う（能力の発生源のカードのメニューを出さない）
+        li.onclick = (ev) => { if (!hooks.stack(s, i, ev) && c) showCard(c); };
+        pic.onclick = (ev) => { ev.stopPropagation(); li.onclick(ev); };
+      }
       const body = el("div", "sbody");
       const head = el("div", "shead");
       head.append(el("span", "chip" + (i === 0 ? " strong" : ""), i === 0 ? "一番上" : String(i + 1)),
@@ -453,10 +558,17 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
       // ブロック側は防御側の Player の位置に合わせる（上の Player を攻撃するなら、ブロックは攻撃カードの上）
       const defense = [];
       const blockers = v.combat.blocks.filter((b) => b.attacker === a.attacker);
-      if (blockers.length) {
+      // 下書き・送った依頼のブロック（まだ審判が書いていない）は「予定」として薄く出す
+      const plannedBlocks = ((ui.planned && ui.planned.blocks) || []).filter((b) => b.attacker === a.attacker
+        && !blockers.some((x) => x.blocker === b.blocker));
+      if (blockers.length || plannedBlocks.length) {
         const row = el("div", "cbrow");
-        row.append(...blockers.map((b) => tile(b.blocker)));
-        defense.push(el("div", "cbblk", "ブロック"), row);
+        row.append(...blockers.map((b) => tile(b.blocker)), ...plannedBlocks.map((b) => {
+          const t = tile(b.blocker);
+          t.classList.add("plannedblk");
+          return t;
+        }));
+        defense.push(el("div", "cbblk", blockers.length ? "ブロック" : "ブロック（予定）"), row);
       } else if (["declare_blockers", "combat_damage", "first_strike_damage", "end_of_combat"].includes(v.turn.step)) {
         defense.push(el("div", "cbblk muted", "ブロックなし"));
       }
@@ -510,7 +622,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
   }
 
   function render() {
-    const v = ui.view;
+    // GUI の対局では、下書きの行を仮に反映した写しを描く（hooks.preview。卓の view は変えない）
+    const v = ui.view && hooks.preview ? hooks.preview(ui.view) : ui.view;
     if (!v) return;
     // カードの動きは、呼び出し元が ui.animate を立てた描画（1件ずつの移動・自動再生）だけ
     const animate = ui.animate && ui.motion ? ui.animate : null;
@@ -550,13 +663,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
     clampFloats();
     ui.shown = v;
     if (before && shown !== v) motion.play(before, shown, v, animate.duration);
+    if (hooks.after) hooks.after();
   }
 
   function renderLog() {
     if (!document.body.classList.contains("log-open")) return;  // 閉じているときは作らない
     const box = $("log");
     const prevScroll = box.scrollTop;
-    if (ui.seat !== "judge") {
+    if (ui.seat !== "judge" && !ui.play) {
       box.replaceChildren(el("div", "batch muted", "Log は judge の席だけ（AI のラベルに非公開の情報が入りうるため）"));
       return;
     }
@@ -597,5 +711,5 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats }) {
   }
 
 
-  return { render, renderLog, placeSpeech };
+  return { render, renderLog, placeSpeech, showCard, toggleOpen };
 }
