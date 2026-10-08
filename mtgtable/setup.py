@@ -56,6 +56,16 @@ def load_decklist(path) -> Decklist:
     return parse_decklist(p.read_text(encoding="utf-8"), name=p.stem)
 
 
+MIN_MAIN = 60
+
+
+def check_deck(deck: Decklist) -> None:
+    """メインデッキが MIN_MAIN 枚未満なら ValueError（空のデッキリストで対局が始まるのを防ぐ）。"""
+    if deck.main_count < MIN_MAIN:
+        raise ValueError("deck %r has %d main-deck cards (needs at least %d)"
+                         % (deck.name, deck.main_count, MIN_MAIN))
+
+
 def new_game(decks: dict, seed: int = 0, life: int = 20, first: str = None,
              hand: int = 0, policies: dict = None, type_lines: dict = None) -> GameState:
     """初期状態を作る。decks は {player id: Decklist}。
@@ -64,6 +74,8 @@ def new_game(decks: dict, seed: int = 0, life: int = 20, first: str = None,
     （マリガンは AI が Operation で行う）。カード id は無作為に振る
     （デッキリストの並びから id で中身が推測できないように）。
     """
+    for deck in decks.values():
+        check_deck(deck)
     s = GameState(seed=seed)
     rng = random.Random("%s:setup" % seed)
     for pid, deck in decks.items():
@@ -97,6 +109,7 @@ def new_game(decks: dict, seed: int = 0, life: int = 20, first: str = None,
     s.turn.active = first or s.player_order[0]
     s.turn.phase, s.turn.step = PREGAME
     s.turn.priority = None
+    s.meta["hand"] = hand  # 初期手札の枚数（マリガンの後に下へ置く枚数の計算に使う）
     s.meta["decks"] = {pid: {"name": d.name, "main": d.main_count,
                              "sideboard": sum(n for n, _ in d.sideboard)} for pid, d in decks.items()}
     info.refresh_knowledge(s)

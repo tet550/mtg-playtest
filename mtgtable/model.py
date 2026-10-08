@@ -180,6 +180,9 @@ class Declaration:
     turn: int = 0
     step: str = ""
     phase: str = ""  # main1 と main2 はどちらも step が main なので、区別に使う
+    choices: list = field(default_factory=list)  # 審判の質問（ask）の選択肢。空なら自由記述
+    cards: list = field(default_factory=list)  # ask: 選ぶ候補のカード。answer: 選んだカード
+    pick: list = field(default_factory=list)  # ask で cards があるとき、選ぶ枚数 [最小, 最大]
 
 
 # ---------------------------------------------------------------- GameState

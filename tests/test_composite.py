@@ -150,6 +150,30 @@ class ProcedureTest(unittest.TestCase):
         self.assertEqual(len(res["acts"]), 5)
         self.assertEqual(e.state.players["p2"].life, 18)
 
+    def test_turn_start_can_stop_at_upkeep(self):
+        # アップキープで止める: ドローはまだ。続きは step draw から（次のターンへ飛ばない）
+        e = game()
+        run(e, "p1", {"proc": "turn_start", "to": "main1"})
+        run(e, "p1", {"proc": "turn_end"})
+        hand_before = len(e.state.zones["p2.hand"].cards)
+        res = run(e, "p2", {"proc": "turn_start", "to": "upkeep"})
+        t = e.state.turn
+        self.assertEqual((len(res["acts"]), t.turn, t.active, t.step), (2, 2, "p2", "upkeep"))
+        self.assertEqual(len(e.state.zones["p2.hand"].cards), hand_before)
+        ok(e, "p2", {"op": "step", "to": "draw"}, {"op": "draw"})
+        self.assertEqual((e.state.turn.turn, e.state.turn.active), (2, "p2"))
+
+    def test_turn_end_from_the_end_step(self):
+        # 終了ステップで相手の呪文を解決した後など、既に end にいるならステップの開始を省く
+        e = game()
+        run(e, "p1", {"proc": "turn_start", "to": "main1"})
+        ok(e, "p1", {"op": "step", "to": "end"})
+        res = run(e, "p1", {"proc": "turn_end"})
+        self.assertEqual(len(res["acts"]), 2)
+        self.assertEqual(e.state.turn.step, "cleanup")
+        res = run(e, "p1", {"proc": "turn_end"})  # クリンナップからは片付けだけ
+        self.assertEqual((len(res["acts"]), e.state.turn.step), (1, "cleanup"))
+
     def test_inner_act_keeps_its_own_actor(self):
         # 相手の終了ステップに、もう一方の Player がインスタントを唱える
         e = game()

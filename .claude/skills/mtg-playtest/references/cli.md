@@ -31,7 +31,12 @@
 | `policy GAME p1=omniscient` | Information Policy を変える | |
 | `ops` | Operation と手順の一覧 | |
 | `export DEST` | 観戦ビューアを静的サイトに書き出す（judge の席だけ。カードの画像・文は見る人のブラウザが Scryfall から取る） | `--game ID`（複数可。省略で全部） `--offline` |
-| `serve` | 観戦ビューア（ブラウザ。読み取り専用）。http://127.0.0.1:8765/。カード画像は初めて表示するときに Scryfall から取って `cards/images/` に保存する | `--root playtest` `--port 8765` `--offline`（画像を取りに行かない） |
+| `serve` | 観戦ビューア（ブラウザ）。http://127.0.0.1:8765/。カード画像は初めて表示するときに Scryfall から取って `cards/images/` に保存する。`--play` で GUI の対局（席の鍵を持つ人の依頼・宣言・回答。席は卓に書けない）も受ける | `--root playtest` `--port 8765` `--offline`（画像を取りに行かない） `--play` `--host` |
+| `invite GAME --seat p1` | GUI で席を持つための URL（`?game=...&seat=p1#key=...`）。鍵は対局フォルダの `seats.json` にハッシュで残る。作り直すと前の URL は使えない | `--port` `--base URL` |
+| `wait GAME --as p2` | 相手（GUI の人間）が書いて自分の番が来るまで待ち、来た Act を `log` の形で出す。最後の行は `waiting on pN`。待つのは自分が最後に書いた件より後 | `--timeout 540`（時間切れは終了コード 3） `--since N` `--any`（相手が1件書くごとに返す） `--prompt`（番が来たらプロンプトも書き出す） |
+| `next GAME --ai p2` | 審判か AI の席の番まで待ち、その役割のプロンプト（Claude API の本文の形）を `playtest/<対局>/prompts/<役割>/` に書き出す。`latest.md` は手動で貼る用 | `--timeout 540` `--direct`（AI の席が Batch を直接書く） |
+| `prompt GAME --as p2` / `--judge` | プロンプトを今すぐ書き出す | `--direct` |
+| `answer GAME [FILE]` | Claude の返答の最後の JSON ブロックを、最後に作ったプロンプトの役割として卓に書く（Player: 意図 → `declare intent` など、審判: Batch → ruled → 質問）。失敗・盤面が進んでいたら理由付きでプロンプトを作り直す | `--as pN` `--judge`（役割の指定） |
 | `oracle NAME...` | カードのオラクル（初回は Scryfall から取得してキャッシュ） | `--offline` `--refresh` `--brief` `--json` |
 | `oracle --deck FILE` | デッキの全カードを1枚の一覧で（デッキ・キャッシュから） | `--no-sideboard` `--brief` `--offline` |
 | `oracle --game GAME --as pN [--card #c12 ...]` | 対局の中で pN が知っているカード（`--card` 省略でサイドボード以外の全部） | `--brief` |

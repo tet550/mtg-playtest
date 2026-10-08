@@ -18,6 +18,7 @@
   <label><input id="images" type="checkbox" checked> 画像</label>
   <label title="タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）"><input id="motion" type="checkbox" checked> 動き</label>
   <span id="turn" class="turn"></span>
+  <span id="playing" class="chip strong playing" hidden></span>
   <span id="conn" class="conn" title="更新の受信状態"></span>
   <button id="logToggle" title="Log を開く・閉じる（L キー）">Log</button>
 </header>
@@ -60,6 +61,14 @@
     <div id="log" class="log"></div>
   </aside>
 </main>
+<!-- GUI の対局の操作パネル（盤面の外に置き、画面に固定する。見出しをドラッグで移動） -->
+<div id="fl-play" class="float playpanel" hidden>
+  <div class="fhead"><span id="playTitle">操作</span><button class="fmin" title="畳む">–</button></div>
+  <div id="playbody" class="fbody"></div>
+</div>
+<div id="menu" class="menu" hidden></div>
+<dialog id="ask" class="ask"></dialog>
+<div id="toast" class="toast" hidden></div>
 <script type="module" src="static/app.js"></script>
 </body>
 </html>

@@ -1027,7 +1027,7 @@ def op_step(ctx: Context, p: dict) -> dict:
     """名前で指定したステップまで進める（to: untap / upkeep / draw / main1 / beginning_of_combat /
     declare_attackers / declare_blockers / combat_damage / end_of_combat / main2 / end / cleanup）。
 
-    今より前のステップを指定すると、次のターンのそのステップになる（クリンナップの後は次のターン）。
+    今より前のステップを指定すると、次のターンのそのステップになる。次のターンへはクリンナップからだけ進める。
     ゲーム前（pregame）からは、先攻（active）の T1 のそのステップに入る。
     進めるのは Turn State だけ。アンタップ・ドロー・マナの消滅などは行わない。
     """
@@ -1054,6 +1054,9 @@ def op_step(ctx: Context, p: dict) -> dict:
     if j == i:
         raise OperationError("already in %s; to go to the next turn's %s, go through cleanup first"
                              % (p["to"], p["to"]))
+    if j < i and t.step != "cleanup":  # 次のターンへは、クリンナップを通ってから（アンタップ・ドローを飛ばさない）
+        raise OperationError("%s comes before %s; the next turn starts after cleanup (use the turn_end / turn_start"
+                             " procs)" % (p["to"], t.step))
     before = (t.turn, t.phase, t.step)
     if j < i:
         t.turn += 1
@@ -1162,14 +1165,45 @@ def expire_standing_passes(s: GameState) -> None:
 
 
 def op_declare(ctx: Context, p: dict) -> dict:
-    """盤面で表せない宣言（pass / concede など）。concede は status も conceded にする。"""
+    """盤面で表せない宣言（pass / concede など）。concede は status も conceded にする。
+
+    審判とのやりとりもこれで記録する: intent（Player → 審判の依頼）、ask（審判 → player への質問。choices で選択肢）、
+    answer（質問への回答）、ruled（審判が依頼・回答を処理した印）。
+    カードを選ばせる質問は ask に cards（候補）と min / max（選ぶ枚数。省略で 1〜1）を付け、回答は answer の cards に選んだカード
+    （候補の無い自由記述の質問にも、挙げたいカードを cards に付けてよい）。"""
     s = ctx.state
     pid = _player(ctx, p.get("player"))
     kind = str(p.get("kind", "pass"))
     if kind == "pass":
         return op_pass(ctx, p)
+    choices = p.get("choices") or []
+    if not isinstance(choices, list):
+        raise OperationError("choices must be a list")
+    cards = p.get("cards") or []
+    if not isinstance(cards, list):
+        raise OperationError("cards must be a list of card ids")
+    cards = [normalize_refs(s, str(c)) for c in cards]
+    for c in cards:
+        if c not in s.cards:
+            raise OperationError("cards: %s is not a card" % c)
+    pick = []
+    if cards and kind == "ask":
+        lo, hi = int(p.get("min", 1)), int(p.get("max", p.get("min", 1) or 1))
+        if not 0 <= lo <= hi or hi < 1:
+            raise OperationError("min / max must satisfy 0 <= min <= max, 1 <= max")
+        pick = [lo, min(hi, len(cards))]
+    if kind == "answer" and cards:  # 選んだカードは、答える質問の候補から、決められた枚数
+        ask = next((d for d in reversed(s.declarations) if d.player == pid and d.kind in ("ask", "answer")), None)
+        if not ask or ask.kind != "ask":
+            raise OperationError("cards: there is no question to %s" % pid)
+    if kind == "answer" and cards and ask.cards:  # 候補の無い（自由記述の）質問なら、挙げたカードをそのまま審判に渡す
+        if any(c not in ask.cards for c in cards) or len(set(cards)) != len(cards):
+            raise OperationError("cards must be distinct candidates of question #%d: %s" % (ask.seq, ", ".join(ask.cards)))
+        if not ask.pick[0] <= len(cards) <= ask.pick[1]:
+            raise OperationError("question #%d asks for %d-%d card(s)" % (ask.seq, ask.pick[0], ask.pick[1]))
     d = Declaration(seq=len(s.declarations) + 1, player=pid, kind=kind, text=str(p.get("text", "")),
-                    turn=s.turn.turn, step=s.turn.step, phase=s.turn.phase)
+                    turn=s.turn.turn, step=s.turn.step, phase=s.turn.phase, choices=[str(c) for c in choices],
+                    cards=cards, pick=pick)
     s.declarations.append(d)
     if kind == "concede":
         s.players[pid].status = "conceded"

@@ -2,6 +2,7 @@
 import pathlib
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -18,6 +19,26 @@ class StoreTest(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_concurrent_dumps_to_the_same_file(self):
+        # server and `auto` may write the same prompt file at once; each writer uses its own temp file
+        from mtgtable.store import _dump
+        path = pathlib.Path(self.tmp.name) / "pending.json"
+        errors = []
+
+        def write(n):
+            try:
+                for i in range(30):
+                    _dump(path, {"n": n, "i": i})
+            except Exception as e:  # noqa: BLE001
+                errors.append(e)
+        ts = [threading.Thread(target=write, args=(n,)) for n in range(4)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+        self.assertEqual(errors, [])
+        self.assertEqual([x.name for x in path.parent.glob("pending.json*")], ["pending.json"])
 
     def test_undo_redo_replay(self):
         st = self.store

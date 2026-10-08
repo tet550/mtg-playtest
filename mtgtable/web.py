@@ -1,10 +1,15 @@
-"""観戦ビューア（24節 GUI の最初の段階）: 対局フォルダを読んでブラウザに表示する。読み取り専用。
+"""観戦ビューアと GUI の対局（24〜26節）: 対局フォルダを読んでブラウザに表示し、`--play` なら席の操作も受ける。
 
-`python -m mtgtable serve [--root playtest] [--port 8765]` で起動し、http://127.0.0.1:8765/ を開く。
+`python -m mtgtable serve [--root playtest] [--port 8765] [--play]` で起動し、http://127.0.0.1:8765/ を開く。
 対局フォルダ（initial.json・log.jsonl・state.json）が正本で、AI が CLI で書いた変更も SSE で画面に届く。
 
 席（seat）ごとに、その Player が知り得る情報だけを返す（info.player_view）。log は AI のラベルに非公開の
 情報が入りうるので、全知の judge の席にだけ返す。画面上の配置・選択などは画面の側だけで持つ（25節）。
+
+`--play` では、`invite` で鍵を作った対局（seats.json がある対局）を席の鍵で守る: 読むのも書くのも、
+鍵を持つ席だけ（judge の席・他の席は見せない）。席が書けるのは依頼（request）・宣言（declare）・回答（answer）
+だけで、卓の op は書けない（盤面は審判が動かす。play.seat_batch）。見ていた cursor（expect）と違えば 409 で断る
+（CLI の AI・審判と同時に書いても、古い盤面のまま書かない）。
 """
 from __future__ import annotations
 
@@ -17,15 +22,28 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import carddb, info
-from .operations import summarize_op
-from .store import GameStore
+from . import carddb, info, play, prompt
+from .engine import public_result
+from .operations import OperationError, summarize_op
+from .store import GameStore, StaleCursor
 
 STATIC = pathlib.Path(__file__).with_name("web")
 _TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
           ".css": "text/css; charset=utf-8"}
 IMAGE_MAX_AGE = 7 * 24 * 3600  # ブラウザにもキャッシュさせる
 KEYFRAME_EVERY = 25  # 時系列は、この件数ごとに丸ごとの view、間は前の view からの差分
+MAX_BODY = 256 * 1024  # 書き込みの要求の大きさの上限
+
+
+def _announce(built) -> None:
+    """プロンプトを作ったら、サーバーのコンソールに出す（手動でモデルに渡す人が見る）。"""
+    if built:
+        who = "審判" if built["role"] == "judge" else built["role"]
+        print("[%s] prompt for %s: %s" % (built["dir"].parent.parent.name, who, built["latest"]), flush=True)
+
+
+class Forbidden(Exception):
+    """席の鍵が無い・違う（403）。"""
 
 
 def view_diff(a, b, path=()) -> list:
@@ -51,13 +69,24 @@ def view_diff(a, b, path=()) -> list:
 class Viewer:
     """対局フォルダの読み取りと、途中の時点の状態のキャッシュ。"""
 
-    def __init__(self, root, offline: bool = False):
+    def __init__(self, root, offline: bool = False, play: bool = False):
         self.root = pathlib.Path(root)
         self.offline = offline
+        self.play = play  # 席の操作（書き込み）を受けるか
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
         self._lock = threading.Lock()
+        self._changed = threading.Condition()  # サーバー自身が書いたら、SSE の購読者をすぐ起こす
+
+    def notify(self) -> None:
+        with self._changed:
+            self._changed.notify_all()
+
+    def wait_change(self, timeout: float) -> None:
+        """サーバーが書くか timeout 秒たつまで待つ（別のプロセスの書き込みは、呼び出し側が stamp で拾う）。"""
+        with self._changed:
+            self._changed.wait(timeout)
 
     def store(self, game: str) -> GameStore:
         st = GameStore(self.root / game)
@@ -74,8 +103,46 @@ class Viewer:
             s = st.load()
             out.append({"id": d.name, "version": s.version, "turn": s.turn.turn,
                         "players": [{"id": p, "name": s.players[p].name, "status": s.players[p].status}
-                                    for p in s.player_order]})
+                                    for p in s.player_order],
+                        "seats": sorted(play.seats(st)) if self.play else []})
         return out
+
+    def guarded(self, st: GameStore) -> bool:
+        """席の鍵で守る対局か（--play で、invite した対局）。"""
+        return self.play and bool(play.seats(st))
+
+    def authorize(self, game: str, seat: Optional[str], token: Optional[str], write: bool = False) -> GameStore:
+        """seat として読む・書くことを許すか。書くには --play と、その席の鍵が要る。"""
+        st = self.store(game)
+        if write and not self.play:
+            raise Forbidden("this server is read-only (start it with serve --play)")
+        if (write or self.guarded(st)) and (seat is None or not play.check_token(st, seat, token)):
+            raise Forbidden("this seat needs its key (python -m mtgtable invite %s --seat pN)" % game)
+        return st
+
+    def seat_write(self, game: str, seat: str, token: Optional[str], what: str, body: dict) -> dict:
+        """席の Player の書き込み（request / declare / answer）。卓の op は受けない（play.seat_batch が宣言に変える）。"""
+        st = self.authorize(game, seat, token, write=True)
+        with st.lock():
+            cur = st._check(body.get("expect"))
+            try:
+                batch = play.seat_batch(st.load(), seat, what, body)
+            except play.Refused as e:
+                raise Forbidden(str(e))
+            result = st._apply(batch, cur)
+        result.pop("_state", None)
+        _announce(prompt.auto_build(st))  # 依頼・マリガンで審判の番になったら、審判のプロンプトをすぐ作る
+        self.notify()
+        return {"result": public_result(result), "cursor": st.cursor()}
+
+    def get_stops(self, game: str, seat: str, token: Optional[str]) -> dict:
+        st = self.authorize(game, seat, token, write=True)
+        return {"stops": play.get_stops(st, seat)}
+
+    def set_stops(self, game: str, seat: str, token: Optional[str], body: dict) -> dict:
+        """止める場所（非公開。卓の記録には載せず、本人と審判のプロンプトにだけ出る）。"""
+        st = self.authorize(game, seat, token, write=True)
+        return {"stops": play.set_stops(st, seat, body.get("stops"))}
 
     @staticmethod
     def stamp(st: GameStore) -> tuple:
@@ -103,7 +170,7 @@ class Viewer:
         s, pos = self.state_at(st, at)
         if seat is not None and seat not in s.players:
             raise LookupError("unknown seat %r" % seat)
-        v = info.player_view(s, seat, graveyard=True, library=library)
+        v = play.decorate(info.player_view(s, seat, graveyard=True, library=library), s)
         v["position"] = pos
         v["cursor"] = st.cursor()
         return v
@@ -123,7 +190,7 @@ class Viewer:
         for pos, s in st.replay_iter(cur):
             if seat is not None and seat not in s.players:
                 raise LookupError("unknown seat %r" % seat)
-            v = info.player_view(s, seat, graveyard=True, library=True)
+            v = play.decorate(info.player_view(s, seat, graveyard=True, library=True), s)
             v["position"], v["cursor"] = pos, cur
             frames.append({"k": v} if prev is None or pos % KEYFRAME_EVERY == 0 else {"d": view_diff(prev, v)})
             prev = v
@@ -201,6 +268,36 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, obj, code: int = 200) -> None:
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
 
+    def _token(self) -> Optional[str]:
+        auth = self.headers.get("Authorization", "")
+        return auth[7:].strip() if auth.startswith("Bearer ") else None
+
+    def do_POST(self):  # noqa: N802
+        """POST /api/games/<対局>/request・declare・answer・stops（--play のときだけ）。本文は {"seat", "expect", ...}。"""
+        parts = [unquote(p) for p in urlparse(self.path).path.strip("/").split("/") if p]
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_BODY:
+                return self._json({"error": "request too large"}, 413)
+            body = json.loads(self.rfile.read(length) or b"{}")
+            if not isinstance(body, dict):
+                raise ValueError("body must be a JSON object")
+            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] in play.SEAT_WRITES:
+                return self._json(self.viewer.seat_write(parts[2], body.get("seat"), self._token(), parts[3], body))
+            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "stops":
+                return self._json(self.viewer.set_stops(parts[2], body.get("seat"), self._token(), body))
+            self._json({"error": "not found"}, 404)
+        except Forbidden as e:
+            self._json({"error": str(e)}, 403)
+        except StaleCursor as e:
+            self._json({"error": str(e), "stale": True}, 409)
+        except TimeoutError as e:
+            self._json({"error": str(e)}, 503)
+        except LookupError as e:
+            self._json({"error": str(e)}, 404)
+        except (ValueError, OperationError) as e:  # JSONDecodeError は ValueError
+            self._json({"error": str(e)}, 400)
+
     def do_GET(self):  # noqa: N802
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
@@ -212,6 +309,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static(parts[1])
             if parts[:2] == ["api", "games"] and len(parts) == 2:
                 return self._json(self.viewer.games())
+            if parts[:2] == ["api", "config"]:
+                return self._json({"play": self.viewer.play})
             if parts[:2] == ["api", "image"]:
                 p = self.viewer.image(q.get("name", ""), int(q.get("face", 0)))
                 if p is None:
@@ -228,6 +327,12 @@ class Handler(BaseHTTPRequestHandler):
             if parts[:2] == ["api", "games"] and len(parts) == 4:
                 game, what = parts[2], parts[3]
                 seat = None if q.get("seat", "judge") == "judge" else q["seat"]
+                if what != "events":  # 通知は version・cursor だけ（auto の審判は席の鍵を持たずにつなぐ）
+                    self.viewer.authorize(game, seat, self._token())
+                if what == "stops" and seat is not None:
+                    return self._json(self.viewer.get_stops(game, seat, self._token()))
+                if what == "log" and seat is not None and self.viewer.play:
+                    return self._json(play.player_log(self.viewer.store(game), seat))
                 if what == "view":
                     at = int(q["at"]) if q.get("at") not in (None, "") else None
                     return self._json(self.viewer.view(game, seat, at, library=q.get("library") == "1"))
@@ -240,6 +345,8 @@ class Handler(BaseHTTPRequestHandler):
                 if what == "events":
                     return self._events(game)
             self._json({"error": "not found"}, 404)
+        except Forbidden as e:
+            self._json({"error": str(e)}, 403)
         except (LookupError, ValueError) as e:
             self._json({"error": str(e)}, 404)
 
@@ -250,7 +357,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, path.read_bytes(), _TYPES.get(path.suffix, "application/octet-stream"))
 
     def _events(self, game: str) -> None:
-        """SSE: 対局フォルダが変わったら {version, cursor} を送る（AI が CLI で書いた変更も拾う）。"""
+        """SSE: 対局フォルダが変わったら {version, cursor} を送る。サーバー自身の書き込みはすぐ、別のプロセス（CLI・auto）の
+        書き込みは 0.5 秒ごとの見張りで拾う。GUI の自動更新と、auto --watch の待ち合わせに使う。"""
         st = self.viewer.store(game)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -270,7 +378,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(b": keep-alive\n\n")
                     self.wfile.flush()
                     beat = time.time()
-                time.sleep(0.5)
+                self.viewer.wait_change(0.5)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
 
@@ -330,11 +438,15 @@ def export_site(root, dest, games=None, offline: bool = False) -> list:
     return [g["id"] for g in listed]
 
 
-def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False) -> None:
-    Handler.viewer = Viewer(root, offline)
+def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False,
+          play: bool = False) -> None:
+    Handler.viewer = Viewer(root, offline, play)
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
-    print("mtgtable viewer: http://%s:%d/  (root: %s, Ctrl+C で終了)" % (host, port, root))
+    print("mtgtable %s: http://%s:%d/  (root: %s, Ctrl+C で終了)"
+          % ("play" if play else "viewer", host, port, root))
+    if play:
+        print("  席の URL は python -m mtgtable invite <対局> --seat p1 --port %d で作る" % port)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

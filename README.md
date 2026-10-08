@@ -1,6 +1,6 @@
 # mtgtable — AI が紙の MTG をプレイするためのデジタル卓
 
-設計は [design/basic_design.md](design/basic_design.md)。これはその基本実装（GUI なし）。
+設計は [design/basic_design.md](design/basic_design.md)。これはその基本実装（GUI は観戦ビューアと、人間が1席を持つ対局まで）。
 
 Rules Engine ではなく **Table Engine**。カード・カウンター・メモ・配置・宣言といった
 紙の卓上の道具と、それを動かす操作だけを提供する。呪文を唱えられるか、対象が適正か、
@@ -22,7 +22,10 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/carddb.py` | Rule Reference（Scryfall のオラクルをローカルにキャッシュ） | 28節 |
 | `mtgtable/render.py` | PlayerView のテキスト表示 | 24節（表示とモデルの分離） |
 | `mtgtable/cli.py` | コマンドライン | 26節 |
-| `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`。読み取り専用のブラウザ画面） | 24〜25節 |
+| `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`）と GUI の対局（`serve --play`。人間が席を持って操作） | 24〜26節 |
+| `mtgtable/play.py` | GUI の対局の部品（席の鍵・待たれている Player・`wait`） | 26節 |
+| `mtgtable/prompt.py`・`mtgtable/prompts/` | AI のプロンプト（Player の意図・審判・直接 Batch）の書き出しと、返答の適用 | 27節 |
+| `mtgtable/llm.py` | OpenAI の API（Chat Completions）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
 
 Web の責務分割と設計判断は [design/web_design.md](design/web_design.md)。ビルド不要の ES modules を使用する。
 
@@ -87,7 +90,13 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 |---|---|
 | `ops` | Operation と手順の一覧 |
 | `export DEST [--game ID ...]` | 観戦ビューアを静的サイトに書き出す（GitHub Pages など用。judge の席だけ。カードの画像・文・マナ・シンボルはサイトに含めず、見る人のブラウザが Scryfall から取る） |
-| `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない |
+| `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない。`--play` で GUI の対局も受ける（下の「GUI で AI と対戦する」） |
+| `invite GAME --seat p1` | GUI で席を持つための鍵付き URL を作る |
+| `wait GAME --as p2` | 相手（GUI の人間）が書いて自分の番が来るまで待つ（AI 用）。`--prompt` で番が来たらプロンプトも書き出す |
+| `next GAME --ai p2` | 審判か AI の席の番まで待ち、そのプロンプトを `playtest/<対局>/prompts/` に書き出す |
+| `prompt GAME --as p2` / `--judge` | プロンプトを今すぐ書き出す |
+| `answer GAME [FILE]` | モデルの返答を、最後に作ったプロンプトの役割（審判か AI の席）として卓に書く |
+| `auto GAME [--watch]` | 審判と AI の席を OpenAI の API で回す（人間の番になるまで。`--watch` で人間の操作を待ちながら決着まで） |
 | `undo` / `redo [n]` | Act 単位で戻す／やり直す |
 | `log [--batches [N]] [--events]` | Operation Log（`--batches` は Batch ごとに1行。`--events` は全情報。観戦・デバッグ用で AI には見せない） |
 | `replay --to N` | log の N 件目時点の状態 |
@@ -108,6 +117,93 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 ```bash
 python -m mtgtable new playtest/gf --deck p1=decklists/piza.txt --seed 7 --policy p1=own_library
 ```
+
+## GUI で AI と対戦する
+
+人間がブラウザで1席（例: p1）を持ち、AI（Claude Code。スキル `mtg-playtest` の「人間が GUI で相手をする対局」）が
+もう1席を CLI で持つ。どちらの席も卓（盤面）は動かさず、審判に依頼する。盤面を動かすのは審判だけ
+（[design/request_play_design.md](design/request_play_design.md)）。
+
+```bash
+python -m mtgtable new playtest/g1 --deck p1=decklists/piza.txt --deck p2=decklists/jund-sacrifice.txt --seed 1
+python -m mtgtable invite playtest/g1 --seat p1
+python -m mtgtable serve --play
+```
+
+`invite` が出す URL（`http://127.0.0.1:8765/?game=g1&seat=p1#key=...`）を開くと、その席で操作できる。
+
+- やることは**下書き**に足す: カード・束・Player・スタックを押したメニューで、土地として出す・唱える（対象と文は任意）・
+  起動する・攻撃する・ブロックする・1 枚引く…を選ぶと、操作パネルの「審判への依頼（下書き）」に行が増える。
+  **送るまで盤面は変わらない**（下書きのカードには点線の印、引く予定は手札に「？」、束に「予定」が付く）
+- 送る前の行は、行の「×」・「直前の行を取り消す」・「全部捨てる」で何度でも外せる（下書きはブラウザに残り、再読み込みでも消えない）
+- 送るボタンで「その後」を選ぶ: 「ここまで処理（審判へ）」は自分の番を続ける、「パス（審判へ）」は優先権を渡す、
+  「次へ: ○○（審判へ）」はそのステップへ、「ターン終了（審判へ）」はターンを終える。下書きが空なら「パス」はそのまま渡す。
+  ボタンに無い操作は「やることを足す…」で文の行にする。マナ・タップイン・コストの支払い・誘発・解決は審判が処理する
+- 送った依頼は取り消せない。審判が処理している間は下書きを組み立てない。引いたカードは、審判の処理の後に初めて見える
+- 審判の質問は「今の操作」に選択肢つきで出る。送った依頼は「送った依頼」で見返せる
+- キープ・マリガンは宣言だけ（引き直し・下に置くカードは審判が処理し、下に置くカードは審判が聞く）
+- 鍵の無い席・judge は見えない（鍵を作った対局だけ。他の対局は今までどおり観戦できる）。外部に公開するサーバーとしての
+  運用（HTTPS・DB・AI の HTTP 接続など）は [design/web_design.md](design/web_design.md) の「サーバーで動かすときに残っていること」
+
+### AI の席と審判をプロンプトで回す（手動）
+
+AI は2つの役割に分かれる。**Player** は何をするかを決めて意図を文で返すだけで、**審判（judge）** がそれを操作（Batch）に
+直し、ルールを確かめて卓に書く。人間も同じで、GUI の下書きを依頼として審判に送る。審判は、決まっていない選択
+（対象・モード・捨てるカードなど）をその Player に質問する（GUI では「今の操作」に選択肢が出る）。やりとりは卓の宣言
+（`intent` 依頼 / `ask` 質問 / `answer` 回答 / `ruled` 処理済み）として記録に残る。
+
+OpenAI の API で自動で回すか（`auto`）、プロンプトをファイルに書き出して人がモデルに渡し、返答を `answer` に渡す（手動）。
+
+#### OpenAI の API で自動で回す
+
+1. API キーを `secrets/openai_api_key` に1行で書く（git の管理外。環境変数 `OPENAI_API_KEY` でもよい）。詳しくは [secrets/README.md](secrets/README.md)
+2. `serve --play` を起動して GUI で対局を開き、別のターミナルで `auto` を `--watch` 付きで動かしておく
+
+```bash
+python -m mtgtable auto playtest/g1 --watch
+```
+
+- 審判か AI の席（鍵の無い席）の番になるたびに、プロンプトを作って送り、返答を卓に書く。人間の番の間は待つ
+- 待つのは `serve` の更新通知（SSE）。GUI の操作で、その場で起きる（`--server`、既定 http://127.0.0.1:8765）。サーバーに
+  つながらない間は1秒ごとに卓を見て、10秒ごとにつなぎ直す
+- モデルは `secrets/openai.json` で指定する（`{"model": "gpt-5"}`。審判・AI の席を分けるなら `judge_model` / `player_model`、
+  推論の深さは `reasoning_effort`）。一時的に変えるなら `--model` か環境変数 `MTGTABLE_OPENAI_MODEL`（ファイルより優先）。
+  何も無ければ `gpt-5`。使えるモデルはアカウントによる
+- 固定部分（役割の指示・リファレンス・デッキ）を先頭に置くので、OpenAI の自動のプロンプト・キャッシュが効く。
+  効いた量は `prompts/<役割>/usage.jsonl` の `cached_tokens`
+- 返答を続けて適用できなかったら止まる（`--max-failures`、既定 3）。そのときは `prompts/<役割>/` の `*.response.md` を見る
+- 送るのは、その役割に見せてよい情報だけ（AI の席には自分の view、審判には全情報）。送り先は OpenAI の API だけ
+
+#### 手動で回す
+
+```bash
+python -m mtgtable next playtest/g1 --ai p2
+python -m mtgtable answer playtest/g1 response.md
+```
+
+GUI の人間がいる対局（`invite` した対局）では、`serve --play` が GUI の依頼（「ここまで処理」「ターン終了」）を受けた時点で
+審判のプロンプトを書き出し、サーバーのコンソールに場所を出す。`answer` も、卓に書いた後に審判か AI の席（鍵の無い席）の番なら
+次のプロンプトを書き出す。人間の番になったら `waiting on p1` と出る。
+
+`next` は審判か AI の席（`--ai`）が動く番まで待ち、その役割のプロンプトを書き出す（人間の番の間は待つ。自動で作られなかったときに使う）。`answer` は
+最後に作ったプロンプトの役割として返答を卓に書く。これを繰り返す。`--direct` で、AI の席が審判を通さず Batch を直接書く
+前の形にもできる（比較用）。
+
+`playtest/<対局>/prompts/<p2 か judge>/` に書き出すもの:
+
+| ファイル | 中身 |
+|---|---|
+| `system-1.md` | 役割の指示（`mtgtable/prompts/player_intent.md` / `judge.md`）とリファレンス。全対局で同じ（Player は rules.md だけ、審判は cli.md・patterns.md・rules.md も） |
+| `system-2.md` | Player: 席・自分のデッキのオラクル・戦略メモ。審判: 両者のデッキのオラクル。対局の間は同じ |
+| `NNNN.user.md` | 今回の状況。Player: 前回からの出来事・memo・自分の view・相手のカード・審判の質問。審判: 処理する依頼・最近の記録・全情報の盤面 |
+| `NNNN.request.json` | OpenAI の Chat Completions の本文（固定部分の system 2つ ＋ 今回の user） |
+| `latest.md` | 手動用に system と user を1つにしたもの（そのまま貼る） |
+| `memo.md`（Player） / `NNNN.response.md` | Player の memo（次のプロンプトに入る） / 受け取った返答 |
+
+返答の形: Player は `{"request": {"plan", "then", "comment"}}`・`{"declare": {"kind", "text"}}`・`{"answer": {"text", "cards"}}` の
+どれか1つと `memo`（GUI の席の API と同じ形）、
+審判は `{"batch": {...各 Act に actor}, "ask": {"to", "text", "choices"}, "message"}`。適用できなかったとき・返答の間に
+盤面が進んでいたときは、`answer` が理由を付けてプロンプトを作り直す。
 
 ## Batch と Operation
 
@@ -161,7 +257,7 @@ Replay は初期状態に `steps` だけを適用し直す。乱数（シャッ�
 
 ## 未実装（今後）
 
-- GUI の操作（24〜26節）。今は観戦ビューア（`serve`）だけ
+- GUI の対局のサーバー運用（HTTPS・DB・AI の HTTP 接続。今はローカルの1台だけ）。Human vs Human の画面は未確認
 - Judge / Orchestrator の自動進行（27節）。現状は `--as judge` での手動操作だけ
 - 旧実装にあった対局記録の集計・ベンチマーク・Goldfish の統計
 
@@ -188,7 +284,9 @@ node --test tests/web.test.mjs
 | `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
 | `test_carddb.py` | オラクルのキャッシュ |
-| `test_web.py` | 観戦ビューアのサーバー（席ごとの view・log・静的ファイル） |
+| `test_web.py` | 観戦ビューアのサーバー（席ごとの view・log・静的ファイル）と GUI の対局の API（席の鍵・依頼・宣言・回答だけの書き込み・409） |
+| `test_play.py` | 待たれている Player・`wait`・書き込みの排他・席の鍵 |
+| `test_prompt.py` | AI の席のプロンプト（固定部分が変わらないこと・見せる範囲）と返答の適用 |
 
 ## 権利
 

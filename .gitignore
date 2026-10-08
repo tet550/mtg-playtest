@@ -4,6 +4,10 @@ playtest/
 # カードキャッシュ（Scryfall から再取得できる。第三者の著作物なので配布しない）
 cards/
 
+# API キー（secrets/README.md 以外は置かない・配布しない）
+secrets/*
+!secrets/README.md
+
 # Python
 __pycache__/
 *.py[cod]

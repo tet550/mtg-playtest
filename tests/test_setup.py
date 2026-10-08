@@ -5,8 +5,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import parse_decklist  # noqa: E402
-from helpers import DECK_A, game, hand  # noqa: E402
+from mtgtable import new_game, parse_decklist  # noqa: E402
+from helpers import DECK_A, DECK_B, game, hand  # noqa: E402
 
 
 class SetupTest(unittest.TestCase):
@@ -27,6 +27,12 @@ class SetupTest(unittest.TestCase):
         self.assertEqual(game(seed=5).state.to_dict(), game(seed=5).state.to_dict())
         self.assertNotEqual(game(seed=5).state.zones["p1.library"].cards,
                             game(seed=6).state.zones["p1.library"].cards)
+
+    def test_short_deck_rejected(self):
+        for text in ("", "Deck\n59 Forest\nSideboard\n15 Naturalize\n"):
+            decks = {"p1": parse_decklist(DECK_B, "red"), "p2": parse_decklist(text, "short")}
+            with self.assertRaisesRegex(ValueError, r"'short' has \d+ main-deck cards"):
+                new_game(decks, hand=7)
 
 
 if __name__ == "__main__":

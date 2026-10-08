@@ -190,7 +190,7 @@ class SicknessAndLandsTest(unittest.TestCase):
         self.assertTrue(bf[bear]["new"])
         self.assertTrue(bf[forest]["land"])
         self.assertNotIn("new", bf[forest])
-        ok(e, None, {"op": "step", "to": "untap"})  # p2 のターン: まだ p1 のターンは来ていない
+        ok(e, None, {"op": "step", "to": "cleanup"}, {"op": "step", "to": "untap"})  # p2 のターン: まだ p1 のターンは来ていない
         self.assertTrue(self._bf(e)[bear]["new"])
         ok(e, None, {"op": "step", "to": "cleanup"}, {"op": "step", "to": "untap"})  # p1 のターン
         self.assertNotIn("new", self._bf(e)[bear])

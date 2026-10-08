@@ -202,6 +202,10 @@ def _ref_view(state: GameState, viewer, oid: str) -> str:
 COLLAPSED_BY_DEFAULT = ("library", "graveyard")
 
 
+# 審判とのやりとりのうち、宣言した本人（ask は質問された Player）と審判にしか見せない宣言
+PRIVATE_KINDS = ("intent", "answer", "ask")
+
+
 def player_view(state: GameState, viewer: Optional[str], sideboard: bool = False,
                 names: bool = True, library: bool = False, graveyard: bool = False) -> dict:
     """viewer（None なら全知の Judge）が知り得る情報だけを含む Player View。
@@ -317,8 +321,11 @@ def player_view(state: GameState, viewer: Optional[str], sideboard: bool = False
             lv["text"] = l.text
         view["links"].append(lv)
     view["declarations"] = [
-        {"seq": d.seq, "player": d.player, "kind": d.kind, "text": d.text, "turn": d.turn, "phase": d.phase, "step": d.step}
+        dict({"seq": d.seq, "player": d.player, "kind": d.kind, "text": d.text, "turn": d.turn, "phase": d.phase,
+              "step": d.step}, **({"choices": d.choices} if d.choices else {}),
+             **({"cards": d.cards} if d.cards else {}), **({"pick": d.pick} if d.pick else {}))
         for d in state.declarations
         if d.turn == state.turn.turn and d.step == state.turn.step
+        and (d.kind not in PRIVATE_KINDS or viewer is None or d.player == viewer)
     ]
     return view

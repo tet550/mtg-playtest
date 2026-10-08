@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "mtgtable", "serve", "--port", "8765"],
       "port": 8765
+    },
+    {
+      "name": "play",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "mtgtable", "serve", "--port", "8766", "--play"],
+      "port": 8766
     }
   ]
 }

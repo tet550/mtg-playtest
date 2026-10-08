@@ -18,8 +18,10 @@ class TurnTest(unittest.TestCase):
                          ("main1", "main", "p1"))
         ok(e, None, {"op": "step", "to": "declare_attackers"}, {"op": "step", "to": "main2"})
         self.assertEqual((e.state.turn.turn, e.state.turn.phase), (1, "main2"))
-        # 今より前のステップを指定すると次のターン
-        ok(e, None, {"op": "step", "to": "untap"})
+        # 次のターンへはクリンナップから（途中から前のステップへ戻ると、アンタップ・ドローを飛ばしてしまう）
+        self.assertEqual(e.apply_act(None, {"act": [{"op": "step", "to": "upkeep"}]}).status, "failed")
+        # クリンナップから今より前のステップを指定すると次のターン
+        ok(e, None, {"op": "step", "to": "cleanup"}, {"op": "step", "to": "untap"})
         self.assertEqual((e.state.turn.turn, e.state.turn.active, e.state.turn.step), (2, "p2", "untap"))
         self.assertIsNone(e.state.turn.priority)
 

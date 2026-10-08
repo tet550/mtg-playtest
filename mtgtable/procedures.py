@@ -23,7 +23,7 @@ def _acts(p: dict, key: str) -> list:
 def proc_turn_start(ctx: Context, p: dict) -> list:
     """次のターンを始める: アンタップ・ステップ（step untap → untap_all。ゲーム前からは先攻の T1）→
     アップキープの開始 → upkeep の各 Act → ドロー・ステップ（step draw → draw）→ to のステップへ
-    （省略でドロー・ステップに留まる）。draw: 引く枚数（既定1。ゲームの最初のターンは0）。as は引いたカード。"""
+    （省略でドロー・ステップに留まる。to が untap / upkeep なら、そのステップで止まり、その先は行わない）。draw: 引く枚数（既定1。ゲームの最初のターンは0）。as は引いたカード。"""
     first_turn = (ctx.state.turn.phase, ctx.state.turn.step) == PREGAME
     n = p.get("draw", 0 if first_turn else 1)
     n = int(n if not isinstance(n, bool) else (1 if n else 0))
@@ -33,9 +33,13 @@ def proc_turn_start(ctx: Context, p: dict) -> list:
         if p.get("as"):
             draw["as"] = p["as"]
         draw_step.append(draw)
-    out = [{"act": [{"op": "step", "to": "untap"}, {"op": "untap_all", "player": "active"}]},
-           {"act": [{"op": "step", "to": "upkeep"}]}]
-    out += _acts(p, "upkeep") + [{"act": draw_step}]
+    out = [{"act": [{"op": "step", "to": "untap"}, {"op": "untap_all", "player": "active"}]}]
+    if p.get("to") == "untap":
+        return out
+    out += [{"act": [{"op": "step", "to": "upkeep"}]}] + _acts(p, "upkeep")
+    if p.get("to") == "upkeep":  # アップキープで止める（ドローはまだ）
+        return out
+    out += [{"act": draw_step}]
     if p.get("to") and p["to"] != "draw":
         out.append({"act": [{"op": "step", "to": p["to"]}]})
     return out
@@ -43,9 +47,13 @@ def proc_turn_start(ctx: Context, p: dict) -> list:
 
 def proc_turn_end(ctx: Context, p: dict) -> list:
     """ターンを終える: 終了ステップの開始 → end の各 Act → クリンナップの開始 → cleanup の各 Act
-    （手札の上限など）→ until=end_of_turn の Note を外し、全員のマナ・プールを空にする。"""
-    return ([{"act": [{"op": "step", "to": "end"}]}] + _acts(p, "end")
-            + [{"act": [{"op": "step", "to": "cleanup"}]}] + _acts(p, "cleanup")
+    （手札の上限など）→ until=end_of_turn の Note を外し、全員のマナ・プールを空にする。
+    既に終了ステップ（クリンナップ）にいれば、そのステップの開始は省く（終了ステップで相手の行動を処理した後など）。"""
+    step = ctx.state.turn.step
+    out = [] if step in ("end", "cleanup") else [{"act": [{"op": "step", "to": "end"}]}]
+    if step != "cleanup":
+        out += _acts(p, "end") + [{"act": [{"op": "step", "to": "cleanup"}]}]
+    return (out + _acts(p, "cleanup")
             + [{"act": [{"op": "note_remove", "until": "end_of_turn"}, {"op": "mana_clear"}]}])
 
 

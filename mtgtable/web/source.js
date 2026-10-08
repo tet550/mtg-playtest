@@ -16,8 +16,8 @@ async function scryfallOracle(name) {
   }).join("\n\n");
 }
 
-async function getJSON(url) {
-  const r = await fetch(url);
+async function getJSON(url, headers) {
+  const r = await (headers ? fetch(url, { headers }) : fetch(url));
   const body = await r.json();
   if (!r.ok) throw new Error(body.error || r.statusText);
   return body;
@@ -25,20 +25,46 @@ async function getJSON(url) {
 
 export function createSource(isStatic) {
   let cards = {};
+  let key = null;  // 席の鍵 {game, seat, token}（GUI の対局）。その対局・席の要求にだけ付ける
   const oracleCache = new Map();
   const gameURL = (game, resource) => isStatic
     ? `data/${encodeURIComponent(game)}/${resource}.json`
     : `/api/games/${encodeURIComponent(game)}/${resource}`;
+  const auth = (game, seat) => (key && key.game === game && key.seat === seat
+    ? { Authorization: `Bearer ${key.token}` } : undefined);
   return {
     isStatic,
     async init() { if (isStatic) cards = await getJSON("data/cards.json"); },
+    config: () => (isStatic ? Promise.resolve({ play: false }) : getJSON("/api/config")),
+    setKey(value) { key = value; },
     games: () => getJSON(isStatic ? "data/games.json" : "/api/games"),
     async load(game, seat) {
       const url = gameURL(game, "timeline") + (isStatic ? "" : `?seat=${encodeURIComponent(seat)}`);
+      const headers = auth(game, seat);
+      // Log は judge の席と、鍵を持つ席（その Player に見せる形の Log）だけ
       const [timeline, log] = await Promise.all([
-        getJSON(url), seat === "judge" ? getJSON(gameURL(game, "log")) : [],
+        getJSON(url, headers),
+        seat === "judge" ? getJSON(gameURL(game, "log"))
+          : headers ? getJSON(gameURL(game, "log") + `?seat=${encodeURIComponent(seat)}`, headers) : [],
       ]);
       return { timeline, log };
+    },
+    // 止める場所（非公開。その席の鍵が要る）
+    getStops: (game, seat) => getJSON(gameURL(game, "stops") + `?seat=${encodeURIComponent(seat)}`, auth(game, seat)),
+    // 席の Player として書く（request / declare / answer / stops）。409（見ていた盤面より進んでいた）は error.stale
+    async post(game, action, body) {
+      const r = await fetch(gameURL(game, action), {
+        method: "POST", headers: { "Content-Type": "application/json", ...auth(game, body.seat) },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const error = new Error(data.error || r.statusText);
+        error.status = r.status;
+        error.stale = !!data.stale;
+        throw error;
+      }
+      return data;
     },
     subscribe(game, onChange, onConnection) {
       if (isStatic) return () => {};
