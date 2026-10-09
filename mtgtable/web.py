@@ -17,9 +17,12 @@ from __future__ import annotations
 import hashlib
 import http.cookies
 import json
+import os
 import pathlib
+import shutil
 import threading
 import time
+import traceback
 from collections import OrderedDict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
@@ -31,13 +34,17 @@ from .operations import OperationError, summarize_op
 from .decks import Decks, Invalid, check as check_deck_text
 from . import history as history_mod, llm, worker
 from .history import History, Refused as HistoryRefused
+from .ratelimit import RateLimiter
 from .lobby import IDLE_LIMIT, IDLE_NOTICE, Lobby, Refused as LobbyRefused, repo_decks
 from .owners import Owners
 from .sqlstore import SqliteGames
 from .store import BaseStore, FileGames, StaleCursor
 
 STATIC = pathlib.Path(__file__).with_name("web")
-_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+# 公開のサーバーの運営者の表示（利用規約・プライバシーの画面に出す。環境変数 MTGTABLE_OPERATOR / MTGTABLE_CONTACT）
+SITE_INFO = {"operator": os.environ.get("MTGTABLE_OPERATOR", "").strip(),
+             "contact": os.environ.get("MTGTABLE_CONTACT", "").strip()}
+_TYPES = {".svg": "image/svg+xml", ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
           ".css": "text/css; charset=utf-8"}
 IMAGE_MAX_AGE = 7 * 24 * 3600  # ブラウザにもキャッシュさせる
 KEYFRAME_EVERY = 25  # 時系列は、この件数ごとに丸ごとの view、間は前の view からの差分
@@ -350,11 +357,94 @@ def oracle_text(name: str) -> Optional[str]:
     return carddb.format_card(rec) if rec else None
 
 
+class TooMany(Exception):
+    """レート制限に当たった（429。retry 秒後にやり直せる）。"""
+
+    def __init__(self, retry: float):
+        super().__init__("too many requests; retry in %d seconds" % max(1, int(retry + 0.999)))
+        self.retry = max(1, int(retry + 0.999))
+
+
+# どの画面でも付けるセキュリティのヘッダー。スクリプト・スタイル・画像・通信はこのサーバーからだけ（画像は data: も）
+SECURITY_HEADERS = {
+    "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+                               "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+                               "form-action 'self'",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
+MIN_FREE_BYTES = int(os.environ.get("MTGTABLE_MIN_FREE_MB", "500") or 500) * 1024 * 1024  # これより空きが減ると /healthz が 503
+
+
+def _write_kind(method: str, parts: list) -> Optional[str]:
+    """書き込みの種類ごとのレート制限（write に加えて数える）。"""
+    if parts[:2] == ["api", "decks"] and (method == "PUT" or method == "POST"):
+        return "deck_check"  # Scryfall に問い合わせる
+    if method == "POST" and (parts == ["api", "games"] or parts[:2] == ["api", "invites"] and parts[3:] == ["renew"]
+                             or parts[:2] == ["api", "games"] and parts[3:] == ["shares"]):
+        return "create"
+    return None
+
+
 class Handler(BaseHTTPRequestHandler):
     viewer: Viewer = None  # serve() が設定する
+    limiter = None  # 公開のサーバー: ratelimit.RateLimiter
+    trust_proxy = False  # 前のリバース・プロキシ（Caddy）が付ける X-Forwarded-For の最後を、送り元の IP とする
+    access_log = False  # 1要求1行のアクセス・ログ（クエリは鍵が入りうるので出さない）
+    timeout = 60  # 読み書きが止まった接続を切る（秒）
 
-    def log_message(self, fmt, *args):  # アクセスログは出さない
+    def log_message(self, fmt, *args):  # 決まりのログ（要求の行。クエリに鍵が入りうる）は出さない
         pass
+
+    def log_request(self, code="-", size="-"):
+        if self.access_log:
+            print("%s %s %s %s %s" % (time.strftime("%Y-%m-%dT%H:%M:%S"), self._client_ip(), self.command,
+                                      urlparse(self.path).path, code), flush=True)
+
+    def end_headers(self):
+        for k, v in SECURITY_HEADERS.items():
+            self.send_header(k, v)
+        if self.viewer is not None and self.viewer.site and not self._local():
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
+        super().end_headers()
+
+    def _local(self) -> bool:
+        return (urlparse("//" + (self.headers.get("Host") or "")).hostname or "") in LOCAL_HOSTS
+
+    def _client_ip(self) -> str:
+        if self.trust_proxy:
+            fwd = [x.strip() for x in (self.headers.get("X-Forwarded-For") or "").split(",") if x.strip()]
+            if fwd:
+                return fwd[-1]
+        return self.client_address[0] if self.client_address else "-"
+
+    def _limit(self, kind: str, who: str) -> None:
+        if self.limiter is not None:
+            wait = self.limiter.hit(kind, who)
+            if wait:
+                raise TooMany(wait)
+
+    def _too_many(self, e: TooMany) -> None:
+        body = json.dumps({"error": str(e), "retry_after": e.retry}).encode("utf-8")
+        self.send_response(429)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Retry-After", str(e.retry))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _crash(self) -> None:
+        """思いがけない失敗: 理由をサーバーのログに残し、500 を返す（中身は見せない）。"""
+        print("[error] %s %s\n%s" % (self.command, urlparse(self.path).path, traceback.format_exc()), flush=True)
+        try:
+            self._json({"error": "internal error"}, 500)
+        except OSError:
+            pass
 
     def _send(self, code: int, body: bytes, ctype: str, cache: str = "no-store") -> None:
         self.send_response(code)
@@ -365,7 +455,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Set-Cookie", cookie)
         self._cookies = []
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":  # HEAD（監視など）はヘッダーだけ
+            self.wfile.write(body)
 
     # ---- 公開のサーバー（site）: 所有者の鍵の Cookie と、書き込みの Origin
 
@@ -412,6 +503,15 @@ class Handler(BaseHTTPRequestHandler):
             if self.viewer.site and not self._same_origin():
                 raise Forbidden("writes must come from this site (Origin)")
             owner = self._owner()
+            ip = self._client_ip()
+            self._limit("write", "ip:" + ip)
+            if owner:
+                self._limit("write", "owner:" + owner)
+            kind = _write_kind(method, parts)
+            if kind:
+                self._limit(kind, "owner:%s" % owner if owner else "ip:" + ip)
+            if parts == ["api", "me", "recover"]:
+                self._limit("recover", "ip:" + ip)
             if parts[:2] == ["api", "decks"] and self.viewer.site:
                 return self._decks(method, parts[2:], body, owner)
             if self.viewer.site and parts[:2] == ["api", "games"] and len(parts) >= 4 \
@@ -435,6 +535,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e), "check": e.result}, 400)
         except (ValueError, OperationError) as e:  # JSONDecodeError は ValueError
             self._json({"error": str(e)}, 400)
+        except TooMany as e:
+            self._too_many(e)
+        except Exception:  # noqa: BLE001
+            self._crash()
 
     def do_POST(self):  # noqa: N802
         self._write("POST")
@@ -531,15 +635,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self.viewer.resume_ai(parts[2], body.get("seat"), self._token(), owner=owner))
         self._json({"error": "not found"}, 404)
 
+    def do_HEAD(self):  # noqa: N802
+        """GET と同じ答えのヘッダーだけ（監視・リンクの確かめ）。更新の通知（SSE）は流し続けるので受けない。"""
+        if urlparse(self.path).path.endswith("/events"):
+            return self._json({"error": "use GET for events"}, 405)
+        self.do_GET()
+
     def do_GET(self):  # noqa: N802
         url = urlparse(self.path)
         q = {k: v[0] for k, v in parse_qs(url.query).items()}
         parts = [unquote(p) for p in url.path.strip("/").split("/") if p]
         try:
+            self._limit("read", "ip:" + self._client_ip())
             if not parts:
                 return self._static("index.html")
             if parts[0] == "static" and len(parts) == 2:
                 return self._static(parts[1])
+            if parts == ["healthz"]:
+                return self._health()
             owner = self._owner()
             if parts[:2] == ["api", "games"] and len(parts) == 2:
                 return self._json(self.viewer.games(owner))
@@ -574,8 +687,12 @@ class Handler(BaseHTTPRequestHandler):
                                   else self.viewer.lobby.invites(owner))
             if parts[:2] == ["api", "config"]:
                 if self.viewer.site and not owner:  # 初めて来たブラウザ（か鍵が消えた）: 所有者を作って鍵を渡す
-                    self._give_owner_key(self.viewer.owners.create()[1])
-                return self._json({"play": self.viewer.play, "site": self.viewer.site})
+                    # 鍵を作れる数は IP ごとに制限する（超えたら作らずに返す。画面は見られるが、書き込めない）
+                    if self.limiter is None or not self.limiter.hit("owner", "ip:" + self._client_ip()):
+                        self._give_owner_key(self.viewer.owners.create()[1])
+                return self._json({"play": self.viewer.play, "site": self.viewer.site,
+                                   **({"operator": SITE_INFO["operator"], "contact": SITE_INFO["contact"]}
+                                      if self.viewer.site else {})})
             if parts[:2] == ["api", "image"]:
                 p = self.viewer.image(q.get("name", ""), int(q.get("face", 0)))
                 if p is None:
@@ -625,6 +742,21 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 403)
         except (LookupError, ValueError) as e:
             self._json({"error": str(e)}, 404)
+        except TooMany as e:
+            self._too_many(e)
+        except Exception:  # noqa: BLE001
+            self._crash()
+
+    def _health(self) -> None:
+        """動いているか（監視用）。DB の大きさと、置き場所の空き。空きが MIN_FREE_BYTES を切ったら 503。"""
+        db = getattr(self.viewer.source, "db", None)
+        where = pathlib.Path(db).resolve().parent if db else getattr(self.viewer.source, "root", pathlib.Path("."))
+        free = shutil.disk_usage(where if where.exists() else ".").free
+        out = {"ok": free >= MIN_FREE_BYTES, "free_bytes": free,
+               "db_bytes": sum(p.stat().st_size for p in pathlib.Path(db).parent.glob(pathlib.Path(db).name + "*"))
+               if db and pathlib.Path(db).exists() else None,
+               "ai_running": len(self.viewer.worker.running) if self.viewer.worker else None}
+        self._json(out, 200 if out["ok"] else 503)
 
     def _static(self, name: str) -> None:
         path = STATIC / name
@@ -706,7 +838,7 @@ def export_site(root, dest, games=None, offline: bool = False, db=None) -> list:
                                               encoding="utf-8")
     (dest / "static").mkdir(parents=True, exist_ok=True)
     for asset in STATIC.iterdir():
-        if asset.suffix in (".js", ".css"):
+        if asset.suffix in (".js", ".css", ".svg"):
             (dest / "static" / asset.name).write_bytes(asset.read_bytes())
     index = (STATIC / "index.html").read_text(encoding="utf-8").replace('<html lang="ja">', '<html lang="ja" data-static="1">')
     (dest / "index.html").write_text(index, encoding="utf-8")
@@ -723,8 +855,12 @@ def start_worker(viewer: Viewer, db=None, limits=None, report=print) -> "worker.
 
 
 def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False,
-          play: bool = False, db=None, site: bool = False, ai: bool = False) -> None:
+          play: bool = False, db=None, site: bool = False, ai: bool = False, trust_proxy: bool = False) -> None:
     Handler.viewer = Viewer(root, offline, play, db=db, site=site)
+    if site:  # 公開のサーバー: レート制限とアクセス・ログ
+        Handler.limiter = RateLimiter()
+        Handler.access_log = True
+    Handler.trust_proxy = trust_proxy
     if ai:
         start_worker(Handler.viewer, db)
     httpd = ThreadingHTTPServer((host, port), Handler)

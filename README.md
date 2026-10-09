@@ -27,6 +27,7 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/play.py` | GUI の対局の部品（席の鍵・待たれている Player・`wait`） | 26節 |
 | `mtgtable/owners.py` | 公開のサーバー（`serve --site`）の所有者の鍵・復元・席を持つ人 | — |
 | `mtgtable/decks.py` | 公開のサーバーのデッキ登録（検査と、所有者ごとの保存） | — |
+| `mtgtable/ratelimit.py` | 公開のサーバーのレート制限（IP ごと・所有者ごと・種類ごと） | — |
 | `mtgtable/history.py` | 公開のサーバーの履歴・公開の対局・共有 URL・見える範囲・履歴から消す | — |
 | `mtgtable/lobby.py` | 公開のサーバーで対局を作る（AI と・招待した人と）・時間切れ | — |
 | `mtgtable/prompt.py`・`mtgtable/prompts/` | AI のプロンプト（Player の意図・審判・直接 Batch）の書き出しと、返答の適用 | 27節 |
@@ -117,6 +118,7 @@ python -m mtgtable db-import playtest/g1 # 今の対局フォルダを DB へ移
 | `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない。`--play` で GUI の対局も受ける（下の「GUI で AI と対戦する」） |
 | `invite GAME --seat p1` | GUI で席を持つための鍵付き URL を作る。鍵は既定で7日で切れる（`--ttl 時間`。0 で期限なし） |
 | `revoke GAME --seat p1` | 席の鍵を失効させる（席は人間の席のまま。`invite` で作り直すまで誰も使えない） |
+| `db-backup DEST [--keep N]` | `--db` の DB を動かしたまま写す（DEST がフォルダなら日時の名前で置き、新しい N 個を残す） |
 | `db-import GAME...` | 対局フォルダを `--db` の DB へ移す（`--force` で置き換え） |
 | `wait GAME --as p2` | 相手（GUI の人間）が書いて自分の番が来るまで待つ（AI 用）。`--prompt` で番が来たらプロンプトも書き出す |
 | `next GAME --ai p2` | 審判か AI の席の番まで待ち、そのプロンプトを `playtest/<対局>/prompts/` に書き出す |
@@ -208,7 +210,15 @@ python -m mtgtable --db data/mtg.sqlite invite g1 --seat p1 --base https://mtg.e
   「共有」で再生専用の URL（`#/view/<対局>/<鍵>`）を作り、取り消せる。視点は自分の席か全体（全体は終わってから。人間どうしの
   対局では相手の同意が要る）。「履歴から消す」は自分の一覧と公開の一覧から外し、席を持つ人が全員消したら対局を消す
 - 「公開の対局」: 終わった公開の対局を、誰でも再生できる（デッキ名で絞り込み）。対局中は、席を持つ人と共有 URL を持つ人だけが見る
-- 利用者の識別より先（HTTPS の設定・対局を作る画面・レート制限など）はまだ。外に出すのは計画のフェーズ 7 の後
+- 公開の手順（HTTPS の Caddy・systemd・バックアップ・監視・公開前の確かめ）は [deploy/README.md](deploy/README.md)。
+  アプリは 127.0.0.1 で待ち受け、前の Caddy だけが外に出る（`--trust-proxy`）
+- 悪用への備え: 送り元の IP ごと・所有者ごと・種類ごと（読む・書く・所有者の鍵を作る・デッキの検査・対局や招待や共有を作る・
+  復元）のレート制限（超えたら 429 と `Retry-After`。`MTGTABLE_RATE_<種類>=回数/秒` で変える）、どの応答にもセキュリティの
+  ヘッダー（CSP など。外向きの名前では HSTS も）、止まった接続を切る、思いがけない失敗は 500 にして理由をログにだけ残す
+- 運用: 1要求1行のアクセス・ログ（クエリは鍵が入りうるので出さない）、`/healthz`（DB の大きさ・空き。空きが
+  `MTGTABLE_MIN_FREE_MB` を切ると 503）、`db-backup`（動かしたまま DB を写す。`--keep` で古いものを消す）
+- フッターに権利の表記（Fan Content Policy・Scryfall）。利用規約・プライバシーの画面（下書き。運営者と連絡先は
+  `MTGTABLE_OPERATOR` / `MTGTABLE_CONTACT`）
 
 ### 人間どうしで対戦する
 
@@ -387,6 +397,7 @@ node --test tests/web.test.mjs
 | `test_lobby.py` | 対局を作る: AI との対局・デッキの写し・招待（1回だけ・同時に着いても1人・期限・作り直し・取り消し）・時間切れ |
 | `test_worker.py` | サーバーの中で回す: 人間が書いたらすぐ回る・利用の上限で中断・席の鍵で再開・API の失敗・所有者と1日の数え方 |
 | `test_history.py` | 履歴・公開の対局: 対局中と終わった後に見える範囲・公開の一覧（絞り込み・ページ送り）・共有 URL（同意・取り消し）・履歴から消す・時系列の保存 |
+| `test_ops.py` | 公開のサーバーの運用: レート制限・セキュリティのヘッダー・所有者の鍵の数・プロキシの IP・アクセス・ログ・500・/healthz・バックアップ |
 | `test_site.py` | 公開のサーバー: 所有者の鍵の Cookie・招待の URL で席を取る・自分の対局だけ・復元 URL・Origin・鍵の期限と失効 |
 | `test_sqlstore.py` | SQLite の保存先: 対局フォルダからの移行・一覧の要約（終わった日時）・ロールバック・同時の書き込み・CLI の `--db` |
 | `test_carddb.py` | オラクルのキャッシュ |

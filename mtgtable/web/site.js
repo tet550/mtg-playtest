@@ -4,10 +4,11 @@ import { $, el } from "./dom.js";
 import { createDecks } from "./decks.js";
 import { createLobby } from "./lobby.js";
 import { createHistory } from "./history.js";
+import { renderPrivacy, renderTerms } from "./legal.js";
 
 export const PAGES = { top: "トップ", decks: "デッキ", new: "対局を作る", games: "対局", history: "履歴", public: "公開の対局" };
 // ヘッダーに出さない画面（招待の URL: #/join/<招待>/<鍵>、再生・観戦: #/view/<対局>[/<共有の鍵>]）
-const HIDDEN = ["join", "view"];
+const HIDDEN = ["join", "view", "terms", "privacy"];
 export const BOARD_PAGES = ["games", "view"];  // 盤面を出す画面
 
 // #/decks → {page: "decks", args: []}、#/join/abc/xyz → {page: "join", args: ["abc", "xyz"]}
@@ -22,7 +23,7 @@ export function pageOf(hash) {
   return r ? r.page : null;
 }
 
-export function createSite(source, { toast, games, openGame }) {
+export function createSite(source, { toast, games, openGame, config = () => ({}) }) {
   const decks = createDecks(source, { toast });
   let current = null;
   const lobby = createLobby(source, { toast, openGame, active: () => current === "new" });
@@ -74,6 +75,7 @@ export function createSite(source, { toast, games, openGame }) {
     for (const id of ["conn", "logToggle", "turn", "playing", "fl-play"]) $(id).classList.toggle("offpage", !board);
     const root = $("page");
     root.hidden = board;
+    root.classList.remove("legal");
     document.body.classList.toggle("sitepage", !board);
     if (page === "top") renderTop(root);
     if (page === "decks") await decks.render(root);
@@ -81,6 +83,9 @@ export function createSite(source, { toast, games, openGame }) {
     if (page === "join") await lobby.renderJoin(root, args[0], args[1]);
     if (page === "history") await history.renderHistory(root);
     if (page === "public") await history.renderPublic(root);
+    if (page === "terms") renderTerms(root, config());
+    if (page === "privacy") renderPrivacy(root, config());
+    if (!board) window.scrollTo(0, 0);
   }
 
   return { show };

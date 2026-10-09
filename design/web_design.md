@@ -116,7 +116,7 @@ AI（p2・Claude Code）── CLI apply ／ wait ──────────
 | 排他 | `.lock` ファイル（対局フォルダ）か `BEGIN IMMEDIATE`（SQLite。DB 全体で書き手1人） | 済み。`expect` はそのまま（409 の約束事は API に残す） |
 | 更新の通知 | サーバー自身の書き込み（席の操作・AI のワーカーの1手）は書いた側が通知（`Viewer.notify`）。別のプロセスの書き込みは SSE が 0.5 秒ごとに変化の印（stamp）を見る | 済み（同じプロセスの中）。席ごとに公開範囲で絞った event を流すのは残り |
 | AI の接続 | サーバーの中のワーカー（`worker.py`。`serve --ai` / `--site`）が、審判か AI の席が待たれたら呼ぶ。提供元は OpenAI・Anthropic（`llm.py`） | 済み。`auto` と手動のプロンプトも残す |
-| 認証 | 席ごとの鍵（ベアラー・トークン。期限 `--ttl`・失効 `revoke`）。`serve --site` では所有者の鍵（Cookie）で席を持つ（owners.py） | HTTPS 必須（前段のプロキシ）。対局の作成・招待の API。`--host` で外に出すのはそれまで行わない |
+| 認証 | 席ごとの鍵（ベアラー・トークン。期限 `--ttl`・失効 `revoke`）。`serve --site` では所有者の鍵（Cookie）で席を持つ（owners.py） | 済み。HTTPS は前段の Caddy（deploy/）。アプリは 127.0.0.1 で待ち受ける |
 | 時系列 | 要求ごとに最初から Replay（小さな対局なら十分） | キーフレームのキャッシュを保存し、差分だけ足す |
 | 多重の接続 | `ThreadingHTTPServer` | ASGI などへ。静的ファイルは CDN |
 

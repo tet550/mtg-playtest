@@ -357,7 +357,40 @@ def cmd_serve(a):
             llm.check_ready()  # キー・SDK が足りなければ、対局を中断させる前にここで止める
         except llm.LLMError as e:
             raise SystemExit("%s（AI を回さずに動かすなら --no-ai）" % e)
-    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site, ai=ai)
+    if a.site:
+        from .web import SITE_INFO
+        if not (SITE_INFO["operator"] and SITE_INFO["contact"]):
+            print("注意: MTGTABLE_OPERATOR / MTGTABLE_CONTACT（運営者と連絡先）が未設定。利用規約・プライバシーの画面に出る",
+                  file=sys.stderr)
+        if a.host not in ("127.0.0.1", "localhost", "::1") and not a.trust_proxy:
+            print("注意: %s で待ち受けている。HTTPS は前のリバース・プロキシ（deploy/Caddyfile）に任せ、"
+                  "サーバーは 127.0.0.1 で動かす" % a.host, file=sys.stderr)
+    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site, ai=ai, trust_proxy=a.trust_proxy)
+
+
+def cmd_db_backup(a):
+    """DB を、書き込みを止めずに一貫した形で写す（sqlite3 の backup）。dest がフォルダなら日時の名前で置き、--keep 個を残す。"""
+    import datetime
+    import sqlite3
+    if not DB:
+        raise SystemExit("db-backup needs --db PATH (or MTGTABLE_DB)")
+    dest = pathlib.Path(a.dest)
+    if dest.is_dir() or a.dest.endswith(("/", "\\")):
+        dest.mkdir(parents=True, exist_ok=True)
+        dest = dest / ("%s-%s.sqlite" % (pathlib.Path(DB).stem, datetime.datetime.now().strftime("%Y%m%d-%H%M%S")))
+    src = sqlite3.connect(DB)
+    out = sqlite3.connect(dest)
+    try:
+        src.backup(out)
+    finally:
+        out.close()
+        src.close()
+    print("backup: %s (%d bytes)" % (dest, dest.stat().st_size))
+    if a.keep:
+        old = sorted(dest.parent.glob("%s-*.sqlite" % pathlib.Path(DB).stem))[:-a.keep]
+        for p in old:
+            p.unlink()
+            print("removed old backup: %s" % p)
 
 
 def cmd_db_import(a):
@@ -673,7 +706,14 @@ def build_parser():
     p.add_argument("--ai", action="store_true",
                    help="審判と AI の席をサーバーの中で回す（--play と。auto --watch の代わり。--site では既定）")
     p.add_argument("--no-ai", action="store_true", help="--site でも AI を回さない（手で回す・auto を使う）")
+    p.add_argument("--trust-proxy", action="store_true",
+                   help="前のリバース・プロキシ（Caddy など）が付ける X-Forwarded-For を送り元の IP として使う（レート制限・ログ）")
     p.set_defaults(fn=cmd_serve)
+
+    p = sub.add_parser("db-backup", help="--db の DB を、動かしたまま写す（バックアップ）")
+    p.add_argument("dest", help="写す先（ファイルか、フォルダ。フォルダなら日時の名前で置く）")
+    p.add_argument("--keep", type=int, default=0, help="フォルダに置くとき、新しいものからこの数だけ残す（0 で全部）")
+    p.set_defaults(fn=cmd_db_backup)
 
     p = sub.add_parser("db-import", help="対局フォルダを --db の DB へ移す")
     p.add_argument("games", nargs="+", help="対局フォルダ")

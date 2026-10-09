@@ -1,0 +1,11 @@
+[Unit]
+Description=mtgtable database backup
+
+[Service]
+Type=oneshot
+User=mtgtable
+Group=mtgtable
+WorkingDirectory=/opt/mtgtable
+EnvironmentFile=/etc/mtgtable/mtgtable.env
+# 動かしたまま一貫した形で写し、新しい 14 個を残す
+ExecStart=/opt/mtgtable/.venv/bin/python -m mtgtable db-backup /var/lib/mtgtable/backups/ --keep 14

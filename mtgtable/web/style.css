@@ -754,3 +754,11 @@ table.decks .dops { white-space: nowrap; text-align: right; }
   border-radius: 6px; padding: 4px 8px; }
 .page p.bad { color: var(--warn); }
 .deckform .field[hidden] { display: none; }
+
+/* ---- フッター（権利の表記。どの画面にも出す） */
+.sitefooter { max-width: 880px; margin: 24px auto 12px; padding: 8px 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.sitefooter p { margin: 2px 0; }
+.sitefooter a { color: inherit; }
+.page.legal h3 { font-size: 14px; color: var(--ink); margin-top: 18px; }
+.page.legal li { margin: 4px 0; }
+.page .draft { border: 1px dashed var(--warn); color: var(--warn); padding: 6px 10px; border-radius: 6px; }

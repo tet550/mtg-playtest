@@ -84,7 +84,7 @@ class SiteTest(unittest.TestCase):
 
     def test_owner_key_cookie(self):
         b = Browser(self.base)
-        self.assertEqual(b.call("/api/config"), (200, {"play": True, "site": True}))
+        self.assertEqual(b.call("/api/config"), (200, {"play": True, "site": True, "operator": "", "contact": ""}))
         self.assertTrue(b.cookie)
         c = b.last_set_cookie
         self.assertIn("HttpOnly", c)

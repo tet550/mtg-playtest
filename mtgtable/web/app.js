@@ -177,8 +177,9 @@ async function siteSetup() {
     }
   }
   $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value !== "judge"));
-  site = createSite(source, { toast, games: () => gameList, openGame });
+  site = createSite(source, { toast, games: () => gameList, openGame, config: () => config });
   $("recovery").hidden = false;
+  $("legallinks").hidden = false;
   $("recovery").onclick = async () => {
     try {
       const { token: t } = await source.recovery();
