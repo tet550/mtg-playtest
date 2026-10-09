@@ -157,6 +157,24 @@ class PlayTest(unittest.TestCase):
         self.apply("p2", [{"op": "declare", "kind": "intent", "text": "行動:\n1. ブロックしない\nその後: パス"}])
         self.assertFalse(play.blocks_undecided(self.st.load(), "p2"))  # 依頼を出したら、決めた
 
+    def test_a_block_request_the_judge_sent_back_is_decided_again(self):
+        self.apply("p1", [{"op": "declare", "kind": "keep"}])
+        self.apply("p2", [{"op": "declare", "kind": "keep"}])
+        self.apply("p1", {"proc": "turn_start", "to": "main1"})
+        self.apply("p1", [{"op": "create", "name": "Wolf", "definition": {"type_line": "Creature — Wolf", "power": 3, "toughness": 3}}])
+        self.apply("p2", [{"op": "create", "name": "Bear", "definition": {"type_line": "Creature — Bear", "power": 2, "toughness": 2}}])
+        self.apply("p1", [{"op": "step", "to": "declare_attackers"}, {"op": "attack", "attackers": ["#t1"], "target": "p2"}],
+                   [{"op": "step", "to": "declare_blockers"}, {"op": "priority", "player": "p2"}])
+        self.apply("p2", [{"op": "declare", "kind": "intent", "text": "行動:\n1. #t2 で #t1 をブロックする\nその後: パス"}])
+        self.assertFalse(play.blocks_undecided(self.st.load(), "p2"))  # 審判の処理待ち
+        # 審判がルールに合わない（威迫など）として、ブロックを書かずに差し戻した
+        self.st.apply({"actor": None, "acts": [{"act": [{"op": "declare", "player": "p2", "kind": "ruled", "text": "#4 ブロックできない"}]},
+                                               {"act": [{"op": "priority", "player": "p2"}]}]})
+        s = self.st.load()
+        self.assertTrue(play.blocks_undecided(s, "p2"))  # 決め直す
+        self.assertEqual(play.autopass(self.st), [])  # 自動でパスしない
+        self.assertEqual(play.waiting_on(self.st.load()), "p2")
+
     def test_card_kinds_tell_lands_spells_and_destinations(self):
         s = self.st.load()
         lines = {"Forest": "Basic Land — Forest", "Grizzly Bears": "Creature — Bear", "Giant Growth": "Instant"}

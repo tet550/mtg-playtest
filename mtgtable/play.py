@@ -175,15 +175,18 @@ BLOCK_STEPS = ("declare_attackers", "declare_blockers")
 
 def blocks_undecided(state: GameState, seat: str) -> bool:
     """攻撃されている seat が、まだブロックを決めていないか。攻撃・ブロックのステップで、seat のブロックが無く、
-    この2つのステップで seat がブロックの依頼（「ブロックする」「ブロックしない」の行）も no_block も出していない。
-    審判が declare_blockers へ進めてから優先権を渡しても、自動パスで飛ばさない（ブロックは GUI・依頼で決める）。"""
+    この2つのステップで seat が no_block も、審判がまだ処理していないブロックの依頼（「ブロックする」「ブロックしない」の行）も
+    出していない。審判が declare_blockers へ進めてから優先権を渡しても、自動パスで飛ばさない（ブロックは GUI・依頼で決める）。
+    審判が処理したのにブロックも no_block も書かれていない依頼（ルールに合わず差し戻した）は数えない（決め直す）。"""
     t = state.turn
     if t.active == seat or t.step not in BLOCK_STEPS or not state.combat.attacks:
         return False
     if any(state.cards[b.blocker].controller == seat for b in state.combat.blocks if b.blocker in state.cards):
         return False
+    last_ruled = max((d.seq for d in state.declarations if d.kind == "ruled"), default=0)
     return not any(d.player == seat and d.turn == t.turn and d.step in BLOCK_STEPS
-                   and (d.kind == "no_block" or d.kind == "intent" and ("ブロック" in d.text or "block" in d.text.lower()))
+                   and (d.kind == "no_block" or d.kind == "intent" and d.seq > last_ruled
+                        and ("ブロック" in d.text or "block" in d.text.lower()))
                    for d in state.declarations)
 
 
