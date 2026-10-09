@@ -189,6 +189,8 @@ def render_view(view: dict) -> str:
                     k in zv for k in ("known_positions", "known_unordered", "cards"))):
                 extra = ", known positions: %d" % zv["known_positions_count"] if zv.get("known_positions_count") else ""
                 out.append("  %s (%d%s)" % (kind, zv["count"], extra))
+                out.extend("    %s (known to %s)" % (_card(c), ", ".join(c["known_to"]))
+                           for c in zv.get("known_positions", []) if c.get("known_to"))
                 continue
             out.extend(_cards_block(kind, zv))
         bf = [c for c in zones["battlefield"]["cards"] if c.get("controller", c["owner"]) == pid]

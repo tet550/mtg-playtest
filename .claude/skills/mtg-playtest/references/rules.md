@@ -121,6 +121,9 @@
 - 戦闘ダメージは同時。受けたダメージはクリンナップまで残る
   → `attack {tap: true}`（警戒は付けない）→ ブロックは防御側の判断で `block` → ダメージは `damage`（プレイヤーはライフが減り、
   クリーチャーには `damage 3`（`until: end_of_turn`）の Note が付く）で書き、状況起因処理を確かめる。
+  プレインズウォーカー・バトルへのダメージは `damage {apply: false}` で記録し、`counter_remove {kind: loyalty | defense}`。
+  忠誠度・守備値は戦場に出たときに `counter_add {kind: loyalty | defense}` で置いておく。
+  プレインズウォーカー・バトルを攻撃するなら `attack {target: <そのカードの id>}`（ブロックするのはそのコントローラー・守る Player）
   先制攻撃があるときは `turn_set {phase: combat, step: first_strike_damage}` → `turn_set {step: combat_damage}`。
   終了ステップで `combat_clear`
 

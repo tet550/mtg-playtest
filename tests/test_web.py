@@ -243,7 +243,12 @@ class PlayServerTest(unittest.TestCase):
         self.assertEqual(self.st.load().zones["p1.hand"].cards[0], mine)  # 盤面は動かない
         self.assertEqual(self.write("request", {"comment": "もう1つ"})[0], 403)  # 審判の処理待ちの間は組み立てない
         self.assertEqual(self.write("declare", {"kind": "pass"})[0], 403)
-        self.assertEqual(self.write("declare", {"kind": "say", "text": "待ってます"})[0], 200)  # 発言はいつでも
+        # 審判の処理待ちの間は、発言・投了・止める場所の変更も受けない（処理が済んでから）
+        self.assertEqual(self.write("declare", {"kind": "say", "text": "待ってます"})[0], 403)
+        self.assertEqual(self.write("declare", {"kind": "concede"})[0], 403)
+        self.assertEqual(self.call("/api/games/g/stops", {"seat": "p1", "stops": ["opp:end"]}, self.token)[0], 403)
+        self.judge([])
+        self.assertEqual(self.write("declare", {"kind": "say", "text": "どうぞ"})[0], 200)
 
     def test_mulligan_waits_for_the_judge(self):
         self.write("declare", {"kind": "mulligan"})

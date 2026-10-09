@@ -142,6 +142,8 @@ class Viewer:
     def set_stops(self, game: str, seat: str, token: Optional[str], body: dict) -> dict:
         """止める場所（非公開。卓の記録には載せず、本人と審判のプロンプトにだけ出る）。"""
         st = self.authorize(game, seat, token, write=True)
+        if play.waiting_on(st.load()) == play.JUDGE:  # 審判が今の止める場所で処理している間は変えない
+            raise Forbidden("the judge is processing; change the stops after the ruling")
         return {"stops": play.set_stops(st, seat, body.get("stops"))}
 
     @staticmethod

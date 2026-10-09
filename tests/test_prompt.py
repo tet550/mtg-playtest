@@ -154,6 +154,17 @@ class JudgeFlowTest(unittest.TestCase):
         self.assertEqual((d.cards, d.text), ([b], "%s <%s>" % (b, s.cards[b].name)))
         self.assertIn("選んだカード: %s <%s>" % (b, s.cards[b].name), prompt.judge_message(self.st))
 
+    def test_judge_sees_what_was_revealed(self):
+        # 探索などで一番上を公開したら、審判はそのカードを記録と盤面で見られる（Player に名前を聞かずに続きを処理する）
+        self.st.apply({"actor": "p1", "acts": [{"act": [{"op": "reveal", "card": {"zone": "p1.library", "top": 1}}]}]})
+        s = self.st.load()
+        top = s.zones["p1.library"].cards[0]
+        name = "%s <%s>" % (top, s.cards[top].name)
+        judge = prompt.judge_message(self.st)
+        self.assertIn("→ reveal %s to all" % name, judge)
+        self.assertIn("%s (index 0) (known to p1, p2)" % name, judge)
+        self.assertIn("→ reveal %s to all" % name, prompt.user_message(self.st, "p2"))
+
     def test_judge_sees_the_log_from_its_last_ruling(self):
         for pid in ("p1", "p2"):
             self.st.apply({"actor": pid, "acts": [{"act": [{"op": "declare", "kind": "keep"}]}]})

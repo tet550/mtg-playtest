@@ -85,10 +85,11 @@ description: mtgtable（このリポジトリのデジタル卓）で MTG の対
   詳細は [README](../../../README.md#windows--powershell-の-python-起動)。
 
 ```bash
-python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p2=decklists/<B>.txt --seed <乱数> --first <コイントスの結果>
+python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p2=decklists/<B>.txt --seed <乱数>
 ```
 
-- seed と先攻はその場で乱数で決め、報告に書く
+- seed はその場で乱数で決め、報告に書く。先攻は `--first` を省くと seed で無作為に決まる（`new` の出力の `first`）。
+  先攻を指定したいときだけ `--first p2` を付ける
 - `new` が両デッキのオラクル・キャッシュ（`cards/decks/`）を用意する。キャッシュに無いカードだけ取りに行く
 - **各 Player は自分のデッキの一覧を最初に1回読む**: `oracle --deck decklists/<A>.txt --no-sideboard`。
   カードの効果は記憶で書かず、この一覧（またはオラクル）で確かめる

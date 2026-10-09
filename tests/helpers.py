@@ -20,9 +20,9 @@ DECK_B = """Deck
 """
 
 
-def game(seed=1, hand=7, **kw):
+def game(seed=1, hand=7, first="p1", **kw):
     decks = {"p1": parse_decklist(DECK_A, "green"), "p2": parse_decklist(DECK_B, "red")}
-    return Engine(new_game(decks, seed=seed, hand=hand, **kw))
+    return Engine(new_game(decks, seed=seed, hand=hand, first=first, **kw))
 
 
 def ok(engine, actor, *ops, **act):

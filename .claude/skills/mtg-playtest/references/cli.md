@@ -19,7 +19,7 @@
 
 | コマンド | 内容 | 主なオプション |
 |---|---|---|
-| `new GAME --deck p1=FILE [--deck p2=FILE]` | 対局を作る。デッキのオラクル・キャッシュも用意する。ゲーム前（turn 0 / `pregame`）から始まる。`--deck` が1つなら一人回し | `--seed N` `--first p2` `--hand 7` `--life 20` `--policy p1=omniscient` `--offline` `--force` |
+| `new GAME --deck p1=FILE [--deck p2=FILE]` | 対局を作る。デッキのオラクル・キャッシュも用意する。ゲーム前（turn 0 / `pregame`）から始まる。`--deck` が1つなら一人回し。先攻は `--first` を省くと seed で無作為（出力の `first`） | `--seed N` `--first p2` `--hand 7` `--life 20` `--policy p1=omniscient` `--offline` `--force` |
 | `view GAME --as pN` | Player View。ライブラリー・墓地は枚数だけ、サイドボードは出さない | `--no-names` `--library` `--graveyard` `--sideboard` `--full` `--json` `--oracle` |
 | `apply GAME [FILE] --as pN` | Batch を適用（FILE 省略で標準入力） | `--view`（と view の表示オプション） |
 | `ids GAME --as pN [#c12 ...]` | id とカード名の対応（知っているカードだけ。省略で手札・戦場・スタック・墓地・追放） | |

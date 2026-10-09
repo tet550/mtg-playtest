@@ -259,12 +259,15 @@ def _detach_object(ctx: Context, card: Card, keep: set) -> None:
 
 
 def _detach_from_battlefield(ctx: Context, card: Card) -> None:
-    """戦場を離れたカードを起こし、表に戻し、戦闘から外す。"""
+    """戦場を離れたカードを起こし、表に戻し、戦闘から外す。
+
+    攻撃されていたプレインズウォーカー・バトルが離れても、攻撃クリーチャーは攻撃したまま（CR 506.4。
+    戦闘ダメージを与えるかは AI が判断する）。攻撃先はもう戦場に無いカードを指す。"""
     s = ctx.state
     card.tapped = False
     card.face = 0
     before = len(s.combat.attacks) + len(s.combat.blocks)
-    s.combat.attacks = [a for a in s.combat.attacks if a.attacker != card.id and a.target != card.id]
+    s.combat.attacks = [a for a in s.combat.attacks if a.attacker != card.id]
     live = {a.attacker for a in s.combat.attacks}
     s.combat.blocks = [b for b in s.combat.blocks
                        if b.blocker != card.id and b.attacker != card.id and b.attacker in live]
@@ -779,6 +782,8 @@ def op_attack(ctx: Context, p: dict) -> dict:
     s = ctx.state
     attackers = resolve_cards(ctx, p.get("attacker", p.get("attackers")))
     target = _single(ctx, p.get("target"))
+    if target not in s.players and not (target in s.cards and s.cards[target].zone == "battlefield"):
+        raise OperationError("attack target %s is not a player or a permanent on the battlefield" % target)
     for a in attackers:
         if s.cards[a].zone != "battlefield":
             raise OperationError("%s is not on the battlefield" % a)
@@ -1077,10 +1082,17 @@ def op_step(ctx: Context, p: dict) -> dict:
 
 
 def op_priority(ctx: Context, p: dict) -> dict:
-    """優先権を持つ Player を設定する。"""
-    pid = p.get("player")
-    ctx.state.turn.priority = _player(ctx, pid) if pid else None
-    ctx.event("priority -> %s" % ctx.state.turn.priority)
+    """優先権を持つ Player を設定する。
+
+    優先権を持っていた Player から別の Player へ渡すのは、持っていた Player のパスと同じ（優先権はパスでしか移らない）。
+    そのパスも記録するので、渡された Player がパスすると「全員が続けてパスした」になり、持っていた Player に戻らない。"""
+    s = ctx.state
+    pid = _player(ctx, p.get("player")) if p.get("player") else None
+    holder = s.turn.priority
+    if holder and pid and holder != pid and holder in s.players and pid not in s.turn.passed:
+        _record_pass(ctx, holder, "priority -> %s" % pid)
+    s.turn.priority = pid
+    ctx.event("priority -> %s" % s.turn.priority)
     return {}
 
 
@@ -1201,9 +1213,24 @@ def op_declare(ctx: Context, p: dict) -> dict:
             raise OperationError("cards must be distinct candidates of question #%d: %s" % (ask.seq, ", ".join(ask.cards)))
         if not ask.pick[0] <= len(cards) <= ask.pick[1]:
             raise OperationError("question #%d asks for %d-%d card(s)" % (ask.seq, ask.pick[0], ask.pick[1]))
+    extra = {}
+    if kind == "intent":  # 依頼の行動の行と「その後」（審判が途中で止めた後、残りを本人に戻すのに使う）
+        plan = p.get("plan") or []
+        if not isinstance(plan, list) or not all(isinstance(x, dict) for x in plan):
+            raise OperationError("plan must be a list of objects")
+        extra = {"plan": [dict(x) for x in plan], "then": str(p.get("then") or "")}
+    if kind == "ruled" and (p.get("of") is not None or p.get("rest") is not None):
+        # 審判が計画 of（intent の seq）を処理した印と、どこまで書いたか（残りの行の番号。省略は報告なし）
+        rest = p.get("rest")
+        if rest is not None and (not isinstance(rest, list)
+                                 or not all(isinstance(i, int) and not isinstance(i, bool) for i in rest)):
+            raise OperationError("rest must be a list of plan line numbers")
+        if not isinstance(p.get("of"), int) or isinstance(p.get("of"), bool):
+            raise OperationError("of must be the seq of the intent (the plan)")
+        extra = {"of": p["of"], "rest": sorted(set(rest)) if rest is not None else None}
     d = Declaration(seq=len(s.declarations) + 1, player=pid, kind=kind, text=str(p.get("text", "")),
                     turn=s.turn.turn, step=s.turn.step, phase=s.turn.phase, choices=[str(c) for c in choices],
-                    cards=cards, pick=pick)
+                    cards=cards, pick=pick, **extra)
     s.declarations.append(d)
     if kind == "concede":
         s.players[pid].status = "conceded"

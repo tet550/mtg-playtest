@@ -139,6 +139,11 @@ def _entry_line(e: dict, viewer: Optional[str] = None) -> str:
         text = "[proxy by %s] %s" % (e["proxy_by"], text)
     decl = [s["op"] for s in e["steps"] if s["op"]["op"] == "declare" and s["op"].get("kind") in
             ("intent", "ask", "answer", "ruled")]
+    for st in e["steps"]:  # 公開・見る の結果（どのカードだったか）は op の要約に出ないので、見てよい Player には出す
+        op = st["op"]
+        to = op.get("to", "all")
+        if op["op"] == "reveal" and (viewer is None or to == "all" or viewer in ([to] if isinstance(to, str) else to))                 or op["op"] == "look" and (viewer is None or op.get("player", e["actor"]) == viewer):
+            text += "".join("  → %s" % ev for ev in st.get("events", []))
     for d in decl:  # 審判とのやりとりは中身も出す（依頼・回答・質問は本人と審判だけ。ruled は公開）
         if viewer is not None and d["kind"] in play.PRIVATE_KINDS and d.get("player", e["actor"]) != viewer:
             continue
@@ -195,6 +200,14 @@ def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode:
     opp = _opponent_oracle(state, seat)
     if opp:
         out += ["", "# 相手のカードのオラクル（デッキ一覧に無いもの）", opp]
+    back = play.resume(state, seat)
+    if back:
+        out += ["", "# 途中で止まったあなたの計画（依頼 #%d の残り。相手の割り込みなどで止まった。続けるなら、直して request で"
+                    "送り直す）" % back["of"]]
+        out += ["行 %d: %s" % (i, quote(str(x.get("text", "")))) for i, x in enumerate(back["lines"], 1)]
+        out.append("その後: %s" % play._then_text(back["then"]))
+        if back["unknown"]:
+            out.append("（審判がどこまで処理したか分からない。盤面で済んだ行を確かめて外す）")
     asks = [d for d in play.requests(state)["asks"] if d.player == seat]
     if asks:
         out += ["", "# 審判からの質問（answer で答える）"]
@@ -265,8 +278,17 @@ def judge_message(store: GameStore, error: Optional[str] = None) -> str:
         top = state.stack.items[0]
         out.append("全員がパスした。スタックの一番上（%s、コントローラー %s）を解決する。解決の後、次に優先権を持つ Player が"
                    "対応しないと分かれば、その Player の分もパスして進める（止める場所・判断の決まりに従う）" % (top.id, top.controller))
+    elif play.continue_pending(state):
+        d = play.continue_pending(state)
+        out.append("相手は対応しなかった。%s の計画 #%d（下の「進行中の計画」）の続きを処理する: まだ書いていない行と"
+                   "「その後」（%s）。済んだ行は書き直さない" % (d.player, d.seq, play._then_text(play.intent_then(d))))
+    elif play.turn_start_pending(state):
+        out.append("%s のターンが終わった。%s を actor にして次のターンを始める（止める理由が無ければ turn_start で to は main1）"
+                   % (state.turn.active, play.next_turn_player(state)))
     elif not req["pending"]:
         out.append("（なし）")
+    if not play.turn_start_pending(state):  # ターンが終わった後は、終わったターンの計画を見せない
+        out += _plan_section(state, {d.seq for d in req["pending"]})
     standing = standing_requests(state, req["pending"])
     if standing:
         out += ["", "# 先の指示（このターンと前のターンの処理済みの依頼。選択を聞く前に見る）"]
@@ -280,6 +302,25 @@ def judge_message(store: GameStore, error: Optional[str] = None) -> str:
     out += ["", "# 盤面（全情報）", render_view(view).rstrip(),
             "", "# 依頼", "上の依頼を処理し、JSON のコード・ブロック（batch・ask・message）で返す。"]
     return "\n".join(out) + "\n"
+
+
+def _plan_section(state, pending=()) -> list:
+    """審判に見せる、アクティブ・プレイヤーの進行中の計画（行の番号と、まだ書いていない行・割り込み）。"""
+    plan = play.plan_in_progress(state)
+    if plan is None or not plan.plan:
+        return []
+    rest = play.plan_rest(state, plan)
+    out = ["", "# 進行中の計画（%s の依頼 #%d。止めるときは返答の rest に、まだ書いていない行の番号を書く）" % (plan.player, plan.seq)]
+    if plan.seq in pending:
+        out.append("上の「処理する依頼」#%d の行動（番号は行動の行の番号）" % plan.seq)
+    else:
+        out += ["行 %d: %s" % (i, quote(str(x.get("text", "")))) for i, x in enumerate(plan.plan, 1)]
+        out.append("その後: %s" % play._then_text(play.intent_then(plan) or "continue"))
+    out.append("まだ書いていない行: %s" % ("分からない（記録で確かめる）" if rest is None
+                                          else ", ".join(map(str, rest)) or "なし（全部書いた）"))
+    if play.interrupted(state, plan):
+        out.append("相手が割り込んだ。この計画の残りは %s が決め直す（あなたは続けない）" % plan.player)
+    return out
 
 
 STANDING = 8  # 審判に見せる先の指示の上限（新しいものから）
@@ -548,6 +589,11 @@ def judge_acts(state, data: dict) -> list:
         default, what = state.turn.active, "ゲーム開始"  # ゲーム開始の処理は先攻の名前で印を付ける
     elif play.resolve_pending(state):
         default, what = state.stack.items[0].controller, "スタックの解決"  # 全員パスの後の解決
+    elif play.continue_pending(state):
+        d = play.continue_pending(state)
+        default, what = d.player, play.continued_label(d.seq)  # 途中で止めた依頼の「その後」（ターン終了など）
+    elif play.turn_start_pending(state):
+        default, what = play.next_turn_player(state), "ターン開始"  # クリンナップの後、次のターンを始める
     else:
         raise ValueError("there is no request for the judge")
     acts = []
@@ -573,8 +619,27 @@ def judge_acts(state, data: dict) -> list:
             acts.append({**g, "actor": actor})
     done = what
     message = str(data.get("message") or "").strip()
-    acts.append({"act": [{"op": "declare", "player": default, "kind": "ruled",
-                          "text": "%s %s" % (done, message) if message else done}], "label": "審判: %s を処理" % done})
+    ruled = {"op": "declare", "player": default, "kind": "ruled", "text": "%s %s" % (done, message) if message else done}
+    plan = play.plan_in_progress(state)
+    rest = data.get("rest")
+    # 進行中の計画そのものを処理した（本人の依頼・その続き・本人の呪文の解決・計画の途中で聞いた質問への本人の回答）なら、
+    # その印と、どこまで書いたか。相手の依頼（割り込み）の処理では印を付けない（計画は進んでいない）
+    top = state.stack.items[0] if state.stack.items else None
+    last = play.plan_ruled(state, plan) if plan is not None else None
+    answered = last is not None and any(d.kind == "answer" and d.player == plan.player and d.seq > last.seq
+                                        for d in req["pending"])
+    if plan is not None and (any(d.seq == plan.seq for d in req["pending"]) or what == play.continued_label(plan.seq)
+                             or answered or (not req["pending"] and top is not None and top.controller == plan.player)):
+        ruled["of"] = plan.seq
+        if plan.plan and rest is not None:
+            if not isinstance(rest, list) or not all(isinstance(i, int) and not isinstance(i, bool) for i in rest):
+                raise ValueError("rest must be a list of the plan's line numbers not written yet (e.g. [4, 5]); [] if all written")
+            ruled["rest"] = [i for i in rest if 1 <= i <= len(plan.plan)]
+        elif plan.plan and not data.get("ask"):
+            # rest を書かずに質問もしていない: 止めていない（全部書いた）として扱う。前の rest のままにすると、
+            # 済んだ行が「残り」として本人の下書きに戻ってしまう
+            ruled["rest"] = []
+    acts.append({"act": [ruled], "label": "審判: %s を処理" % done})
     ask = data.get("ask")
     if ask:
         if not isinstance(ask, dict) or ask.get("to") not in state.players or not ask.get("text"):

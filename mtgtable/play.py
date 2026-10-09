@@ -281,6 +281,159 @@ def resolve_pending(state: GameState) -> bool:
     return judged_game(state) and not state.turn.priority and bool(state.stack.items) and not requests(state)["asks"]
 
 
+def next_turn_player(state: GameState) -> Optional[str]:
+    """クリンナップで止まっているとき、次のターンの Player（そうでなければ None）。"""
+    t = state.turn
+    if t.turn == 0 or t.step != "cleanup" or not t.active:
+        return None
+    order = state.player_order
+    return order[(order.index(t.active) + 1) % len(order)]
+
+
+def turn_start_pending(state: GameState) -> bool:
+    """審判のいる対局で、クリンナップで止まっている（審判が次のターンを始める。Player の依頼を待たない）。"""
+    t = state.turn
+    req = requests(state)
+    return (judged_game(state) and next_turn_player(state) is not None and not t.priority
+            and not state.stack.items and not req["pending"] and not req["asks"])
+
+
+def request_then(text: str) -> Optional[str]:
+    """依頼の文（request_text）の「その後: …」から then を読み戻す（end_turn / ステップ名など。読めなければ None）。"""
+    m = re.search(r"(?m)^その後: (.+)$", text or "")
+    if not m:
+        return None
+    word = m.group(1).strip()
+    for k, v in THEN_JA.items():
+        if word == v:
+            return k
+    step = re.match(r"^(\w+) まで進める$", word)
+    return step.group(1) if step and step.group(1) in STEP_THEN else None
+
+
+def continued_label(seq: int) -> str:
+    """審判が依頼 #seq の続きを処理した印（ruled の文の頭。prompt.judge_acts が付ける）。"""
+    return "#%d の続き" % seq
+
+
+# ---- 進行中の計画（アクティブ・プレイヤーの依頼）と割り込み
+#
+# 依頼（intent）の行動の行は、審判が途中で止めることがある（相手の止める場所・ブロック・引いたカードを見て決める所）。
+# 審判は止めるとき、まだ書いていない行の番号を返答の rest で知らせ、卓は ruled に of（計画の seq）と rest を残す。
+# - 相手が対応しなかった（パス・ブロックしない）: 審判が残りと「その後」を続ける（continue_pending）
+# - 相手が割り込んだ（呪文・能力・ブロックなどの依頼）・本人が決める所で止めた: 続けない。本人の番になったら、
+#   残りの行と「その後」を本人に戻す（resume。GUI は下書きに戻し、AI はプロンプトで読む）。直してから送り直せる
+
+def plan_in_progress(state: GameState):
+    """このターンのアクティブ・プレイヤーの最後の依頼（無ければ None）。"""
+    t = state.turn
+    return max((d for d in state.declarations if d.kind == "intent" and d.player == t.active and d.turn == t.turn),
+               key=lambda d: d.seq, default=None)
+
+
+def plan_ruled(state: GameState, intent, reported: bool = False):
+    """審判が計画 intent を最後に処理した ruled（reported なら、残りを知らせたもの）。無ければ None。"""
+    return max((d for d in state.declarations if d.kind == "ruled" and d.of == intent.seq
+                and (d.rest is not None or not reported)), key=lambda d: d.seq, default=None)
+
+
+def plan_rest(state: GameState, intent) -> Optional[list]:
+    """計画のまだ書いていない行の番号。行が無ければ []、審判が知らせていなければ None（分からない）。"""
+    if not intent.plan:
+        return []
+    r = plan_ruled(state, intent, reported=True)
+    return [i for i in r.rest if 1 <= i <= len(intent.plan)] if r else None
+
+
+def intent_then(intent) -> Optional[str]:
+    return intent.then or request_then(intent.text)
+
+
+def then_pending(state: GameState, intent) -> bool:
+    """依頼の「その後」（ターン終了・ステップまで進める）がまだ済んでいないか。"""
+    t = state.turn
+    then = intent_then(intent)
+    if then == "end_turn":
+        return t.step != "cleanup"
+    now = _step_name(t)
+    return then in STEP_THEN and now in STEP_THEN and STEP_THEN.index(then) > STEP_THEN.index(now)
+
+
+def _no_action(d) -> bool:
+    """相手の依頼が、盤面に割り込まないもの（行動の行が無い・「ブロックしない」だけ）か。"""
+    if d.plan:
+        return all("ブロックしない" in str(x.get("text", "")) for x in d.plan)
+    return "ブロックしない" in d.text or not re.search(r"(?m)^行動:", d.text)
+
+
+def interrupted(state: GameState, intent) -> bool:
+    """計画を審判が止めた後（知らせが無ければ依頼の後）に、相手が割り込む依頼（呪文・能力・ブロックなど）を出したか。"""
+    r = plan_ruled(state, intent)
+    since = r.seq if r else intent.seq
+    return any(d.kind == "intent" and d.player != intent.player and d.seq > since and not _no_action(d)
+               for d in state.declarations)
+
+
+def plan_unfinished(state: GameState, intent) -> bool:
+    rest = plan_rest(state, intent)
+    return bool(rest) or then_pending(state, intent)
+
+
+def continue_pending(state: GameState) -> Optional[object]:
+    """審判のいる対局で、アクティブ・プレイヤーの計画（依頼）が途中で、相手が対応しなかった（パス・ブロックしない）なら、
+    その依頼（審判が残りの行と「その後」を続ける）。スタックが空で、全員がパスしたか、優先権がアクティブ・プレイヤーに
+    戻った所で。
+
+    相手が割り込んだら続けない（本人に戻す: resume）。審判が止めた後に相手がパスしていなければ（本人が決める所で
+    止めた）続けない。審判が続きを処理して止めたなら（最後の ruled がその依頼の続き）、その後に誰かがパスするまでは
+    呼ばない（同じ所で審判を呼び続けない）。"""
+    t = state.turn
+    if (t.turn == 0 or state.stack.items or t.step == "cleanup" or t.priority not in (None, t.active)
+            or not judged_game(state)):
+        return None
+    req = requests(state)
+    if req["pending"] or req["asks"]:
+        return None
+    intent = plan_in_progress(state)
+    if intent is None or not plan_unfinished(state, intent) or interrupted(state, intent):
+        return None
+    decls = state.declarations
+    r = plan_ruled(state, intent)
+    since = r.seq if r else intent.seq
+    if not any(d.player != t.active and d.kind in ("pass", "no_block") and d.seq > since for d in decls):
+        return None  # 相手の応答を待って止めたのではない（本人が決める所で止めた）
+    last_ruled = max((d for d in decls if d.kind == "ruled"), key=lambda d: d.seq, default=None)
+    tried = last_ruled is not None and last_ruled.text.startswith(continued_label(intent.seq))
+    if tried and not any(d.kind == "pass" and d.seq > last_ruled.seq for d in decls):
+        return None
+    return intent
+
+
+def resume(state: GameState, seat: str) -> Optional[dict]:
+    """seat の計画が途中で止まり（相手の割り込み・本人が決める所）、seat の番になったなら、残りの行と「その後」。
+    {"of", "id", "lines", "then", "unknown"}。unknown: 審判がどこまで書いたか知らせていない（行は全部を返す）。"""
+    t = state.turn
+    if t.turn == 0 or t.active != seat or state.stack.items or waiting_on(state) != seat:
+        return None
+    intent = plan_in_progress(state)
+    if intent is None or intent.player != seat:
+        return None
+    rest = plan_rest(state, intent)
+    unknown = rest is None
+    if unknown:
+        if not interrupted(state, intent):
+            return None
+        rest = list(range(1, len(intent.plan) + 1))
+    then = intent_then(intent) or "continue"
+    if then != "continue" and then != "pass" and not then_pending(state, intent):
+        then = "continue"
+    if not rest and then in ("continue", "pass"):
+        return None
+    r = plan_ruled(state, intent)
+    return {"of": intent.seq, "id": "%d:%d" % (intent.seq, r.seq if r else 0),
+            "lines": [intent.plan[i - 1] for i in rest], "then": then, "unknown": unknown}
+
+
 def game_start_pending(state: GameState) -> bool:
     """全員がキープし、審判がまだゲーム開始の処理（マリガンで下に置くカード・開始時の手札から使うカード）をしていないか。
     審判の処理は、最後のキープより後の ruled で終わったことになる。"""
@@ -299,9 +452,11 @@ def waiting_on(state: GameState) -> Optional[str]:
 
     - 審判への依頼・回答が未処理なら審判。審判の質問に未回答なら、質問された Player
     - 優先権を持つ Player がいればその Player（呪文を唱えた後に相手へ渡すのは pass）
+    - 全員がパスしてスタックが空で、アクティブ・プレイヤーの依頼の「その後」が済んでいなければ審判（continue_pending）
     - 全員がパスして優先権が空なら、スタックの一番上のコントローラー（解決する）。スタックが空ならアクティブ・
       プレイヤー（ステップを進める）
-    - クリンナップで止まっていれば、次のターンの Player（turn_start する）
+    - クリンナップで止まっていれば、審判のいる対局では審判（次のターンを始める: turn_start_pending）、
+      審判のいない対局では次のターンの Player（turn_start する）
     - ゲーム前は、先攻からターン順で、まだキープを宣言していない Player。全員キープしたら審判（ゲーム開始の処理）、
       その後は先攻
     """
@@ -324,13 +479,14 @@ def waiting_on(state: GameState) -> Optional[str]:
         return JUDGE if game_start_pending(state) else t.active
     if t.priority:
         return t.priority
+    if continue_pending(state):
+        return JUDGE  # 依頼の「その後」（ターン終了など）の続きを審判が処理する
     if state.stack.items:
         # 全員がパスした。審判のいる対局（ruled がある）では、解決は審判がする。審判のいない対局ではコントローラー
         return JUDGE if judged_game(state) else state.stack.items[0].controller
-    if t.step == "cleanup" and t.active:
-        order = state.player_order
-        return order[(order.index(t.active) + 1) % len(order)]
-    return t.active
+    if turn_start_pending(state):
+        return JUDGE
+    return next_turn_player(state) or t.active
 
 
 def decorate(view: dict, state: GameState) -> dict:
@@ -348,12 +504,32 @@ def decorate(view: dict, state: GameState) -> dict:
         "pending": [{"seq": d.seq, "player": d.player, "kind": d.kind, "text": d.text} for d in req["pending"] if mine(d)],
         "asks": [dict({"seq": d.seq, "player": d.player, "text": d.text, "choices": d.choices},
                       **({"cards": d.cards, "pick": d.pick} if d.cards else {})) for d in req["asks"] if mine(d)]}
+    if viewer in state.players:
+        view["resume"] = resume(state, viewer)  # 途中で止まった自分の計画の残り（GUI が下書きに戻す）
     view["card_kinds"] = card_kinds(view, state)
     for c in view["zones"]["battlefield"].get("cards") or []:
         pt = base_pt(state, c.get("id"))
         if pt:
             c["base_pt"] = pt
+        kind = attackable(state, c.get("id"))
+        if kind:
+            c["attackable"] = kind
     return view
+
+
+def attackable(state: GameState, cid: Optional[str]) -> Optional[str]:
+    """戦場のカードが攻撃先になりうる種類か: 上を向いている面のタイプ行が Planeswalker なら "planeswalker"、
+    Battle なら "battle"。GUI の攻撃先の候補用（攻撃できるか・誰が守るかの判断はしない。審判が行う）。"""
+    card = state.cards.get(cid) if cid else None
+    if card is None or card.face_down or not card.type_line:
+        return None
+    faces = card.type_line.split("//")
+    face = faces[card.face] if 0 <= card.face < len(faces) else faces[0]
+    if "Planeswalker" in face:
+        return "planeswalker"
+    if "Battle" in face:
+        return "battle"
+    return None
 
 
 _PRINTED_PT: dict = {}  # (名前, 面) → P/T か ()（P/T が無い）。キャッシュに無いカードは覚えない（後で取得されうる）
@@ -421,7 +597,8 @@ PLAN_KINDS = ("play_land", "cast", "activate", "attack", "block", "resolve", "ta
               "draw", "look", "reveal", "mill", "shuffle", "search", "step", "other")  # step: to のステップまで進める
 STEP_THEN = ("upkeep", "draw", "main1", "beginning_of_combat", "declare_attackers", "declare_blockers",
              "combat_damage", "end_of_combat", "main2", "end")
-THEN_JA = {"continue": "続ける（まだ自分の番）", "pass": "パス（相手に渡す）", "end_turn": "ターン終了",
+THEN_JA = {"continue": "続ける（まだ自分の番）", "pass": "パス（相手に渡す）",
+           "resolve": "解決まで（相手が対応しなければ、積んだものを解決して自分の番を続ける）", "end_turn": "ターン終了",
            "turn_start": "自分のターンを始める"}
 DECLARE_KINDS = ("keep", "mulligan", "pass", "concede", "say")
 MAX_PLAN = 40
@@ -438,7 +615,9 @@ def _ref_ok(state: GameState, seat: str, ref: str, cards_only: bool) -> bool:
         return info.can_reference(state, seat, ref)
     if cards_only:
         return False
-    return ref in state.players or any(it.id == ref for it in state.stack.items)
+    # マナ・プールのマナ（だれにも見える）は、使う行の対象に書ける
+    return (ref in state.players or any(it.id == ref for it in state.stack.items)
+            or any(m.id == ref for p in state.players.values() for m in p.mana_pool.mana))
 
 
 def _refs(state: GameState, seat: str, value, what: str, cards_only: bool) -> list:
@@ -570,6 +749,8 @@ def seat_declare(state: GameState, seat: str, body: dict) -> tuple:
         if state.turn.turn == 0 or state.turn.priority != seat:
             raise Refused("%s does not have priority" % seat)
         return "パス", [{"op": "pass"}]
+    if waiting_on(state) == JUDGE:  # 審判の処理中は何も書かない（処理が済んでから）
+        raise Refused("the judge is processing; wait for the ruling")
     label = {"concede": "投了", "say": "発言"}[kind]
     return label, [{"op": "declare", "kind": kind, "text": text}]
 

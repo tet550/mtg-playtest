@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, carddb, info, play  # noqa: E402
+from mtgtable import GameStore, carddb, info, play, prompt  # noqa: E402
 from mtgtable.store import StaleCursor  # noqa: E402
 from helpers import game  # noqa: E402
 
@@ -56,7 +56,15 @@ class PlayTest(unittest.TestCase):
         self.apply("p2", [{"op": "pass"}])
         self.assertEqual(play.waiting_on(self.st.load()), play.JUDGE)  # 全員パス: 審判のいる対局では審判が解決する
         self.apply("p1", [{"op": "stack_remove", "card_to": "battlefield"}], {"proc": "turn_end"})
-        self.assertEqual(play.waiting_on(self.st.load()), "p2")  # クリンナップ: 次のターンの Player
+        s = self.st.load()
+        self.assertTrue(play.turn_start_pending(s))
+        self.assertEqual(play.waiting_on(s), play.JUDGE)  # クリンナップ: 審判が次のターンを始める（依頼を待たない）
+        acts = prompt.judge_acts(s, {"batch": {"acts": [{"actor": "p2", "proc": "turn_start"}]}})[1]
+        self.assertEqual(acts[-1]["act"][0]["player"], "p2")  # ターン開始の印は次のターンの Player の名前で
+        self.st.apply({"actor": None, "acts": acts})
+        s = self.st.load()
+        self.assertEqual((s.turn.active, s.turn.step), ("p2", "main"))
+        self.assertEqual(play.waiting_on(s), "p2")
         self.apply("p2", [{"op": "declare", "kind": "concede"}])
         self.assertIsNone(play.waiting_on(self.st.load()))  # 決着
 
@@ -96,6 +104,14 @@ class PlayTest(unittest.TestCase):
         plan = ops[0]["plan"]
         self.assertEqual(plan[0], {"kind": "step", "text": "戦闘開始 へ進む", "to": "beginning_of_combat"})
         self.assertEqual(plan[1], {"kind": "step", "text": "どこか へ進む"})  # 知らないステップは文だけ（審判が読む）
+
+    def test_plan_line_can_target_floating_mana(self):
+        self.st.apply({"actor": "p1", "acts": [{"act": [{"op": "mana_add", "player": "p1", "color": "G", "amount": 2}]}]})
+        s = self.st.load()
+        mid = s.players["p1"].mana_pool.mana[0].id
+        _, ops = play.seat_request(s, "p1", {"plan": [
+            {"kind": "other", "targets": [mid], "count": 1, "text": "マナ・プールの {G} を 1 使う"}]})
+        self.assertEqual(ops[0]["plan"][0]["targets"], [mid])
 
     def test_stops_are_skipped_when_the_seat_can_do_nothing(self):
         cards = tempfile.TemporaryDirectory()
@@ -137,6 +153,158 @@ class PlayTest(unittest.TestCase):
                 os.environ["MTG_CARDS_DIR"] = old
             cards.cleanup()
 
+    def test_end_turn_continues_after_the_opponent_passes_at_the_stop(self):
+        self.apply("p1", [{"op": "declare", "kind": "keep"}])
+        self.apply("p2", [{"op": "declare", "kind": "keep"}])
+        self.apply("p1", {"proc": "turn_start", "to": "main1"})
+        self.apply("p1", [{"op": "declare", "kind": "intent", "text": play.request_text([], "end_turn", "")}])
+        self.assertEqual(play.request_then(play.request_text([], "end_turn", "")), "end_turn")
+        self.assertEqual(play.request_then(play.request_text([], "main2", "")), "main2")
+        # 審判が終了ステップで（相手の止める場所 opp:end）、priority で相手に渡して止めた
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p1", "act": [{"op": "step", "to": "end"}, {"op": "priority", "player": "p2"}]},
+            {"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "止めた"}]}]})
+        self.assertEqual(play.waiting_on(self.st.load()), "p2")
+        self.apply("p2", [{"op": "pass"}])
+        s = self.st.load()
+        self.assertIsNone(s.turn.priority)  # p1 は渡した時にパスしていた: p1 に戻らない
+        self.assertEqual(play.continue_pending(s).player, "p1")
+        self.assertEqual(play.waiting_on(s), play.JUDGE)  # 「ターン終了」の続きは審判が処理する（もう一度押させない）
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p1", "proc": "turn_end"},
+            {"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "続き"}]}]})
+        self.assertEqual(play.waiting_on(self.st.load()), play.JUDGE)  # クリンナップ: 審判が次のターンを始める
+
+    def test_plan_continues_after_the_judge_writes_the_defenders_no_block(self):
+        # g1 T7: 攻撃 → メイン2 で唱える → ターン終了 の依頼。ブロックで止め、審判が「ブロックしない」とパスを書いて止めた
+        self.apply("p1", [{"op": "declare", "kind": "keep"}])
+        self.apply("p2", [{"op": "declare", "kind": "keep"}])
+        self.apply("p1", {"proc": "turn_start", "to": "main1"})
+        self.apply("p1", [{"op": "declare", "kind": "intent", "text": play.request_text([], "end_turn", "攻撃してメイン2で唱える")}])
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p1", "act": [{"op": "step", "to": "declare_blockers"}, {"op": "priority", "player": "p2"}]},
+            {"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "ブロックで止めた"}]}]})
+        self.apply("p2", [{"op": "declare", "kind": "intent", "text": "行動:\n1. ブロックしない\nその後: パス（相手に渡す）"}])
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p2", "act": [{"op": "declare", "kind": "no_block"}, {"op": "pass"}]},
+            {"act": [{"op": "declare", "player": "p2", "kind": "ruled", "text": "#5"}]}]})
+        s = self.st.load()
+        self.assertIsNone(s.turn.priority)
+        self.assertEqual(play.waiting_on(s), play.JUDGE)  # p1 に何も押させずに、審判が依頼の続きを処理する
+        # 審判が続きを処理して（何も書かずに）止めたら、もう呼ばない
+        self.st.apply({"actor": None, "acts": [{"act": [{"op": "declare", "player": "p1", "kind": "ruled",
+                                                         "text": play.continued_label(play.continue_pending(s).seq)}]}]})
+        self.assertEqual(play.waiting_on(self.st.load()), "p1")
+
+    def _plan_stopped_at_blocks(self):
+        """p1: 攻撃 → メイン2 で唱える → ターン終了 の計画。審判が攻撃まで書き、ブロックで止めた（残りは行 2）。"""
+        self.apply("p1", [{"op": "declare", "kind": "keep"}])
+        self.apply("p2", [{"op": "declare", "kind": "keep"}])
+        self.apply("p1", {"proc": "turn_start", "to": "main1"})
+        plan = [{"kind": "attack", "text": "攻撃する"}, {"kind": "cast", "text": "メイン2 で唱える"}]
+        self.apply("p1", [{"op": "declare", "kind": "intent", "text": play.request_text(plan, "end_turn", ""),
+                           "plan": plan, "then": "end_turn"}])
+        seq = play.plan_in_progress(self.st.load()).seq
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p1", "act": [{"op": "step", "to": "declare_blockers"}, {"op": "priority", "player": "p2"}]},
+            {"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "ブロックで止めた", "of": seq, "rest": [2]}]}]})
+        return seq
+
+    def _p2_request(self, plan):
+        self.apply("p2", [{"op": "declare", "kind": "intent", "text": play.request_text(plan, "pass", ""),
+                           "plan": plan, "then": "pass"}])
+
+    def test_the_judge_continues_the_plan_when_the_opponent_does_not_respond(self):
+        seq = self._plan_stopped_at_blocks()
+        self.assertEqual(play.plan_rest(self.st.load(), play.plan_in_progress(self.st.load())), [2])
+        self._p2_request([{"kind": "other", "text": "ブロックしない"}])
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p2", "act": [{"op": "declare", "kind": "no_block"}, {"op": "pass"}]},
+            {"act": [{"op": "declare", "player": "p2", "kind": "ruled", "text": "ブロックしない"}]}]})
+        s = self.st.load()
+        self.assertEqual(play.continue_pending(s).seq, seq)
+        self.assertEqual(play.waiting_on(s), play.JUDGE)  # 審判が残り（メイン2 で唱える・ターン終了）を続ける
+        self.assertIsNone(play.resume(s, "p1"))
+
+    def test_an_interruption_gives_the_rest_of_the_plan_back_to_its_player(self):
+        seq = self._plan_stopped_at_blocks()
+        self._p2_request([{"kind": "block", "text": "ブロックする"}])  # 相手が割り込んだ（ブロック）
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p2", "act": [{"op": "pass"}]},
+            {"act": [{"op": "declare", "player": "p2", "kind": "ruled", "text": "ブロック"}]}]})  # 相手の依頼の処理: 計画の印は無い
+        s = self.st.load()
+        self.assertTrue(play.interrupted(s, play.plan_in_progress(s)))
+        self.assertIsNone(play.continue_pending(s))  # 審判は続けない
+        self.assertEqual(play.waiting_on(s), "p1")
+        back = play.resume(s, "p1")
+        self.assertEqual((back["of"], back["lines"], back["then"], back["unknown"]),
+                         (seq, [{"kind": "cast", "text": "メイン2 で唱える"}], "end_turn", False))
+        self.assertIsNone(play.resume(s, "p2"))
+        view = play.decorate(info.player_view(s, "p1"), s)
+        self.assertEqual(view["resume"]["lines"], back["lines"])  # GUI が下書きに戻す
+        self.assertIsNone(play.decorate(info.player_view(s, "p2"), s)["resume"])  # 相手には見せない
+
+    def test_the_judge_reply_tags_only_rulings_that_process_the_plan(self):
+        from mtgtable import prompt
+        seq = self._plan_stopped_at_blocks()
+        self._p2_request([{"kind": "block", "text": "ブロックする"}])
+        _, acts = prompt.judge_acts(self.st.load(), {"batch": None, "rest": [2]})
+        ruled = acts[-1]["act"][0]
+        self.assertNotIn("of", ruled)  # 相手の依頼（割り込み）の処理では計画は進んでいない
+        self.st.apply({"actor": None, "acts": acts})
+        self.apply("p1", [{"op": "declare", "kind": "intent", "text": "行動:\n1. 唱える\nその後: ターン終了",
+                           "plan": [{"kind": "cast", "text": "唱える"}], "then": "end_turn"}])
+        ruled = prompt.judge_acts(self.st.load(), {"batch": None, "rest": [1, 7]})[1][-1]["act"][0]
+        new = play.plan_in_progress(self.st.load()).seq
+        self.assertNotEqual(new, seq)
+        self.assertEqual((ruled["of"], ruled["rest"]), (new, [1]))  # 本人の新しい計画。範囲外の番号は捨てる
+
+    def test_the_judge_reply_to_an_answer_finishes_the_plan(self):
+        from mtgtable import prompt
+        seq = self._plan_stopped_at_blocks()
+        self.st.apply({"actor": None, "acts": [{"act": [
+            {"op": "declare", "player": "p1", "kind": "ask", "text": "何回繰り返す？"}]}]})
+        self.apply("p1", [{"op": "declare", "kind": "answer", "text": "あと5回"}])
+        # 回答を受けて残りを処理した審判が rest を書き忘れても、済んだ行が残りとして本人に戻らない
+        ruled = prompt.judge_acts(self.st.load(), {"batch": None, "message": "残りを処理した"})[1][-1]["act"][0]
+        self.assertEqual((ruled["of"], ruled["rest"]), (seq, []))
+        ruled = prompt.judge_acts(self.st.load(), {"batch": None, "rest": [2]})[1][-1]["act"][0]
+        self.assertEqual((ruled["of"], ruled["rest"]), (seq, [2]))
+        asked = prompt.judge_acts(self.st.load(), {"batch": None, "ask": {"to": "p1", "text": "もう一度？"}})[1]
+        self.assertNotIn("rest", next(a for a in asked if a["act"][0].get("kind") == "ruled")["act"][0])  # 質問で止めたら前のまま
+
+    def test_a_stop_for_the_players_own_decision_gives_the_plan_back(self):
+        self.apply("p1", [{"op": "declare", "kind": "keep"}])
+        self.apply("p2", [{"op": "declare", "kind": "keep"}])
+        self.apply("p1", {"proc": "turn_start", "to": "main1"})
+        plan = [{"kind": "draw", "text": "1 枚引く"}, {"kind": "cast", "text": "引いたカードを見て唱える"}]
+        self.apply("p1", [{"op": "declare", "kind": "intent", "text": play.request_text(plan, "continue", ""),
+                           "plan": plan, "then": "continue"}])
+        seq = play.plan_in_progress(self.st.load()).seq
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p1", "act": [{"op": "draw", "player": "p1"}]},
+            {"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "引いた", "of": seq, "rest": [2]}]}]})
+        s = self.st.load()
+        self.assertIsNone(play.continue_pending(s))  # 相手の応答を待って止めたのではない
+        self.assertEqual(play.resume(s, "p1")["lines"], [plan[1]])
+
+    def test_continue_is_not_asked_again_when_the_judge_stops_without_writing(self):
+        self.apply("p1", [{"op": "declare", "kind": "keep"}])
+        self.apply("p2", [{"op": "declare", "kind": "keep"}])
+        self.apply("p1", {"proc": "turn_start", "to": "main1"})
+        self.apply("p1", [{"op": "declare", "kind": "intent", "text": play.request_text([], "end_turn", "")}])
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p1", "act": [{"op": "step", "to": "end"}, {"op": "pass"}]},
+            {"actor": "p2", "act": [{"op": "pass"}]},
+            {"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "止めた"}]}]})
+        # 審判が自分で両者のパスまで書いて止めた: 「ターン終了」が済んでいないので、一度だけ続きを頼む
+        d = play.continue_pending(self.st.load())
+        self.assertEqual(d.player, "p1")
+        self.st.apply({"actor": None, "acts": [{"act": [{"op": "declare", "player": "p1", "kind": "ruled",
+                                                         "text": play.continued_label(d.seq) + " 止めた"}]}]})
+        self.assertIsNone(play.continue_pending(self.st.load()))  # 続きでも止めたら、誰かがパスするまで呼ばない
+        self.assertEqual(play.waiting_on(self.st.load()), "p1")
+
     def test_the_defender_decides_blocks_and_is_not_auto_passed(self):
         self.apply("p1", [{"op": "declare", "kind": "keep"}])
         self.apply("p2", [{"op": "declare", "kind": "keep"}])
@@ -174,6 +342,17 @@ class PlayTest(unittest.TestCase):
         self.assertTrue(play.blocks_undecided(s, "p2"))  # 決め直す
         self.assertEqual(play.autopass(self.st), [])  # 自動でパスしない
         self.assertEqual(play.waiting_on(self.st.load()), "p2")
+
+    def test_planeswalkers_and_battles_are_marked_as_attack_targets(self):
+        self.apply("p1", [{"op": "create", "name": "Walker", "definition": {"type_line": "Legendary Planeswalker — Jace"}},
+                          {"op": "create", "name": "Siege", "definition": {"type_line": "Battle — Siege // Creature — Eldrazi"}},
+                          {"op": "create", "name": "Bear", "definition": {"type_line": "Creature — Bear"}}])
+        s = self.st.load()
+        view = play.decorate(info.player_view(s, "p2"), s)
+        marks = {c["id"]: c.get("attackable") for c in view["zones"]["battlefield"]["cards"]}
+        self.assertEqual(marks, {"#t1": "planeswalker", "#t2": "battle", "#t3": None})
+        s.cards["#t2"].face = 1  # 変身した面はクリーチャー
+        self.assertIsNone(play.attackable(s, "#t2"))
 
     def test_card_kinds_tell_lands_spells_and_destinations(self):
         s = self.st.load()

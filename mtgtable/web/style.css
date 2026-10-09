@@ -18,6 +18,9 @@ h3 { margin: 6px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; 
 button, select, input { font: inherit; color: inherit; }
 button, select { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
 button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* 押せないボタン: 薄くして、強調（on）の塗りも外す */
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.on:disabled { background: var(--panel); color: inherit; border-color: var(--line); }
 .bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 16px;
   background: var(--panel); border-bottom: 1px solid var(--line); }
 .brand { font-size: 15px; }
@@ -120,6 +123,17 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 .hand.fan > .card { flex: none; transition: transform .12s; }
 .hand.fan > .card + .card { margin-left: -46px; }
 .hand.fan > .card:hover { transform: translateY(-12px); z-index: 2; position: relative; }
+/* 手札のドラッグ: 元のカードは空いた場所の印、写しを画面の上に重ねて動かす */
+.hand > .card.dragging { opacity: .25; }
+.hand > .card[data-ids] { user-select: none; -webkit-user-select: none; }
+.hand img { -webkit-user-drag: none; user-drag: none; }
+.dragghost { position: fixed; left: 0; top: 0; margin: 0 !important; z-index: 900; pointer-events: none; cursor: grabbing;
+  transform-origin: center; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .55)); transition: none; }
+/* 手札のカードを落とせる領域（GUI の対局）と、そこで何をするかの Tip */
+.dropover { outline: 2px dashed #6aa9ff; outline-offset: 2px; border-radius: 8px; background: rgba(106, 169, 255, .08); }
+#droptip { position: fixed; z-index: 1000; pointer-events: none; padding: 4px 8px; border-radius: 6px; font-size: 12px;
+  background: rgba(20, 22, 26, .92); color: #fff; border: 1px solid rgba(255, 255, 255, .25); white-space: nowrap; }
+#droptip[hidden] { display: none; }
 .card.inhand.withart { width: 98px; }
 .card.inhand .artbox { width: 88px; height: 123px; }
 .card.inhand .artbox img.art { width: 88px; height: 123px; }
@@ -174,6 +188,9 @@ button.on { background: var(--accent); color: #fff; border-color: var(--accent);
 .artbox .flags .chip, .over .chip { white-space: nowrap; }
 .cbto { display: flex; align-items: center; gap: 2px; line-height: 1; }
 .cbto .arw { font-size: 20px; }
+.cbto.retarget { cursor: pointer; border: 1px dashed currentColor; border-radius: 4px; padding: 1px 4px; }
+.cbto.retarget::after { content: "▾"; font-size: 10px; margin-left: 2px; }
+.cbto.retarget:hover { background: color-mix(in srgb, currentColor 15%, transparent); }
 
 /* ---- スタック: カードと、種類・文・対象 ---- */
 .stack.panel { list-style: none; padding: 8px; }
@@ -417,6 +434,13 @@ body.log-open .resizer:hover { background: var(--accent); }
   border-radius: 10px; padding: 4px 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
 .stackbox[hidden] { display: none; }
 .stackbox h3 { flex: none; }
+/* 戦闘・スタックの見出しの畳むボタン。畳むと見出しだけ（件数を出す） */
+.bxhead { display: flex; align-items: center; gap: 4px; }
+.bxhead .bxcount { flex: 1; font-weight: 400; font-size: 11px; }
+.bxhead .bxmin { padding: 0 7px; line-height: 1.3; font-size: 13px; cursor: pointer; }
+.combatbox.min .combat, .stackbox.min .stack { display: none; }
+.combatbox.min, .stackbox.min { width: auto; min-width: 120px; opacity: .85; }
+.combatbox.min h3, .stackbox.min h3 { margin: 0; }
 .stackbox .stack { overflow: auto; margin: 0; padding: 2px 0; height: auto; max-height: none; border: none; background: none; list-style: none; }
 @media (max-width: 899px) { .stackbox { position: static; transform: none; width: auto; margin: 8px 0; box-shadow: none; } }
 #fl-detail { top: 10px; bottom: auto; right: 10px; }
@@ -564,6 +588,7 @@ body:not(.log-open) #logClose { display: none; }
 .phead.m-plan, .sitem.m-plan { outline: 2px dotted var(--accent); border-radius: 6px; }
 .card.back.planned { display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700;
   background: var(--panel); color: var(--accent); outline: 2px dashed var(--accent); outline-offset: -2px; }
+.pknown { position: absolute; left: 2px; bottom: -4px; z-index: 3; font-size: 10px; background: var(--accent); color: #fff; }
 .pplan { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--accent); color: #fff; }
 .reqlines li.stale { color: var(--warn); }
 .reqlines li.stale::after { content: "（盤面が変わった）"; font-size: 11px; }
@@ -601,6 +626,27 @@ body:not(.log-open) #logClose { display: none; }
 }
 .reqbox { display: flex; flex-direction: column; gap: 4px; }
 .reqbox .crow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+button.ibtn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 28px; padding: 0; cursor: pointer; }
+button.ibtn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+button.ibtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* 進めるボタン: フェイズごとの枠（見出し付き）を、ターンの順に1行に置く（ステップの名前は title）。
+   今のフェイズの枠と今のステップに印、過ぎたステップは薄く */
+.stepbtns { display: flex; flex-direction: column; gap: 5px; }
+.stepgrid { display: flex; gap: 3px; }
+.stepgroup { flex: 1 1 0; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 1px 2px 2px; }
+.stepgroup.curphase { border-color: var(--accent); }
+.sglabel { font-size: 10px; line-height: 1.3; color: var(--muted); text-align: center; white-space: nowrap; overflow: hidden; }
+.stepgroup.curphase .sglabel { color: var(--accent); font-weight: 700; }
+.sgbtns { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; }
+button.ibtn.withtext { flex-direction: column; gap: 1px; width: auto; height: auto; min-width: 0; padding: 3px 2px 2px; }
+button.ibtn .ilabel { font-size: 10px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sgbtns button.ibtn { width: auto; min-width: 0; height: 26px; }
+.sgbtns button.ibtn svg { width: 16px; height: 16px; }
+.sgbtns button.ibtn.cur { opacity: 1; border-color: var(--accent); color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+.sgbtns button.ibtn.past { opacity: .35; }
+.stepacts { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 4px; }
+.stepacts button.ibtn.withtext { flex-direction: row; gap: 4px; padding: 4px 6px; }
+.stepacts button.ibtn .ilabel { font-size: 11px; }
 .reqbox input { flex: 1; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; }
 .reqtext { margin: 0; padding: 5px 7px; background: var(--card); border: 1px solid var(--line); border-radius: 6px;
   white-space: pre-wrap; font: 12px/1.45 inherit; max-height: 14em; overflow: auto; }
@@ -667,3 +713,5 @@ button.sgcell:hover { border-color: var(--accent); }
 .card.pv { opacity: .6; }
 .card.pv .artbox, .card.pv:not(.withart) { outline: 3px dashed var(--accent); outline-offset: 1px; }
 .sitem.pv { opacity: .6; outline: 2px dashed var(--accent); border-radius: 6px; }
+.chip.mana.clickable { cursor: pointer; }
+.chip.mana.clickable:hover { outline: 1px solid #6aa9ff; }

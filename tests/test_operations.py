@@ -218,6 +218,20 @@ class StackAndCombatTest(unittest.TestCase):
         self.assertEqual(e.state.combat.attacks, [])
         self.assertEqual(e.state.combat.blocks, [])
 
+    def test_attack_a_planeswalker(self):
+        e = game()
+        bear = find(e, "p1", "hand", "Grizzly Bears")
+        ok(e, None, {"op": "move", "card": bear, "to": "battlefield"},
+           {"op": "create", "name": "Walker", "controller": "p2", "definition": {"type_line": "Legendary Planeswalker — Jace"}})
+        pw = e.state.zones["battlefield"].cards[1]
+        bad = e.apply_act("p1", {"act": [{"op": "attack", "attacker": bear, "target": find(e, "p2", "hand", "Mountain")}]})
+        self.assertEqual(bad.status, "failed")  # 手札のカードは攻撃先にならない
+        ok(e, "p1", {"op": "attack", "attacker": bear, "target": pw, "tap": True})
+        self.assertEqual([(a.attacker, a.target) for a in e.state.combat.attacks], [(bear, pw)])
+        # 攻撃されていたプレインズウォーカーが離れても、攻撃クリーチャーは攻撃したまま
+        ok(e, None, {"op": "move", "card": pw, "to": "p2.graveyard"})
+        self.assertEqual([a.attacker for a in e.state.combat.attacks], [bear])
+
 
 class NoteAndManaTest(unittest.TestCase):
     def test_mana_pool(self):

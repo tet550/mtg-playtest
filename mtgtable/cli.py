@@ -97,8 +97,11 @@ def cmd_new(a):
     # タイプ行はカードに持たせ、表示の並べ替え（土地を前に）と召喚酔いの表示に使う
     caches = {pid: carddb.build_deck_cache(deck, fetch=not a.offline) for pid, deck in decks.items()}
     type_lines = {name: rec.get("type_line", "") for c in caches.values() for name, rec in c["cards"].items()}
-    state = new_game(decks, seed=a.seed, life=a.life, first=a.first, hand=a.hand,
-                     policies=_pairs(a.policy, "--policy"), type_lines=type_lines)
+    try:
+        state = new_game(decks, seed=a.seed, life=a.life, first=a.first, hand=a.hand,
+                         policies=_pairs(a.policy, "--policy"), type_lines=type_lines)
+    except ValueError as e:
+        raise SystemExit(str(e))
     for pid, deck in decks.items():
         state.meta["decks"][pid]["oracle"] = str(carddb.deck_cache_path(deck))
         state.meta["decks"][pid]["oracle_missing"] = caches[pid]["missing"]
@@ -107,7 +110,7 @@ def cmd_new(a):
         print("%s: %s (%d cards, sideboard %d)" % (pid, d["name"], d["main"], d["sideboard"]))
         print("    oracle: %s%s" % (d["oracle"], "  missing: " + ", ".join(d["oracle_missing"])
                                    if d["oracle_missing"] else ""))
-    print("created %s (seed %d)" % (a.game, a.seed))
+    print("created %s (seed %d, first %s%s)" % (a.game, a.seed, state.turn.active, "" if a.first else " by coin flip"))
 
 
 def cmd_view(a):
@@ -499,7 +502,7 @@ def build_parser():
     p.add_argument("--deck", action="append", help="p1=decklists/piza.txt（1つなら一人回し）")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--life", type=int, default=20)
-    p.add_argument("--first", help="先攻の Player（既定は最初の --deck）")
+    p.add_argument("--first", help="先攻の Player（既定は seed で無作為に決める）")
     p.add_argument("--hand", type=int, default=7, help="初期手札の枚数（0 で引かない）")
     p.add_argument("--policy", action="append", help="p1=%s" % "|".join(INFO_POLICIES))
     p.add_argument("--offline", action="store_true", help="オラクルのキャッシュに無いカードを取りに行かない")

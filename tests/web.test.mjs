@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Timeline } from "../mtgtable/web/timeline.js";
 import { createSource, latestLoader } from "../mtgtable/web/source.js";
-import { blockTime, cleanLine, describeOp, hasKept, mulligans, nextStep, planMarks, planned, preview, stepName, zoneOf } from "../mtgtable/web/play.js";
+import { attackTargets, blockTime, cleanLine, describeOp, hasKept, mulligans, nextStep, planMarks, planned, preview, requestAction, resumeLines, stepName, toRequest, zoneOf } from "../mtgtable/web/play.js";
 
 test("timeline supports seeking, deletion, root replacement and keyframes without mutating input", () => {
   const data = { cursor: 4, frames: [
@@ -182,7 +182,7 @@ test("preview shows draft lines on a copy of the board only", () => {
   assert.deepEqual(out.zones.battlefield.cards.map((c) => [c.id, !!c.planned, !!c.tapped]), [["#c9", false, true], ["#c1", true, false]]);
   assert.deepEqual(out.stack[0], { id: "plan1", kind: "spell", card: "#c2", controller: "p1", text: "", planned: true });
   assert.deepEqual(out.links, [{ source: "plan1", kind: "target", targets: ["p2"], planned: true }]);
-  assert.deepEqual(out.combat.attacks, [{ attacker: "#c9", target: "p2", planned: true }]);
+  assert.deepEqual(out.combat.attacks, [{ attacker: "#c9", target: "p2", planned: true, line: 2 }]);
   assert.equal(out.zones["p1.library"].count, 29);
   assert.equal(preview(v, [], "p1"), v);  // 下書きが無ければそのまま
 });
@@ -223,6 +223,18 @@ test("preview resolves planned and real stack items and taps an activated source
   assert.equal(tapped.zones.battlefield.cards[0].tapped, true);
 });
 
+test("preview takes planned mana spending out of the pool", () => {
+  const v = {
+    zones: {}, stack: [], links: [], combat: { attacks: [], blocks: [] },
+    players: [{ id: "p1", mana: [{ id: "#m1", color: "G", amount: 3 }, { id: "#m2", color: "U", amount: 1 }] }, { id: "p2", mana: [] }],
+  };
+  const used = preview(v, [{ kind: "other", targets: ["#m1"], count: 2, text: "マナ・プールの {G}（#m1）を 2 使う" }], "p1");
+  assert.deepEqual(used.players[0].mana.map((m) => [m.id, m.amount]), [["#m1", 1], ["#m2", 1]]);
+  assert.equal(v.players[0].mana[0].amount, 3);  // 卓の view は変えない
+  const emptied = preview(v, [{ kind: "other", targets: ["#m1", "#m2"], text: "マナ・プールを空にする" }], "p1");
+  assert.deepEqual(emptied.players[0].mana, []);
+});
+
 test("a planned step moves the previewed phase and is sent with its target step", () => {
   const v = {
     zones: { battlefield: { count: 1, cards: [{ id: "#c9", name: "Bear", controller: "p1" }] } },
@@ -240,4 +252,52 @@ test("a planned step moves the previewed phase and is sent with its target step"
   assert.deepEqual([after.turn.phase, after.turn.step], ["main2", "main"]);
   assert.equal(after.combat.attacks.length, 0);  // 戦闘を抜けたら予定の攻撃は外す
   assert.equal(v.turn.step, "main");  // 元の view は変えない
+});
+
+test("the draft's last line decides what happens after the request", () => {
+  const mine = { active: "p1", priority: "p1", step: "main", phase: "main1", waiting_on: "p1" };
+  const cast = { kind: "cast", text: "<Bolt> (#c1) を唱える", cards: ["#c1"], targets: [] };
+  const end = { kind: "then", then: "end_turn", text: "ターン終了" };
+  const step = { kind: "step", text: "メイン2 へ進む", to: "main2" };
+  assert.deepEqual(toRequest([cast, end], mine, "p1"), { plan: [cleanLine(cast)], then: "end_turn" });
+  assert.deepEqual(toRequest([cast, step], mine, "p1"), { plan: [cleanLine(cast)], then: "main2" });
+  assert.deepEqual(toRequest([step, cast], mine, "p1").then, "continue");  // 途中のステップは行のまま
+  assert.deepEqual(toRequest([end, cast], mine, "p1").plan[0], { kind: "other", text: "ターン終了" });
+  const theirs = { ...mine, active: "p2" };
+  assert.equal(toRequest([cast], theirs, "p1").then, "pass");  // 相手のターンはパス
+  assert.equal(toRequest([], { ...theirs, step: "cleanup", priority: null }, "p1").then, "turn_start");
+  // 下書きが空: パスの宣言（審判を通さない）か、送れない
+  assert.equal(requestAction([], "", theirs, "p1", 0).kind, "pass");
+  assert.equal(requestAction([], "", mine, "p1", 1).kind, "pass");  // 自分のターンでも、相手の呪文がスタックにあれば
+  // 自分のターンで何も無い: 次のステップへ（終了ステップならターン終了）。全員パスで優先権が無くても押せる
+  assert.equal(requestAction([], "", mine, "p1", 0).then, "beginning_of_combat");
+  assert.equal(requestAction([], "", { ...mine, step: "declare_blockers", phase: "combat", priority: null }, "p1", 0).then, "combat_damage");
+  assert.equal(requestAction([], "", { ...mine, step: "end", phase: "ending" }, "p1", 0).then, "end_turn");
+  assert.equal(requestAction([], "", { ...theirs, priority: "p2" }, "p1", 0), null);  // 相手のターンで優先権が無い
+  assert.equal(requestAction([], "メモ", mine, "p1", 0).kind, "request");
+  assert.equal(requestAction([end], "", mine, "p1", 0).label, "審判に依頼（その後: ターン終了）");
+  assert.equal(requestAction([cast, step], "", mine, "p1", 0).label, "審判に依頼（その後: メイン2へ）");
+});
+
+test("the rest of an interrupted plan goes back to the draft with its 'then' last", () => {
+  const cast = { kind: "cast", text: "<Bolt> (#c1) を唱える", cards: ["#c1"] };
+  assert.deepEqual(resumeLines({ lines: [cast], then: "end_turn" }),
+    [cleanLine(cast), { kind: "then", then: "end_turn", text: "ターン終了" }]);
+  assert.deepEqual(resumeLines({ lines: [cast], then: "main2" }).at(-1), { kind: "step", to: "main2", text: "メイン2 へ進む" });
+  assert.deepEqual(resumeLines({ lines: [cast], then: "continue" }), [cleanLine(cast)]);
+  // 戻した行をそのまま送ると、元の「その後」になる
+  const turn = { active: "p1", priority: "p1", step: "main", phase: "main1", waiting_on: "p1" };
+  assert.equal(toRequest(resumeLines({ lines: [cast], then: "end_turn" }), turn, "p1").then, "end_turn");
+});
+
+test("attack targets are the opponent, their planeswalkers and my battles", () => {
+  const v = { zones: { battlefield: { cards: [
+    { id: "#c1", owner: "p1", controller: "p1" },
+    { id: "#c2", owner: "p2", controller: "p2", attackable: "planeswalker" },
+    { id: "#c3", owner: "p1", controller: "p1", attackable: "planeswalker" },
+    { id: "#c4", owner: "p1", controller: "p1", attackable: "battle" },
+    { id: "#c5", owner: "p2", controller: "p2", attackable: "battle" },
+  ] } } };
+  assert.deepEqual(attackTargets(v, "p1", "p2"), ["p2", "#c2", "#c4"]);
+  assert.deepEqual(attackTargets({ zones: { battlefield: {} } }, "p1", "p2"), ["p2"]);
 });

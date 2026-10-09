@@ -194,7 +194,8 @@ T1 も同じ骨組み（ゲーム前から先攻の T1 に入る。ゲームの�
 ```json
 {"act": [{"op": "step", "to": "beginning_of_combat"}], "pre": [{"step": "main"}]}
 {"act": [{"op": "step", "to": "declare_attackers"},
-         {"op": "attack", "attackers": ["#c66", "#c132"], "target": "p2", "tap": true}]}
+         {"op": "attack", "attackers": ["#c66", "#c132"], "target": "p2", "tap": true},
+         {"op": "attack", "attacker": "#c70", "target": "#c88", "tap": true}]}
 {"act": [{"op": "step", "to": "declare_blockers"}]}
 ```
 
@@ -203,7 +204,10 @@ T1 も同じ骨組み（ゲーム前から先攻の T1 に入る。ゲームの�
 - 人間が相手で、ブロックできるクリーチャーがいない（選択の余地が無い）ときは、同じ Batch に代理で書いて
   ダメージまで進めてよい（SKILL.md の「代理の宣言」）:
   `{"proxy": "p1", "label": "ブロック無し（アンタップのクリーチャーなし）", "act": [{"op": "declare", "kind": "no_block"}]}`
+- 攻撃先は Player か、プレインズウォーカー・バトルのカード（上の `#c88`）。攻撃先ごとに `attack` を分ける
 - ダメージ: `step to=combat_damage` → 攻撃・ブロックしたクリーチャーごとに `damage`（`source` はそのクリーチャー）→
+  プレインズウォーカー・バトルへは `damage {target: "#c88", amount: 3, source: "#c70", apply: false}` と
+  `counter_remove {target: "#c88", kind: loyalty, amount: 3}`（バトルは `kind: defense`）→
   状況起因処理 → `step to=end_of_combat` → `combat_clear`
 - 攻撃しないなら戦闘を飛ばして `step to=main2`
 
@@ -215,4 +219,5 @@ T1 も同じ骨組み（ゲーム前から先攻の T1 に入る。ゲームの�
   {"op": "player_set", "player": "p1", "status": "won"}]}
 ```
 
-投了は `declare {kind: "concede"}`（status が `conceded` になる）。
+投了は `declare {kind: "concede"}`（status が `conceded` になる）。見えている盤面で負けがどう見ても明らかなとき、または相手が勝ちまでの妥当な道筋
+（ループの手順と回数・致死の計算）を示し、止める手段が無いときは、相手が最後まで実行するのを待たずに投了する。

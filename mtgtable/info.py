@@ -268,6 +268,14 @@ def player_view(state: GameState, viewer: Optional[str], sideboard: bool = False
                         and knows_position(state, viewer, cid))
                 if n:
                     zv["known_positions_count"] = n
+                if viewer is None and zone.kind == "library":
+                    # 審判には、Player が位置まで知っているカード（公開した一番上など）を出す。探索や占術の続きを処理するため
+                    seen = [(i, cid) for i, cid in enumerate(zone.cards)
+                            if any(k.get(cid, {}).get("ordered") for k in state.knowledge.values())]
+                    if seen:
+                        zv["known_positions"] = [dict(cv(cid, True), index=i, known_to=sorted(
+                            pid for pid, k in state.knowledge.items() if k.get(cid, {}).get("ordered")))
+                            for i, cid in seen]
             view["zones"][zname] = zv
             continue
         if zone.visibility == "public":

@@ -16,6 +16,7 @@ _LINE = re.compile(r"^\s*(\d+)\s*x?\s+(.+?)\s*$")
 _SET_SUFFIX = re.compile(r"\s+\([A-Za-z0-9]{2,6}\)\s*[\w-]*$")
 _MAIN = {"deck", "main", "maindeck", "デッキ", "メインデッキ"}
 _SIDE = {"sideboard", "side", "サイドボード"}
+_SKIP = {"about"}  # MTG Arena の書き出しの先頭（About / Name ...）は読み飛ばす
 
 
 @dataclass
@@ -42,6 +43,11 @@ def parse_decklist(text: str, name: str = "deck") -> Decklist:
             continue
         if head in _SIDE:
             section = deck.sideboard
+            continue
+        if head in _SKIP:
+            section = None
+            continue
+        if section is None:
             continue
         m = _LINE.match(line)
         if not m:
@@ -73,9 +79,12 @@ def new_game(decks: dict, seed: int = 0, life: int = 20, first: str = None,
     ライブラリーはシャッフル済み。hand > 0 なら各自その枚数を引いた状態で始める
     （マリガンは AI が Operation で行う）。カード id は無作為に振る
     （デッキリストの並びから id で中身が推測できないように）。
+    first（先攻）を省くと seed で無作為に決める（コイントス。同じ seed なら同じ結果）。
     """
     for deck in decks.values():
         check_deck(deck)
+    if first is not None and first not in decks:
+        raise ValueError("first player %r is not one of %s" % (first, ", ".join(decks)))
     s = GameState(seed=seed)
     rng = random.Random("%s:setup" % seed)
     for pid, deck in decks.items():
@@ -106,7 +115,8 @@ def new_game(decks: dict, seed: int = 0, life: int = 20, first: str = None,
         info.set_policy(s, pid, pol)
     # ゲーム前から始める（マリガン・開始時の手札からの行動はここ）。active は先攻。最初の step で T1 に入る
     s.turn.turn = 0
-    s.turn.active = first or s.player_order[0]
+    # 先攻のコイントスは、ライブラリーとは別の乱数で（先攻の決め方を変えても同じ seed のライブラリーは変わらない）
+    s.turn.active = first or random.Random("%s:first" % seed).choice(s.player_order)
     s.turn.phase, s.turn.step = PREGAME
     s.turn.priority = None
     s.meta["hand"] = hand  # 初期手札の枚数（マリガンの後に下へ置く枚数の計算に使う）

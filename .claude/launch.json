@@ -12,6 +12,18 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "mtgtable", "serve", "--port", "8766", "--play"],
       "port": 8766
+    },
+    {
+      "name": "export-g1",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8767", "--directory", "playtest/_export-g1"],
+      "port": 8767
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8768", "--directory", "docs"],
+      "port": 8768
     }
   ]
 }

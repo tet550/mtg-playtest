@@ -183,6 +183,10 @@ class Declaration:
     choices: list = field(default_factory=list)  # 審判の質問（ask）の選択肢。空なら自由記述
     cards: list = field(default_factory=list)  # ask: 選ぶ候補のカード。answer: 選んだカード
     pick: list = field(default_factory=list)  # ask で cards があるとき、選ぶ枚数 [最小, 最大]
+    plan: list = field(default_factory=list)  # intent: 依頼の行動の行（{"kind", "text", "cards", ...}）
+    then: str = ""  # intent: 「その後」（continue / pass / end_turn / ステップ名 など）
+    of: int = 0  # ruled: 処理した計画（アクティブ・プレイヤーの intent の seq）。rest と一緒に書く
+    rest: Optional[list] = None  # ruled: その計画のまだ書いていない行の番号（1 から）。[] は全部書いた。None は報告なし
 
 
 # ---------------------------------------------------------------- GameState

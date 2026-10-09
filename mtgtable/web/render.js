@@ -158,6 +158,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     if (mark) d.classList.add(mark);
     if (c.planned) d.classList.add("pv");  // 下書きで仮に出したカード（審判の処理の後に本物になる）
     d.onclick = (ev) => { if (!(hooks.card && hooks.card(c, ev))) showCard(c); };
+    // 右クリック（タッチは長押し）は、対象選び・ブロック選びの最中でもいつでも詳細を出す
+    d.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); showCard(c); };
     const pt = showPT(extra) && !(extra || "").includes("under") ? ptChip(c) : null;
     if (withArt) {
       d.append(art(c, pt));
@@ -270,6 +272,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   function pile(label, count, top, opts) {
     const p = el("div", "pile" + (count ? "" : " empty") + (opts.open ? " open" : ""));
     p.dataset.zone = opts.zone;
+    if (opts.drop) p.dataset.drop = opts.drop;  // 手札から落とせる束（GUI の対局）
     const stackBox = el("div", "pstack");
     for (let i = Math.min(count, 4) - 1; i >= 1; i--) {
       const layer = el("div", "layer");
@@ -297,7 +300,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     p.append(stackBox);
     if (opts.note) p.title = (p.title ? p.title + "\n" : "") + opts.note;
     if (opts.onclick && count) p.onclick = opts.onclick;
-    if (top) p.title = `一番上: <${top.name}>`;
+    if (opts.known) stackBox.append(el("span", "chip pknown", "上を知っている"));
+    if (top) p.title = `一番上${opts.known ? "（知っている）" : ""}: <${top.name}>`;
     return p;
   }
 
@@ -323,11 +327,192 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return [...known, ...unordered];
   }
 
+  // 手札の並びは画面の上だけで持つ（ui.handOrder: pid → id の並び。卓の状態は変えない）。
+  // 並べ替えたことのないカード（新しく引いたカード）は卓の順のまま後ろに付く
+  function sortHand(pid, cards) {
+    const order = (ui.handOrder || {})[pid];
+    if (!order) return cards;
+    const rank = new Map(order.map((id, i) => [id, i]));
+    return cards.map((c, i) => [rank.has(c.id) ? rank.get(c.id) : order.length + i, c])
+      .sort((a, b) => a[0] - b[0]).map(([, c]) => c);
+  }
+
+  // 手札の表のカードをドラッグで並べ替える。マウスは少し動かしたら、タッチは長押ししてから掴む
+  // （タッチですぐ掴むと手札の横スクロールができなくなる）。離した後のクリックは捨てる。
+  // 掴んだカードは写し（ghost）を画面の上に重ねてポインターに付いてこさせ（手札の欄ははみ出しを切るので）、
+  // 元のカードは空いた場所の印として手札に残す。ほかのカードは空いた場所へ滑らせる。
+  // GUI の対局では、同じ側の戦場・墓地・追放・ライブラリー（data-drop）へ落とすと、その予定を下書きに足す
+  // （何をするかは hooks.drop が決め、領域に入ったら Tip で出す）。
+  // タッチで長押ししたまま動かさずに離したら、ほかのカードの長押しと同じく詳細を出す
+  function handDrag(row, pid) {
+    const tiles = () => [...row.querySelectorAll(":scope > .card[data-ids]:not(.back)")];
+    const SLIDE = { duration: 160, easing: "cubic-bezier(.2, .7, .2, 1)" };
+    let drag = null;
+    const finish = (commit) => {
+      if (!drag) return;
+      const d = drag;
+      drag = null;
+      listen(false);
+      clearTimeout(d.timer);
+      if (!d.active) return;
+      ui.dragging = false;
+      const pending = ui.renderPending;
+      ui.renderPending = false;
+      const action = commit ? d.action : null;
+      overDrop(d, null, null);
+      droppedAt = performance.now();
+      const ghost = d.ghost;
+      if (action) {  // 領域へ落とした: 手札の並びは元に戻して、予定を足す（描き直しで手札から仮に出ていく）
+        ghost.remove();
+        d.tile.classList.remove("dragging");
+        row.insertBefore(d.tile, d.after ? d.after.nextElementSibling : row.firstElementChild);
+        action.run();
+        if (pending) render();
+        return;
+      }
+      // 写しを空いた場所へ戻してから消す
+      const to = d.tile.getBoundingClientRect();
+      const back = ghost.animate([{ transform: ghost.style.transform },
+        { transform: `translate(${to.left}px, ${to.top}px) scale(1)` }], SLIDE);
+      const done = () => { ghost.remove(); d.tile.classList.remove("dragging"); };
+      back.onfinish = back.oncancel = done;
+      setTimeout(done, SLIDE.duration + 100);  // 画面が描かれていない（裏のタブなど）とアニメーションが終わらない
+      if (commit && d.tile.isConnected) (ui.handOrder ||= {})[pid] = tiles().map((t) => t.dataset.ids);
+      if (pending) setTimeout(render, SLIDE.duration + 120);  // 戻るのを見せてから、溜めていた描き直し
+      if (commit && d.touch && !d.moved) {
+        ghost.remove();
+        d.tile.classList.remove("dragging");
+        d.tile.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+      }
+    };
+    let droppedAt = -1e9;
+    row.addEventListener("click", (e) => {
+      if (performance.now() - droppedAt < 300) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+    // 写しは、掴んだ所がポインターの下に来るように置く（領域の上では小さくする）
+    const follow = (e) => {
+      const d = drag;
+      d.ghost.style.transform = `translate(${e.clientX - d.dx}px, ${e.clientY - d.dy - 14}px) scale(${d.action ? .8 : 1.06})`;
+    };
+    // ポインターの下の落とし先（同じ側の data-drop）と、そこで何をするか
+    const dropAt = (e) => {
+      if (!hooks.drop) return null;
+      const side = row.closest("#top, #bottom") || document;
+      for (const t of side.querySelectorAll("[data-drop]")) {
+        const r = t.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
+        const place = t.dataset.drop === "library" ? (e.clientY < r.top + r.height / 2 ? "library-top" : "library-bottom") : t.dataset.drop;
+        const action = hooks.drop(drag.tile.dataset.ids.split(" ")[0], place);
+        return action ? { el: t, action } : null;
+      }
+      return null;
+    };
+    const tip = () => document.getElementById("droptip") || document.body.appendChild(Object.assign(el("div"), { id: "droptip" }));
+    const overDrop = (d, hit, e) => {
+      if (d.over && (!hit || hit.el !== d.over)) d.over.classList.remove("dropover");
+      d.over = hit ? hit.el : null;
+      d.action = hit ? hit.action : null;
+      const t = tip();
+      t.hidden = !hit;
+      if (!hit) return;
+      hit.el.classList.add("dropover");
+      t.textContent = hit.action.label;
+      t.style.left = `${e.clientX + 14}px`;
+      t.style.top = `${e.clientY + 18}px`;
+    };
+    const grab = (e) => {
+      const d = drag;
+      d.active = true;
+      ui.dragging = true;
+      const r = d.tile.getBoundingClientRect();
+      d.dx = d.x0 - r.left;
+      d.dy = d.y0 - r.top;
+      d.ghost = d.tile.cloneNode(true);
+      d.ghost.classList.add("dragghost");
+      d.ghost.style.width = `${r.width}px`;
+      d.ghost.style.height = `${r.height}px`;
+      d.ghost.style.setProperty("--h", getComputedStyle(row).getPropertyValue("--h"));  // 小さい画面のカードの高さ
+      document.body.append(d.ghost);
+      d.tile.classList.add("dragging");
+      d.after = d.tile.previousElementSibling;
+      try { d.tile.setPointerCapture(d.pointer); } catch { /* 離した後に長押しの時計が来たときなど */ }
+      follow(e || { clientX: d.x0, clientY: d.y0 });
+    };
+    row.addEventListener("pointerdown", (e) => {
+      const tile = e.target.closest(".card");
+      if (e.button !== 0 || !tile || !tiles().includes(tile)) return;
+      // マウスは既定の動き（画像のドラッグ・文字の選択）を止める。画像のドラッグが始まるとポインターが取り消される
+      if (e.pointerType !== "touch") e.preventDefault();
+      finish(false);  // 前のドラッグが残っていたら片付ける
+      drag = { tile, pointer: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, touch: e.pointerType === "touch" };
+      listen(true);
+      if (drag.touch) drag.timer = setTimeout(() => drag && grab(), 300);
+    });
+    row.addEventListener("dragstart", (e) => e.preventDefault());
+    const onMove = (e) => {
+      if (!drag || e.pointerId !== drag.pointer) return;
+      // 離したのを取りこぼした（画面の外で離した・別の窓へ移った）: ボタンが押されていないなら元へ戻す
+      if (e.pointerType === "mouse" && !(e.buttons & 1)) return finish(false);
+      const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
+      if (!drag.active) {
+        if (drag.touch) { if (moved > 8) finish(false); return; }  // 長押しの前に動いたらスクロール
+        if (moved < 5) return;
+        grab(e);
+      }
+      if (moved > 8) drag.moved = true;
+      const hit = dropAt(e);
+      overDrop(drag, hit, e);
+      // 手札の欄の上にいる間は、写しの中心が隣のカードの中心を越えたら、空いた場所を入れ替える
+      const rr = row.getBoundingClientRect();
+      if (!hit && e.clientY > rr.top - 40 && e.clientY < rr.bottom + 40) {
+        const t = drag.tile;
+        // 入れ替えの判定は、滑っている途中のずれ（transform）を除いた位置で比べる。見た目の位置で比べると、
+        // 入れ替えた直後に元へ戻す判定になって行ったり来たりする
+        const center = (o) => {
+          const r = o.getBoundingClientRect();
+          return r.left + r.width / 2 - new DOMMatrixReadOnly(getComputedStyle(o).transform).e;
+        };
+        const mid = e.clientX - drag.dx + t.offsetWidth / 2;
+        const others = tiles().filter((o) => o !== t);
+        const next = others.find((o) => mid < center(o));
+        const last = others[others.length - 1];
+        if (last && (next ? t.nextElementSibling !== next : last.nextElementSibling !== t)) {
+          const before = new Map(others.map((o) => [o, o.offsetLeft]));
+          if (next) row.insertBefore(t, next); else last.after(t);
+          for (const [o, x] of before) {  // 押し出されたカードは元の位置から滑らせる（FLIP）
+            const dx = x - o.offsetLeft;
+            if (dx) o.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], SLIDE);
+          }
+        }
+      }
+      follow(e);
+    };
+    // 動かす・離す・取り消すは window で受ける（手札の欄の外や、ポインターの捕捉が外れた後でも届くように）。
+    // 窓から離れた（別のアプリ・タブへ移った）ら元へ戻す。描くたびに手札の欄を作り直すので、押している間だけ付ける
+    const onUp = (e) => { if (drag && e.pointerId === drag.pointer) finish(true); };
+    const onCancel = (e) => { if (drag && e.pointerId === drag.pointer) finish(false); };
+    const onBlur = () => finish(false);
+    const onHidden = () => { if (document.hidden) finish(false); };
+    const listen = (on) => {
+      const f = on ? "addEventListener" : "removeEventListener";
+      window[f]("pointermove", onMove, true);
+      window[f]("pointerup", onUp, true);
+      window[f]("pointercancel", onCancel, true);
+      window[f]("blur", onBlur);
+      document[f]("visibilitychange", onHidden);
+    };
+    // 長押しで掴んだ後は、指を動かしても手札をスクロールさせない
+    row.addEventListener("touchmove", (e) => { if (drag && drag.active) e.preventDefault(); }, { passive: false });
+    // 長押しの途中に来るブラウザの contextmenu は捨てる（詳細は離したときに出す）
+    row.addEventListener("contextmenu", (e) => { if (drag) { e.preventDefault(); e.stopPropagation(); } }, true);
+  }
+
   function handRow(v, pid) {
     const hand = v.zones[`${pid}.hand`];
-    const shown = hand.cards || hand.known || [];
+    const shown = sortHand(pid, hand.cards || hand.known || []);
     const row = el("div", "hand" + (ui.images ? " fan" : ""));
     row.append(...shown.map((c) => cardTile(c, " inhand")));
+    handDrag(row, pid);
     for (let i = shown.length; i < hand.count; i++) row.append(el("div", "card back inhand"));
     // 下書き・送った依頼で引く予定の「？」（中身は審判の処理の後に届く。play.js の planned）
     const extra = (ui.planned && ui.planned.hand[pid]) || 0;
@@ -421,6 +606,10 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     for (const m of p.mana) {
       const chip = el("span", "chip mana");
       chip.append(...manaNodes(`{${m.color}}`), document.createTextNode(` ×${m.amount}`));
+      if (hooks.mana) {  // GUI の対局: 押すと使う予定を足すメニュー（Player の欄のメニューは出さない）
+        chip.classList.add("clickable");
+        chip.onclick = (ev) => { if (hooks.mana(pid, m, ev)) ev.stopPropagation(); };
+      }
       if (m.notes) {
         const t = m.notes.map((n) => n.text).join("; ");
         chip.append(document.createTextNode(`（${t.length > 40 ? t.slice(0, 38) + "…" : t}）`));
@@ -436,16 +625,19 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const lib = v.zones[`${pid}.library`];
     const libKey = `${pid}.library`;
     const pileClick = (key) => (ev) => { if (!(hooks.pile && hooks.pile(key, ev))) toggleOpen(key); };
-    piles.append(pile("ライブラリー", lib.count, null,
-      { note: (lib.known_positions || []).length ? `位置既知 ${lib.known_positions.length}` : "",
+    // 一番上を知っている（公開した・見た）ときは束の表に出す。全知の審判の席では出さない（いつも見えてしまう）
+    const libTop = v.viewer ? (lib.known_positions || []).find((c) => c.index === 0) : null;
+    piles.append(pile("ライブラリー", lib.count, libTop,
+      { known: !!libTop, note: (lib.known_positions || []).length ? `位置既知 ${lib.known_positions.length}` : "",
         planned: ((ui.planned && ui.planned.piles[libKey]) || []).join("・"),
-        open: ui.open.has(libKey), onclick: pileClick(libKey), zone: libKey }));
+        open: ui.open.has(libKey), onclick: pileClick(libKey), zone: libKey, drop: "library" }));
     const gy = v.zones[`${pid}.graveyard`];
     const gyKey = `${pid}.graveyard`;
-    piles.append(pile("墓地", gy.count, (gy.cards || [])[0], { open: ui.open.has(gyKey), onclick: pileClick(gyKey), zone: gyKey }));
+    piles.append(pile("墓地", gy.count, (gy.cards || [])[0], { open: ui.open.has(gyKey), onclick: pileClick(gyKey), zone: gyKey, drop: "graveyard" }));
     const ex = (v.zones.exile.cards || []).filter((c) => c.owner === pid);
     const exKey = `${pid}.exile`;
-    if (ex.length) piles.append(pile("追放", ex.length, ex[ex.length - 1], { open: ui.open.has(exKey), onclick: pileClick(exKey), zone: exKey }));
+    // GUI の対局では、空でも手札から落とせるように出す
+    if (ex.length || hooks.drop) piles.append(pile("追放", ex.length, ex[ex.length - 1], { open: ui.open.has(exKey), onclick: pileClick(exKey), zone: exKey, drop: "exile" }));
 
     // 戦場: 土地以外と土地（土地は名前ごとに束ねる）
     const { under, attached } = cardsUnder(v);
@@ -453,6 +645,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const others = el("div", "row bfrow"); others.append(...groupCards(bf.filter((c) => !c.land)).map((c) => withUnder(c, under)));
     const lands = el("div", "row bfrow lands"); lands.append(...landGroups(bf.filter((c) => c.land), under));
     const field = el("div", "field");
+    field.dataset.drop = "battlefield";
     field.append(...(mirrored ? [lands, others] : [others, lands]));
 
     const grid = el("div", "sidegrid");
@@ -487,12 +680,31 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     }
   }
 
+  // 戦闘・スタックの小窓を一時的に畳む（下の盤面を見るため）。畳んだときの中身（sig）から変わったら、自動で開く
+  function foldable(boxId, sig, count) {
+    const box = $(boxId);
+    const btn = box.querySelector(".bxmin");
+    btn.onclick = () => {
+      const min = !box.classList.contains("min");
+      box.classList.toggle("min", min);
+      box.dataset.sig = min ? box.dataset.cur : "";
+      btn.textContent = min ? "＋" : "–";
+      btn.title = min ? "開く" : "一時的に畳む（下の盤面を見る）。中身が変わると自動で開く";
+      box.querySelector(".bxcount").textContent = min ? `（${box.dataset.count}）` : "";
+    };
+    box.dataset.cur = sig;
+    box.dataset.count = count;
+    if (box.classList.contains("min") && box.dataset.sig !== sig) btn.onclick();
+    box.querySelector(".bxcount").textContent = box.classList.contains("min") ? `（${count}）` : "";
+  }
+
   // スタック: 上から順に、呪文はそのカード、能力は発生源のカードを小さく出し、横に種類・文・対象を並べる
   const KIND = { spell: "呪文", activated: "起動型能力", triggered: "誘発型能力", ability: "能力" };
 
   function renderStack(v) {
     const box = $("stack");
     $("fl-stack").hidden = !v.stack.length;
+    foldable("fl-stack", v.stack.map((s) => s.id).join(","), v.stack.length);
     if (!v.stack.length) {
       box.replaceChildren();
       return;
@@ -513,6 +725,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
         li.onclick = (ev) => { if (!hooks.stack(s, i, ev) && c) showCard(c); };
         pic.onclick = (ev) => { ev.stopPropagation(); li.onclick(ev); };
       }
+      if (c) li.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); showCard(c); };
       const body = el("div", "sbody");
       const head = el("div", "shead");
       head.append(el("span", "chip" + (i === 0 ? " strong" : ""), i === 0 ? "一番上" : String(i + 1)),
@@ -540,6 +753,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   function renderCombat(v) {
     const box = $("combat");
     $("combatbox").hidden = !v.combat.attacks.length;
+    foldable("combatbox", JSON.stringify([v.combat.attacks, v.combat.blocks, (ui.planned && ui.planned.blocks) || []]),
+      v.combat.attacks.length);
     if (!v.combat.attacks.length) {
       box.replaceChildren();
       return;
@@ -550,11 +765,21 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     box.replaceChildren(...v.combat.attacks.map((a) => {
       const col = el("div", "cbcol");
       // 攻撃先は、画面の上下のどちらの Player かを矢印で（Player 以外はカード名）
-      const arrow = a.target === ui.sides.top ? "↑" : a.target === ui.sides.bottom ? "↓" : "→";
+      // プレインズウォーカーはコントローラーの側（バトルは守る Player が卓に無いので →）
+      const pw = cards.get(a.target);
+      const side = pw && pw.attackable === "planeswalker" ? pw.controller || pw.owner : a.target;
+      const arrow = side === ui.sides.top ? "↑" : side === ui.sides.bottom ? "↓" : "→";
       const to = el("div", "cbto");
       to.append(el("span", "arw", arrow), document.createTextNode(cards.has(a.target) || ui.names[a.target]
         ? ` <${ui.names[a.target] || a.target}>` : ` ${a.target}`));
       to.title = `攻撃先: ${ref(a.target)}`;
+      // 下書きの攻撃は、攻撃先を押して変えられる（相手のプレインズウォーカー・自分のバトルがあるとき）
+      const change = hooks.retarget && hooks.retarget(a);
+      if (change) {
+        to.classList.add("retarget");
+        to.title += "（押して変える）";
+        to.onclick = (ev) => { ev.stopPropagation(); change(); };
+      }
       // ブロック側は防御側の Player の位置に合わせる（上の Player を攻撃するなら、ブロックは攻撃カードの上）
       const defense = [];
       const blockers = v.combat.blocks.filter((b) => b.attacker === a.attacker);
@@ -622,6 +847,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   }
 
   function render() {
+    // 手札のドラッグ中は描き直さない（手札の欄が作り直されてドラッグが切れる）。離したときに描く
+    if (ui.dragging) { ui.renderPending = true; return; }
     // GUI の対局では、下書きの行を仮に反映した写しを描く（hooks.preview。卓の view は変えない）
     const v = ui.view && hooks.preview ? hooks.preview(ui.view) : ui.view;
     if (!v) return;
@@ -629,6 +856,10 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const animate = ui.animate && ui.motion ? ui.animate : null;
     ui.animate = null;
     motion.stop();
+    // 手札のドラッグの途中で描き直したら、ドラッグはそこで終わり（写しと Tip を片付ける）
+    for (const g of document.querySelectorAll(".dragghost")) g.remove();
+    const droptip = document.getElementById("droptip");
+    if (droptip) droptip.hidden = true;
     const before = animate && ui.shown ? motion.capture() : null;
     const shown = ui.shown;
     ui.names = collectNames(v);
