@@ -17,15 +17,22 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/operations.py` | Operation（卓上の基本操作）とカード参照 | 19節 |
 | `mtgtable/engine.py` | Act・Batch・Precondition | 20〜23節 |
 | `mtgtable/procedures.py` | 手順（複数の Act の並びの省略: `turn_start` `turn_end`） | 20節 |
-| `mtgtable/store.py` | Operation Log・Undo/Redo・Replay・Snapshot(fork)・State Diff | 29節 |
+| `mtgtable/store.py` | Operation Log・Undo/Redo・Replay・Snapshot(fork)・State Diff。保存先は対局フォルダ（既定） | 29節 |
+| `mtgtable/sqlstore.py` | 同じ保存の SQLite 版（`--db`。サーバー用） | 29節 |
 | `mtgtable/setup.py` | デッキリスト読み込みと初期状態 | — |
 | `mtgtable/carddb.py` | Rule Reference（Scryfall のオラクルをローカルにキャッシュ） | 28節 |
 | `mtgtable/render.py` | PlayerView のテキスト表示 | 24節（表示とモデルの分離） |
 | `mtgtable/cli.py` | コマンドライン | 26節 |
 | `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`）と GUI の対局（`serve --play`。人間が席を持って操作） | 24〜26節 |
 | `mtgtable/play.py` | GUI の対局の部品（席の鍵・待たれている Player・`wait`） | 26節 |
+| `mtgtable/owners.py` | 公開のサーバー（`serve --site`）の所有者の鍵・復元・席を持つ人 | — |
+| `mtgtable/decks.py` | 公開のサーバーのデッキ登録（検査と、所有者ごとの保存） | — |
+| `mtgtable/ratelimit.py` | 公開のサーバーのレート制限（IP ごと・所有者ごと・種類ごと） | — |
+| `mtgtable/history.py` | 公開のサーバーの履歴・公開の対局・共有 URL・見える範囲・履歴から消す | — |
+| `mtgtable/lobby.py` | 公開のサーバーで対局を作る（AI と・招待した人と）・時間切れ | — |
 | `mtgtable/prompt.py`・`mtgtable/prompts/` | AI のプロンプト（Player の意図・審判・直接 Batch）の書き出しと、返答の適用 | 27節 |
-| `mtgtable/llm.py` | OpenAI の API（Chat Completions）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
+| `mtgtable/llm.py` | LLM の API（OpenAI・Anthropic）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
+| `mtgtable/worker.py` | サーバーの中で審判と AI の席を回す（`serve --ai` / `--site`）・利用の上限・中断と再開 | 27節 |
 
 Web の責務分割と設計判断は [design/web_design.md](design/web_design.md)。ビルド不要の ES modules を使用する。
 
@@ -84,6 +91,24 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 オブジェクトの id には必ず `#` が付く（`#c12` カード、`#t3` トークン、`#s4` スタック、`#n2` Note、
 `#l5` Link、`#m1` マナ）。入力では `#` を省いてもよい。Player（`p1`）と領域名（`p1.hand`）は `#` なし。
 
+### 対局を SQLite の DB に置く
+
+既定では対局は1つのフォルダ（`playtest/g1` など）。`--db`（か環境変数 `MTGTABLE_DB`）を付けると、対局を SQLite の
+DB に置く（サーバーで動かすときの形。[design/site_plan.md](design/site_plan.md) のフェーズ 1）。コマンドの使い方は同じで、
+GAME はパスの最後の名前を対局の id にする（`playtest/g1` → `g1`）。
+
+```bash
+export MTGTABLE_DB=data/mtg.sqlite   # PowerShell: $env:MTGTABLE_DB = 'data/mtg.sqlite'
+python -m mtgtable new g1 --deck p1=decklists/piza.txt --deck p2=decklists/jund-sacrifice.txt --seed 1
+python -m mtgtable serve --play          # DB の対局を見る・遊ぶ
+python -m mtgtable db-import playtest/g1 # 今の対局フォルダを DB へ移す（席の鍵・止める場所・プロンプトも）
+```
+
+- DB に入るのは初期状態・log・現在状態・席の鍵・席ごとの止める場所。AI のプロンプトと返答（作業ファイル）は
+  DB の隣の `data/mtg-files/<対局>/prompts/` に置く
+- 書き込みは DB 全体で1人ずつ（`BEGIN IMMEDIATE`）。読み手は止まらない（WAL）。サーバーと CLI（`auto` など）が同時に書いても壊さない
+- 環境変数: `MTGTABLE_DB`（DB の場所）、`OPENAI_API_KEY`（AI のキー。[secrets/README.md](secrets/README.md)）
+
 その他のコマンド:
 
 | コマンド | 内容 |
@@ -91,7 +116,10 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 | `ops` | Operation と手順の一覧 |
 | `export DEST [--game ID ...]` | 観戦ビューアを静的サイトに書き出す（GitHub Pages など用。judge の席だけ。カードの画像・文・マナ・シンボルはサイトに含めず、見る人のブラウザが Scryfall から取る） |
 | `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない。`--play` で GUI の対局も受ける（下の「GUI で AI と対戦する」） |
-| `invite GAME --seat p1` | GUI で席を持つための鍵付き URL を作る |
+| `invite GAME --seat p1` | GUI で席を持つための鍵付き URL を作る。鍵は既定で7日で切れる（`--ttl 時間`。0 で期限なし） |
+| `revoke GAME --seat p1` | 席の鍵を失効させる（席は人間の席のまま。`invite` で作り直すまで誰も使えない） |
+| `db-backup DEST [--keep N]` | `--db` の DB を動かしたまま写す（DEST がフォルダなら日時の名前で置き、新しい N 個を残す） |
+| `db-import GAME...` | 対局フォルダを `--db` の DB へ移す（`--force` で置き換え） |
 | `wait GAME --as p2` | 相手（GUI の人間）が書いて自分の番が来るまで待つ（AI 用）。`--prompt` で番が来たらプロンプトも書き出す |
 | `next GAME --ai p2` | 審判か AI の席の番まで待ち、そのプロンプトを `playtest/<対局>/prompts/` に書き出す |
 | `prompt GAME --as p2` / `--judge` | プロンプトを今すぐ書き出す |
@@ -146,10 +174,67 @@ python -m mtgtable serve --play
 - 送った依頼は取り消せない。審判が処理している間は操作できない。引いたカードは、審判の処理の後に初めて見える
 - 計画（依頼の行）が途中で止まったとき: 相手が対応しなければ審判がそのまま続ける。相手が割り込んだ（呪文・能力・ブロック）・
   引いたカードを見て決める所で止まったときは、残りの行と「その後」が下書きに戻る（入力し直さずに、直してから送れる）
+- 依頼を送れるのは、ゲーム前と、自分が待たれているとき（優先権・ブロック・審判の質問）だけ。相手が考えている間も下書きは
+  作っておける。それ以外のときに伝えたいことは発言で
 - 審判の質問は「今の操作」に選択肢つきで出る。送った依頼は「送った依頼」で見返せる
 - キープ・マリガンは宣言だけ（引き直し・下に置くカードは審判が処理し、下に置くカードは審判が聞く）
 - 鍵の無い席・judge は見えない（鍵を作った対局だけ。他の対局は今までどおり観戦できる）。外部に公開するサーバーとしての
   運用（HTTPS・DB・AI の HTTP 接続など）は [design/web_design.md](design/web_design.md) の「サーバーで動かすときに残っていること」
+
+### 公開のサーバーとして動かす（`serve --site`）
+
+[design/site_plan.md](design/site_plan.md) のフェーズ 2 まで。`--db` が要り、`--play` を含む。
+
+```bash
+python -m mtgtable --db data/mtg.sqlite serve --site --host 127.0.0.1 --port 8765   # 前に HTTPS のリバース・プロキシを置く
+python -m mtgtable --db data/mtg.sqlite invite g1 --seat p1 --base https://mtg.example.com/
+```
+
+- 初めて来たブラウザに「所有者の鍵」を Cookie（HttpOnly・SameSite=Lax、外向きの名前では Secure）で渡す。DB にはハッシュだけ
+- 招待の URL を開いた所有者が、その席を取る。以後はその所有者だけが、Cookie だけで（鍵を覚えていない端末でも）その席に入れる。
+  同じ招待の URL を他の人が開いても通らない
+- 対局の一覧は自分が席を持つ対局だけ。judge の席・鍵の無い対局・他の人の席は見せない
+- ヘッダーの「復元 URL」で、別の端末（か Cookie を消したブラウザ）を同じ所有者に戻す URL を作る。作り直すと前の URL は使えない
+- 書き込みは、同じサイトのページからだけ（`Origin` を確かめる）
+- ヘッダーの「トップ・デッキ・対局」で画面を切り替える。デッキの画面でデッキリストを貼り付けて登録する。登録・更新のたびに
+  検査し（カード名は Scryfall の `/cards/collection` で 75 枚ずつまとめて引く。読めない行・見つからない名前は行番号つき）、
+  通ったものだけを保存する。検査の中身: メイン 60 枚以上・サイドボード 15 枚まで・同じ名前は 4 枚まで（基本土地と
+  「好きな枚数を入れてよい」カードは除く）・フォーマットで使えるか（制限カードは 1 枚）。プレイ方針（任意）は、そのデッキを使う
+  AI のプロンプトに入る
+- 「対局を作る」で、登録したデッキを選んで AI と（AI のデッキは `decklists/` のものか自分のデッキ）、または人を招待して
+  対戦する。招待の URL は1回だけ使え、3日で切れる（作り直し・取り消しができる）。招待された人は自分のデッキを選んで席に
+  着き、その時点で対局ができる。デッキは対局を作る時点の写しを使う（後で直しても対局は変わらない）。公開・非公開を選べる
+- 人間どうしの対局で相手の番が 5 分続くと画面に出し、30 分続いたら「時間切れで勝ちにする」（相手の投了として書く）
+- 審判と AI の席はサーバーの中で回す（下の「LLM の API で自動で回す」。`--no-ai` で止める）
+- 「履歴」: 自分の対局（結果・ターン数・公開か）。終わった対局は「再生」で、全体（judge）と両方の席の視点を再生できる。
+  「共有」で再生専用の URL（`#/view/<対局>/<鍵>`）を作り、取り消せる。視点は自分の席か全体（全体は終わってから。人間どうしの
+  対局では相手の同意が要る）。「履歴から消す」は自分の一覧と公開の一覧から外し、席を持つ人が全員消したら対局を消す
+- 「公開の対局」: 終わった公開の対局を、誰でも再生できる（デッキ名で絞り込み）。対局中は、席を持つ人と共有 URL を持つ人だけが見る
+- 公開の手順（HTTPS の Caddy・systemd・バックアップ・監視・公開前の確かめ）は [deploy/README.md](deploy/README.md)。
+  アプリは 127.0.0.1 で待ち受け、前の Caddy だけが外に出る（`--trust-proxy`）
+- 悪用への備え: 送り元の IP ごと・所有者ごと・種類ごと（読む・書く・所有者の鍵を作る・デッキの検査・対局や招待や共有を作る・
+  復元）のレート制限（超えたら 429 と `Retry-After`。`MTGTABLE_RATE_<種類>=回数/秒` で変える）、どの応答にもセキュリティの
+  ヘッダー（CSP など。外向きの名前では HSTS も）、止まった接続を切る、思いがけない失敗は 500 にして理由をログにだけ残す
+- 運用: 1要求1行のアクセス・ログ（クエリは鍵が入りうるので出さない）、`/healthz`（DB の大きさ・空き。空きが
+  `MTGTABLE_MIN_FREE_MB` を切ると 503）、`db-backup`（動かしたまま DB を写す。`--keep` で古いものを消す）
+- フッターに権利の表記（Fan Content Policy・Scryfall）。利用規約・プライバシーの画面（下書き。運営者と連絡先は
+  `MTGTABLE_OPERATOR` / `MTGTABLE_CONTACT`）
+
+### 人間どうしで対戦する
+
+両方の席に鍵を作れば、2人がそれぞれのブラウザで席を持つ。AI が受け持つのは審判だけ（鍵の無い席が AI の席）。
+
+```bash
+python -m mtgtable invite playtest/g1 --seat p1
+python -m mtgtable invite playtest/g1 --seat p2
+python -m mtgtable serve --play
+python -m mtgtable auto playtest/g1 --watch   # 審判だけを回す（手動なら next / answer）
+```
+
+- それぞれの URL を、その席の人にだけ渡す。サーバーは 127.0.0.1 で待ち受けるので、今は同じ PC で使う
+  （外に出すには HTTPS などが要る。[design/site_plan.md](design/site_plan.md)）
+- 流れは `tests/test_pvp.py` で確かめている（キープ → ターンの受け渡し → 相手のターンの割り込み → 審判の質問 →
+  止まった計画の戻り → ブロック → 投了）
 
 ### AI の席と審判をプロンプトで回す（手動）
 
@@ -160,25 +245,43 @@ AI は2つの役割に分かれる。**Player** は何をするかを決めて�
 
 OpenAI の API で自動で回すか（`auto`）、プロンプトをファイルに書き出して人がモデルに渡し、返答を `answer` に渡す（手動）。
 
-#### OpenAI の API で自動で回す
+#### LLM の API で自動で回す
 
-1. API キーを `secrets/openai_api_key` に1行で書く（git の管理外。環境変数 `OPENAI_API_KEY` でもよい）。詳しくは [secrets/README.md](secrets/README.md)
-2. `serve --play` を起動して GUI で対局を開き、別のターミナルで `auto` を `--watch` 付きで動かしておく
+提供元は OpenAI か Anthropic（Claude）。役割（審判・AI の席）ごとに分けてもよい。設定とキーは [secrets/README.md](secrets/README.md)。
+
+1. API キーを `secrets/openai_api_key`（か `secrets/anthropic_api_key`）に1行で書く（環境変数 `OPENAI_API_KEY` /
+   `ANTHROPIC_API_KEY` でもよい）。Anthropic を使うなら `pip install anthropic`
+2. サーバーの中で回す: `serve --play --ai`（`serve --site` では既定）。人間が書くとすぐ、審判か AI の席の番なら回る
+
+```bash
+python -m mtgtable serve --play --ai
+```
+
+別のプロセスで回すなら、`serve --play` とは別のターミナルで `auto` を `--watch` 付きで動かす（`--ai` と同時には使わない。
+同じ番を2度呼ぶ）:
 
 ```bash
 python -m mtgtable auto playtest/g1 --watch
 ```
 
+サーバーの中で回すとき（`--ai` / `--site`）:
+
+- 同じ対局は同時に1つ、全体で 4 対局まで並べて回す。1手ごとに画面へ届く
+- 返答を続けて卓に書けない・API を呼べない・利用の上限に当たったら、その対局を「中断」にし、理由を画面に出す。
+  席を持つ人が「再開する」で動かし直す
+- 利用の上限（環境変数。トークンは入力（キャッシュ分を含む）＋出力）: `MTGTABLE_AI_CALLS_PER_GAME`（既定 600 回）・
+  `MTGTABLE_AI_TOKENS_PER_GAME`（600万）・`MTGTABLE_AI_TOKENS_PER_OWNER_DAY`（所有者ごとの1日。1000万）・
+  `MTGTABLE_AI_TOKENS_PER_DAY`（サイト全体の1日。1億）。数えた分は DB（`--db`）の `ai_usage` に残る
+
 - 審判か AI の席（鍵の無い席）の番になるたびに、プロンプトを作って送り、返答を卓に書く。人間の番の間は待つ
 - 待つのは `serve` の更新通知（SSE）。GUI の操作で、その場で起きる（`--server`、既定 http://127.0.0.1:8765）。サーバーに
   つながらない間は1秒ごとに卓を見て、10秒ごとにつなぎ直す
-- モデルは `secrets/openai.json` で指定する（`{"model": "gpt-5"}`。審判・AI の席を分けるなら `judge_model` / `player_model`、
-  推論の深さは `reasoning_effort`）。一時的に変えるなら `--model` か環境変数 `MTGTABLE_OPENAI_MODEL`（ファイルより優先）。
-  何も無ければ `gpt-5`。使えるモデルはアカウントによる
-- 固定部分（役割の指示・リファレンス・デッキ）を先頭に置くので、OpenAI の自動のプロンプト・キャッシュが効く。
-  効いた量は `prompts/<役割>/usage.jsonl` の `cached_tokens`
+- 提供元・モデルは `secrets/llm.json` で指定する（審判・AI の席を分けるなら `judge_*` / `player_*`、考える深さは `effort`）。
+  一時的に変えるなら `auto --provider` / `--model`。何も無ければ OpenAI の `gpt-5`
+- 固定部分（役割の指示・リファレンス・デッキ）を先頭に置くので、プロンプト・キャッシュが効く（Anthropic では固定部分に
+  TTL 1時間の区切りを付ける）。効いた量は `prompts/<役割>/usage.jsonl` の `cached_tokens`（どの提供元でも同じ形）
 - 返答を続けて適用できなかったら止まる（`--max-failures`、既定 3）。そのときは `prompts/<役割>/` の `*.response.md` を見る
-- 送るのは、その役割に見せてよい情報だけ（AI の席には自分の view、審判には全情報）。送り先は OpenAI の API だけ
+- 送るのは、その役割に見せてよい情報だけ（AI の席には自分の view、審判には全情報）。送り先は選んだ提供元の API だけ
 
 #### 手動で回す
 
@@ -263,7 +366,7 @@ Replay は初期状態に `steps` だけを適用し直す。乱数（シャッ�
 
 ## 未実装（今後）
 
-- GUI の対局のサーバー運用（HTTPS・DB・AI の HTTP 接続。今はローカルの1台だけ）。Human vs Human の画面は未確認
+- GUI の対局のサーバー運用（HTTPS・利用者の識別・AI をサーバーで回す。今はローカルの1台だけ）。Human vs Human の画面は未確認
 - Judge / Orchestrator の自動進行（27節）。現状は `--as judge` での手動操作だけ
 - 旧実装にあった対局記録の集計・ベンチマーク・Goldfish の統計
 
@@ -271,6 +374,7 @@ Replay は初期状態に `steps` だけを適用し直す。乱数（シャッ�
 
 ```bash
 python -m unittest discover -s tests
+MTGTABLE_TEST_STORE=sqlite python -m unittest discover -s tests   # 同じテストを SQLite の保存先で（CI は両方）
 ```
 
 Web の通信・時系列復元のテスト（開発時のみ Node.js 24 が必要）:
@@ -281,7 +385,7 @@ node --test tests/web.test.mjs
 
 | ファイル | 対象 |
 |---|---|
-| `helpers.py` | 共通部品（小さなデッキ2つの対局、`ok` など） |
+| `helpers.py` | 共通部品（小さなデッキ2つの対局、`ok`、保存先を開く `store` / `viewer` など） |
 | `test_setup.py` | デッキリスト・初期状態 |
 | `test_info.py` | 公開範囲・記憶・Player View・表示 |
 | `test_operations.py` | 基本の Operation（カード・Link・トークン・スタック・戦闘・マナ・ライブラリー・ログの文字列） |
@@ -289,9 +393,17 @@ node --test tests/web.test.mjs
 | `test_turn.py` | ターン・ステップ・ゲーム前・宣言・優先権のパス |
 | `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
+| `test_decks.py` | デッキ登録: 検査（書式・カード名・枚数・フォーマット）、Scryfall のまとめ引き（偽の Scryfall）、デッキの API、AI のプレイ方針 |
+| `test_lobby.py` | 対局を作る: AI との対局・デッキの写し・招待（1回だけ・同時に着いても1人・期限・作り直し・取り消し）・時間切れ |
+| `test_worker.py` | サーバーの中で回す: 人間が書いたらすぐ回る・利用の上限で中断・席の鍵で再開・API の失敗・所有者と1日の数え方 |
+| `test_history.py` | 履歴・公開の対局: 対局中と終わった後に見える範囲・公開の一覧（絞り込み・ページ送り）・共有 URL（同意・取り消し）・履歴から消す・時系列の保存 |
+| `test_ops.py` | 公開のサーバーの運用: レート制限・セキュリティのヘッダー・所有者の鍵の数・プロキシの IP・アクセス・ログ・500・/healthz・バックアップ |
+| `test_site.py` | 公開のサーバー: 所有者の鍵の Cookie・招待の URL で席を取る・自分の対局だけ・復元 URL・Origin・鍵の期限と失効 |
+| `test_sqlstore.py` | SQLite の保存先: 対局フォルダからの移行・一覧の要約（終わった日時）・ロールバック・同時の書き込み・CLI の `--db` |
 | `test_carddb.py` | オラクルのキャッシュ |
 | `test_web.py` | 観戦ビューアのサーバー（席ごとの view・log・静的ファイル）と GUI の対局の API（席の鍵・依頼・宣言・回答だけの書き込み・409） |
 | `test_play.py` | 待たれている Player・`wait`・書き込みの排他・席の鍵 |
+| `test_pvp.py` | 人間どうしの対局（両方の席に鍵・審判だけ AI）の通し: 手番の受け渡し・割り込み・質問・ブロック・待たれていない席の依頼の拒否 |
 | `test_prompt.py` | AI の席のプロンプト（固定部分が変わらないこと・見せる範囲）と返答の適用 |
 
 ## 権利

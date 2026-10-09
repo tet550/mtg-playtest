@@ -4,7 +4,7 @@
 審判への依頼・回答と、盤面を変えない宣言だけで、盤面は審判が動かす（request_play_design）。
 書き込みの排他は GameStore（.lock と expect）が受け持ち、ここでは次の4つを持つ:
 
-- 席の鍵: `invite` が席ごとの鍵を作り、対局フォルダの seats.json にはハッシュだけを置く。
+- 席の鍵: `invite` が席ごとの鍵を作り、保存先（対局フォルダの seats.json か DB）にはハッシュだけを置く。
   サーバーは鍵を持つ人にだけ、その席としての書き込みを許す（席を名乗るだけでは書けない）
 - 待たれている Player（waiting_on）: 優先権・スタック・ステップから「今、誰が動く番か」を決める。
   GUI の表示と `wait` の両方がこれを使う。エンジンの優先権の記録（pass）と同じ約束事で、ルールの判定はしない
@@ -13,8 +13,8 @@
 """
 from __future__ import annotations
 
+import datetime
 import hashlib
-import json
 import re
 import secrets
 import time
@@ -22,7 +22,7 @@ from typing import Optional
 
 from . import carddb, info
 from .model import GameState
-from .store import GameStore, _dump
+from .store import GameStore
 
 
 # ---------------------------------------------------------------- 席の鍵
@@ -31,31 +31,48 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _seats_path(store: GameStore):
-    return store.root / "seats.json"
-
-
 def seats(store: GameStore) -> dict:
-    p = _seats_path(store)
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    return store.read_doc("seats") or {}
 
 
-def invite(store: GameStore, seat: str) -> str:
-    """seat の鍵を新しく作って返す（前の鍵は使えなくなる）。対局フォルダにはハッシュだけを残す。"""
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def invite(store: GameStore, seat: str, ttl: Optional[float] = None) -> str:
+    """seat の鍵を新しく作って返す（前の鍵は使えなくなる）。保存先にはハッシュだけを残す。
+    ttl（時間）を渡すと、その時間が過ぎた鍵は使えない（公開のサーバーでは、席を取る前の招待の URL が残り続けないように）。"""
     state = store.load()
     if seat not in state.players:
         raise ValueError("unknown seat %r (players: %s)" % (seat, ", ".join(state.player_order)))
     token = secrets.token_urlsafe(24)
+    rec = {"token_sha256": _hash(token)}
+    if ttl:
+        rec["expires"] = (_now() + datetime.timedelta(hours=ttl)).isoformat(timespec="seconds")
     with store.lock():
         data = seats(store)
-        data[seat] = {"token_sha256": _hash(token)}
-        _dump(_seats_path(store), data)
+        data[seat] = rec
+        store.write_doc("seats", data)
     return token
+
+
+def revoke(store: GameStore, seat: str) -> bool:
+    """seat の鍵を失効させる。席は人間の席のまま（AI に替わらない）で、invite で作り直すまで誰も使えない。
+    鍵があったかを返す。"""
+    with store.lock():
+        data = seats(store)
+        if seat not in data:
+            return False
+        data[seat] = {"revoked": _now().isoformat(timespec="seconds")}
+        store.write_doc("seats", data)
+    return True
 
 
 def check_token(store: GameStore, seat: str, token: Optional[str]) -> bool:
     rec = seats(store).get(seat)
-    return bool(token and rec) and secrets.compare_digest(rec["token_sha256"], _hash(token))
+    if not (token and rec and rec.get("token_sha256")) or not secrets.compare_digest(rec["token_sha256"], _hash(token)):
+        return False
+    return not rec.get("expires") or datetime.datetime.fromisoformat(rec["expires"]) > _now()
 
 
 # ---------------------------------------------------------------- 手番の受け渡し
@@ -209,13 +226,12 @@ def autopass(store: GameStore, limit: int = 20) -> list:
     return done
 
 
-def _private_path(store: GameStore, seat: str):
-    return store.root / "private" / ("%s.json" % seat)
+def _private_doc(seat: str) -> str:
+    return "private/%s" % seat
 
 
 def get_stops(store: GameStore, seat: str) -> list:
-    p = _private_path(store, seat)
-    return list(json.loads(p.read_text(encoding="utf-8")).get("stops", [])) if p.exists() else []
+    return list((store.read_doc(_private_doc(seat)) or {}).get("stops", []))
 
 
 def check_stops(codes) -> list:
@@ -228,11 +244,9 @@ def check_stops(codes) -> list:
 
 def set_stops(store: GameStore, seat: str, codes) -> list:
     codes = check_stops(codes)
-    p = _private_path(store, seat)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    data = store.read_doc(_private_doc(seat)) or {}
     data["stops"] = codes
-    _dump(p, data)
+    store.write_doc(_private_doc(seat), data)
     return codes
 
 
@@ -708,10 +722,14 @@ def _not_busy(state: GameState, seat: str) -> None:
 def seat_request(state: GameState, seat: str, body: dict) -> tuple:
     """依頼 {"plan": [{"kind", "text", "cards", "targets", "count"}], "then", "comment"} を卓の宣言に。
     返り値は (label, ops)。plan は op に展開せず、文と一緒に宣言に残す（審判が読んで卓に書く）。
-    ゲーム前も出せる（盤面がおかしいという報告、開始時の手札から使うカードの申し出など）。"""
+    ゲーム前も出せる（盤面がおかしいという報告、開始時の手札から使うカードの申し出など）。
+    ゲームが始まった後は、待たれている席（優先権・ブロック・本人の番）だけ。相手（人間どうしの対局の相手も）が考えて
+    いる間に出すと、審判が順番を飛ばして処理してしまう。それ以外のときに伝えたいことは発言（say）で。"""
     _playing(state, seat)
     _not_busy(state, seat)
     plan = _check_plan(state, seat, body.get("plan"))
+    if state.turn.turn != 0 and waiting_on(state) != seat:
+        raise Refused("it is not %s's turn to act (waiting on %s); use say to talk" % (seat, waiting_on(state)))
     then = body.get("then") or "continue"
     comment = _text(body.get("comment"), "comment")
     if not isinstance(then, str) or (then not in THEN_JA and then not in STEP_THEN):

@@ -190,6 +190,8 @@ export function requestAction(lines, comment, turn, seat, stackSize) {
   if (empty && (r.then === "pass" || (r.then === "continue" && stackSize > 0))) {
     return turn.priority === seat ? { kind: "pass", label: "パス" } : null;
   }
+  // 依頼はゲーム前か、待たれている（優先権・ブロック・自分の番）ときだけ。相手が考えている間は下書きを作っておく
+  if (turn.turn !== 0 && turn.waiting_on !== seat) return null;
   if (empty && r.then === "continue") {
     // 自分のターンで下書きが空: 次のステップへ進める（終了ステップなら、ターンを終える）。何もせずに止まらないように
     const next = nextStep(turn);
@@ -451,8 +453,18 @@ function ask({ title, fields = [], choices = null, ok = "OK" }) {
   });
 }
 
+// 時間切れの知らせ（公開のサーバーの人間どうしの対局）: 相手（人間）の番が続いている分。idle はサーバーが時系列に付けた
+// {seconds, notice, limit, humans} と、受け取った時刻 at。知らせる前・自分の番・審判や AI の番なら null
+export function idleState(idle, wait, seat, now) {
+  if (!idle || !wait || wait === seat || wait === "judge" || !(idle.humans || []).includes(wait)) return null;
+  const seconds = idle.seconds + Math.max(0, now - idle.at) / 1000;
+  if (seconds < idle.notice) return null;
+  return { who: wait, minutes: Math.floor(seconds / 60), canClaim: seconds >= idle.limit,
+    left: Math.max(1, Math.ceil((idle.limit - seconds) / 60)) };
+}
+
 let toastTimer = null;
-function toast(text, error) {
+export function toast(text, error) {
   const t = $("toast");
   t.textContent = text;
   t.className = "toast" + (error ? " error" : "");
@@ -1222,6 +1234,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     const act = requestAction(d.lines, d.comment, t, seat, v.stack.length);
     const send = button(act ? act.label : "審判に依頼", sendDraft, { cls: "on", disabled: off || !act,
       title: act && act.kind === "pass" ? "優先権を相手に渡す（下書きが無いので審判は通さない）"
+        : !act && t.turn !== 0 && t.waiting_on !== seat ? "相手の番（送れるのは自分の番が来てから。下書きは作っておける）"
         : "下書きを審判に送る。「その後」は最後の行（進めるボタンで足す）で決まる。無ければ自分のターンは続ける・相手のターンはパス" });
     const r3 = el("div", "crow");
     r3.append(send);
@@ -1451,6 +1464,22 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     $("playTitle").textContent = `${seat} として操作`;
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };
+    if (ui.live && ui.ai && ui.ai.status === "suspended") {  // 審判・AI の席が止まった（上限・API の失敗など）
+      rows.push(el("div", "pask", `AI（審判・AI の席）が止まっています: ${ui.ai.reason}`));
+      row(button("再開する", async () => {
+        try { await source.post(ui.game, "resume", { seat }); toast("再開した"); reload(); } catch (e) { toast(e.message, true); }
+      }, { title: "原因が解消したら（翌日・API の復旧など）、AI をもう一度動かす" }));
+    }
+    const idle = ui.live && idleState(ui.idle, wait, seat, Date.now());
+    if (idle) {
+      rows.push(el("div", "phint", `${idle.who} の番が ${idle.minutes} 分続いています`));
+      row(idle.canClaim
+        ? button("時間切れで勝ちにする", async () => {
+          if (!confirm(`${idle.who} の時間切れ（投了）にしますか？`)) return;
+          try { await source.post(ui.game, "timeout", { seat }); toast("時間切れで決着した"); reload(); } catch (e) { toast(e.message, true); }
+        }, { title: "相手が長く操作していないとき、相手の投了として対局を終える" })
+        : el("span", "muted", `あと ${idle.left} 分で、時間切れを申し立てられます`));
+    }
     if (locked()) { compose = null; pick = null; blocker = null; closeMenu(); }  // 審判の処理で盤面が変わる
     if (compose || pick) rows.push(composeBox());
     const mine = wait === seat && ui.live;
@@ -1499,6 +1528,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     body.replaceChildren(status, ...rows);
   }
 
+  setInterval(() => { if (ui.play && ui.idle) renderPanel(); }, 30000);  // 時間切れの知らせの分を進める
   addEventListener("pointerdown", (e) => { if (!e.target.closest("#menu")) closeMenu(); }, true);
   addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMenu();

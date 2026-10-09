@@ -2,12 +2,17 @@
 
 ゲームモデルとは分けて持つ。AI はこれらを管理しない。
 
-対局フォルダの中身:
+保存の仕方は2つ。共通の処理（apply・undo・redo・replay・fork）は BaseStore が持ち、保存先ごとの読み書きだけを
+実装が持つ（GameStore はフォルダ、sqlstore.SqliteGameStore は SQLite）。
+
+対局フォルダ（GameStore）の中身:
     initial.json   初期状態
     log.jsonl      適用した Act を1行1件（actor・AI が書いた act・実際に適用した基本の op と event（steps）・Batch の番号・手順）
     state.json     現在状態のキャッシュと、log のどこまでが有効か（cursor）
-    seats.json     GUI から操作する席の鍵（`invite` が作る。鍵そのものではなくハッシュ）
+    seats.json     GUI から操作する席の鍵（`invite` が作る。鍵そのものではなくハッシュ）。卓の外の文書（doc）の1つ
+    private/       席ごとの非公開の設定（止める場所）。卓の外の文書
     .lock          書き込み中の印（CLI の AI と GUI の人間が同時に書いても壊さない）
+    prompts/       AI のプロンプトと返答（作業ファイル。どちらの保存先でも root の下のファイル）
 
 Replay は各件の steps（複合 op を展開し、エイリアスを id に置き換えた基本の op）だけを適用し直す。
 乱数は Act ごとに (seed, version) から決まるので、initial.json と log を先頭から適用し直せば同じ状態に戻る。Undo はこの Replay で cursor を戻すだけ。
@@ -70,93 +75,32 @@ LOCK_TIMEOUT = 10.0  # 他の書き手を待つ長さ
 LOCK_STALE = 60.0  # これより古い .lock は、落ちた書き手の残りとみなして消す
 
 
-class GameStore:
-    def __init__(self, root):
-        self.root = pathlib.Path(root)
+def summary_of(state: GameState) -> dict:
+    """対局の一覧に出す要約（どちらの保存先でも同じ形）。"""
+    return {"version": state.version, "turn": state.turn.turn,
+            "players": [{"id": p, "name": state.players[p].name, "status": state.players[p].status}
+                        for p in state.player_order]}
 
-    # ---- files
 
-    @property
-    def initial_path(self):
-        return self.root / "initial.json"
+def finished(state: GameState) -> bool:
+    live = [p for p in state.player_order if state.players[p].status == "playing"]
+    return len(live) < 2 and len(state.player_order) > 1
 
-    @property
-    def log_path(self):
-        return self.root / "log.jsonl"
 
-    @property
-    def state_path(self):
-        return self.root / "state.json"
+class BaseStore:
+    """対局1つの保存。共通の処理をここに置き、保存先ごとの実装は次を持つ:
 
-    def exists(self) -> bool:
-        return self.initial_path.exists()
+    name・root（作業ファイルの置き場所）・exists・create・read_log・_write_log・lock・_save_state・cursor・load・
+    initial・_save_initial・read_doc・write_doc・stamp・summary・_sibling"""
 
-    def create(self, state: GameState, overwrite: bool = False) -> None:
-        if self.exists() and not overwrite:
-            raise FileExistsError("%s already holds a game (use --force to replace it)" % self.root)
-        self.root.mkdir(parents=True, exist_ok=True)
-        _dump(self.initial_path, state.to_dict())
-        self.log_path.write_text("", encoding="utf-8")
-        self._save_state(state, 0)
-
-    def read_log(self) -> list:
-        if not self.log_path.exists():
-            return []
-        return [json.loads(line) for line in _read(self.log_path).splitlines() if line.strip()]
-
-    def _write_log(self, entries: list) -> None:
-        tmp = self.log_path.with_suffix(".jsonl.tmp")  # 読み手（観戦・wait）に書きかけを見せない
-        tmp.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries), encoding="utf-8")
-        _replace(tmp, self.log_path)
-
-    @property
-    def lock_path(self):
-        return self.root / ".lock"
-
-    @contextlib.contextmanager
-    def lock(self, timeout: float = LOCK_TIMEOUT):
-        """対局フォルダへの書き込みを1人ずつにする（別のプロセスの CLI とサーバーの間でも効く）。"""
-        deadline = time.monotonic() + timeout
-        while True:
-            try:
-                fd = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-                break
-            except FileExistsError:
-                try:
-                    if time.time() - self.lock_path.stat().st_mtime > LOCK_STALE:
-                        self.lock_path.unlink()
-                        continue
-                except FileNotFoundError:
-                    continue
-                if time.monotonic() > deadline:
-                    raise TimeoutError("%s is locked by another writer" % self.root)
-                time.sleep(0.05)
-        try:
-            os.write(fd, str(os.getpid()).encode())
-            os.close(fd)
-            yield
-        finally:
-            with contextlib.suppress(FileNotFoundError):
-                self.lock_path.unlink()
+    name: str
+    root: pathlib.Path
 
     def _check(self, expect: Optional[int]) -> int:
         cur = self.cursor()
         if expect is not None and expect != cur:
             raise StaleCursor("the game moved on (cursor %d, expected %d)" % (cur, expect))
         return cur
-
-    def _save_state(self, state: GameState, cursor: int) -> None:
-        _dump(self.state_path, {"cursor": cursor, "state": state.to_dict()})
-
-    def cursor(self) -> int:
-        return json.loads(_read(self.state_path))["cursor"]
-
-    def load(self) -> GameState:
-        data = json.loads(_read(self.state_path))
-        return GameState.from_dict(data["state"])
-
-    def initial(self) -> GameState:
-        return GameState.from_dict(json.loads(_read(self.initial_path)))
 
     # ---- apply
 
@@ -191,7 +135,7 @@ class GameStore:
                 if "proxy" in act:
                     entry["proxy_by"] = result["actor"]  # 代理の宣言（指摘があれば Undo で巻き戻す）
                 entries.append(entry)
-            self._write_log(entries)
+            self._write_log(entries, keep=cursor)
             cursor = len(entries)
         self._save_state(engine.state, cursor)
         result["_state"] = engine.state
@@ -210,7 +154,7 @@ class GameStore:
                 raise ValueError("unknown player %r" % pid)
             info.set_policy(state, pid, pol)
             info.set_policy(init, pid, pol)
-        _dump(self.initial_path, init.to_dict())
+        self._save_initial(init)
         self._save_state(state, self.cursor())
         return dict(state.info_policy)
 
@@ -286,12 +230,159 @@ class GameStore:
         self._save_state(self.replay(cur), cur)
         return cur
 
-    def fork(self, dest, upto: Optional[int] = None, overwrite: bool = False) -> "GameStore":
-        """log の途中時点の状態を新しい対局の初期状態にする（Snapshot からの分岐）。"""
+    def fork(self, dest, upto: Optional[int] = None, overwrite: bool = False) -> "BaseStore":
+        """log の途中時点の状態を新しい対局の初期状態にする（Snapshot からの分岐）。同じ保存先に作る。"""
         state = self.replay(upto)
-        other = GameStore(dest)
+        other = self._sibling(dest)
         other.create(state, overwrite=overwrite)
         return other
+
+
+class GameStore(BaseStore):
+    """対局フォルダに保存する（CLI・手元の対局の既定）。"""
+
+    def __init__(self, root):
+        self.root = pathlib.Path(root)
+
+    @property
+    def name(self) -> str:
+        return self.root.name
+
+    # ---- files
+
+    @property
+    def initial_path(self):
+        return self.root / "initial.json"
+
+    @property
+    def log_path(self):
+        return self.root / "log.jsonl"
+
+    @property
+    def state_path(self):
+        return self.root / "state.json"
+
+    def exists(self) -> bool:
+        return self.initial_path.exists() and self.state_path.exists()
+
+    def create(self, state: GameState, overwrite: bool = False) -> None:
+        if self.exists() and not overwrite:
+            raise FileExistsError("%s already holds a game (use --force to replace it)" % self.root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        _dump(self.initial_path, state.to_dict())
+        self.log_path.write_text("", encoding="utf-8")
+        self._save_state(state, 0)
+
+    def read_log(self) -> list:
+        if not self.log_path.exists():
+            return []
+        return [json.loads(line) for line in _read(self.log_path).splitlines() if line.strip()]
+
+    def _write_log(self, entries: list, keep: int = 0) -> None:
+        """log を entries にする（keep 件目までは前と同じ。フォルダでは丸ごと書き直す）。"""
+        tmp = self.log_path.with_suffix(".jsonl.tmp")  # 読み手（観戦・wait）に書きかけを見せない
+        tmp.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries), encoding="utf-8")
+        _replace(tmp, self.log_path)
+
+    @property
+    def lock_path(self):
+        return self.root / ".lock"
+
+    @contextlib.contextmanager
+    def lock(self, timeout: float = LOCK_TIMEOUT):
+        """対局フォルダへの書き込みを1人ずつにする（別のプロセスの CLI とサーバーの間でも効く）。"""
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fd = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - self.lock_path.stat().st_mtime > LOCK_STALE:
+                        self.lock_path.unlink()
+                        continue
+                except FileNotFoundError:
+                    continue
+                if time.monotonic() > deadline:
+                    raise TimeoutError("%s is locked by another writer" % self.root)
+                time.sleep(0.05)
+        try:
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            yield
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                self.lock_path.unlink()
+
+    def _save_state(self, state: GameState, cursor: int) -> None:
+        _dump(self.state_path, {"cursor": cursor, "state": state.to_dict()})
+
+    def cursor(self) -> int:
+        return json.loads(_read(self.state_path))["cursor"]
+
+    def load(self) -> GameState:
+        data = json.loads(_read(self.state_path))
+        return GameState.from_dict(data["state"])
+
+    def initial(self) -> GameState:
+        return GameState.from_dict(json.loads(_read(self.initial_path)))
+
+    def _save_initial(self, state: GameState) -> None:
+        _dump(self.initial_path, state.to_dict())
+
+    # ---- 卓の外の文書（席の鍵・席ごとの非公開の設定）
+
+    def _doc_path(self, name: str) -> pathlib.Path:
+        return self.root / ("%s.json" % name)
+
+    def read_doc(self, name: str) -> Optional[dict]:
+        p = self._doc_path(name)
+        return json.loads(_read(p)) if p.exists() else None
+
+    def write_doc(self, name: str, data: dict) -> None:
+        p = self._doc_path(name)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        _dump(p, data)
+
+    # ---- 一覧・変化の検知
+
+    def stamp(self) -> tuple:
+        """書き込みのたびに変わる値（観戦の再計算と SSE の通知に使う）。"""
+        return tuple(p.stat().st_mtime_ns if p.exists() else 0 for p in (self.state_path, self.log_path))
+
+    def summary(self) -> dict:
+        def iso(p):
+            return datetime.datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds")
+        state = self.load()
+        return dict(summary_of(state), id=self.name, created=iso(self.initial_path), updated=iso(self.state_path),
+                    ended=iso(self.state_path) if finished(state) else None)
+
+    def _sibling(self, dest) -> "GameStore":
+        return GameStore(dest)
+
+
+class FileGames:
+    """フォルダの下の対局フォルダ（serve --root）。"""
+
+    def __init__(self, root):
+        self.root = pathlib.Path(root)
+
+    def open(self, game: str) -> GameStore:
+        if not valid_id(game):
+            raise LookupError("unknown game %r" % game)
+        return GameStore(self.root / game)
+
+    def ids(self) -> list:
+        """対局の id（新しく書かれた順）。"""
+        if not self.root.is_dir():
+            return []
+        dirs = [d for d in self.root.iterdir() if d.is_dir() and GameStore(d).exists()]
+        return [d.name for d in sorted(dirs, key=lambda d: (d / "state.json").stat().st_mtime, reverse=True)]
+
+
+def valid_id(game: str) -> bool:
+    """対局の id として使える名前（パスの区切り・隠しファイル・空を受けない）。"""
+    return bool(game) and not game.startswith(".") and all(c.isalnum() or c in "-_." for c in game)
 
 
 # ---------------------------------------------------------------- diff

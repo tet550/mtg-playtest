@@ -7,9 +7,9 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, OperationError, player_view  # noqa: E402
+from mtgtable import OperationError, player_view  # noqa: E402
 from mtgtable.render import render_view  # noqa: E402
-from helpers import find, game, hand, ok, run  # noqa: E402
+from helpers import find, game, hand, ok, run, store  # noqa: E402
 
 
 class CompositeTest(unittest.TestCase):
@@ -211,7 +211,7 @@ class ProcedureTest(unittest.TestCase):
 
     def test_log_keeps_primitive_steps_and_replays_from_them(self):
         with tempfile.TemporaryDirectory() as tmp:
-            st = GameStore(pathlib.Path(tmp) / "g")
+            st = store(tmp, "g")
             e = game()
             forest = find(e, "p1", "hand", "Forest")
             bear = find(e, "p1", "hand", "Grizzly Bears")
@@ -239,7 +239,7 @@ class ProcedureTest(unittest.TestCase):
 
     def test_procedures_are_logged_per_act_and_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
-            st = GameStore(pathlib.Path(tmp) / "g")
+            st = store(tmp, "g")
             e = game()
             bear = find(e, "p1", "hand", "Grizzly Bears")
             e.state.cards[bear].type_line = "Creature — Bear"

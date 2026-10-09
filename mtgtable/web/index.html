@@ -3,12 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mtgtable 観戦</title>
+<title>mtgtable</title>
+<meta name="description" content="紙の Magic: The Gathering を、ブラウザの卓で AI か招待した人と遊ぶ非公式のファンサイト。カードの処理は AI の審判が行う。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="mtgtable — ブラウザで遊ぶ MTG の卓">
+<meta property="og:description" content="デッキを登録して、AI か招待した人と対戦。終わった対局は再生・共有できる。">
+<meta name="theme-color" content="#2f5d8a">
+<link rel="icon" href="static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="static/style.css">
 </head>
 <body>
 <header class="bar">
   <strong class="brand">mtgtable</strong>
+  <nav id="sitenav" class="sitenav" hidden></nav>
   <label>対局 <select id="game"></select></label>
   <label>席 <select id="seat">
     <option value="judge">judge（全知）</option>
@@ -20,6 +27,7 @@
   <span id="turn" class="turn"></span>
   <span id="playing" class="chip strong playing" hidden></span>
   <span id="conn" class="conn" title="更新の受信状態"></span>
+  <button id="recovery" title="別の端末で同じ対局を見るための URL を作る" hidden>復元 URL</button>
   <button id="logToggle" title="Log を開く・閉じる（L キー）">Log</button>
 </header>
 
@@ -42,6 +50,8 @@
   <button id="live" class="on" title="最新を追う">Live</button>
   <span id="posText" class="muted"></span>
 </div>
+
+<section id="page" class="page" hidden></section>
 
 <main class="layout">
   <section class="board">
@@ -69,6 +79,12 @@
 <div id="menu" class="menu" hidden></div>
 <dialog id="ask" class="ask"></dialog>
 <div id="toast" class="toast" hidden></div>
+<footer id="sitefooter" class="sitefooter">
+  <p>mtgtable は Wizards of the Coast の Fan Content Policy に基づく非公式のファンコンテンツです。Wizards of the Coast による承認・支援は受けていません。
+  使用している素材の一部は Wizards of the Coast LLC の財産です。©Wizards of the Coast LLC. Magic: The Gathering は Wizards of the Coast LLC の商標です。</p>
+  <p>カードの情報と画像: <a href="https://scryfall.com/" rel="noopener noreferrer" target="_blank">Scryfall</a>（Scryfall とも無関係です）<span id="legallinks" hidden>
+  ・<a href="#/terms">利用規約</a>・<a href="#/privacy">プライバシー</a></span></p>
+</footer>
 <script type="module" src="static/app.js"></script>
 </body>
 </html>

@@ -7,14 +7,14 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, state_diff  # noqa: E402
-from helpers import game  # noqa: E402
+from mtgtable import state_diff  # noqa: E402
+from helpers import game, store  # noqa: E402
 
 
 class StoreTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.store = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.store = store(self.tmp.name, "g")
         self.store.create(game().state)
 
     def tearDown(self):

@@ -707,3 +707,50 @@ button.sgcell:hover { border-color: var(--accent); }
 .sitem.pv { opacity: .6; outline: 2px dashed var(--accent); border-radius: 6px; }
 .chip.mana.clickable { cursor: pointer; }
 .chip.mana.clickable:hover { outline: 1px solid #6aa9ff; }
+
+/* ---- 公開のサーバーの画面（トップ・デッキ） */
+.sitenav { display: flex; gap: 4px; flex: none; }
+.sitenav a { color: inherit; text-decoration: none; padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; }
+.sitenav a:hover { border-color: var(--line); }
+.sitenav a.on { background: var(--accent); color: #fff; }
+.page { max-width: 880px; margin: 0 auto; padding: 16px; }
+.page h2 { margin: 8px 0 12px; font-size: 18px; }
+.page p, .page li { font-size: 14px; }
+.page .steps li { margin: 6px 0; }
+.page a { color: var(--accent); }
+table.decks { width: 100%; border-collapse: collapse; margin-bottom: 16px; background: var(--panel); }
+table.decks th, table.decks td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+table.decks .dname { font-weight: 600; overflow-wrap: anywhere; }
+table.decks .dops { white-space: nowrap; text-align: right; }
+.deckform { display: flex; flex-direction: column; gap: 10px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px; }
+.deckform .field { display: flex; flex-direction: column; gap: 3px; }
+.deckform .flabel { font-weight: 600; }
+.deckform .fhelp { font-size: 12px; }
+.deckform input, .deckform select, .deckform textarea { font: inherit; color: inherit; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 100%; }
+.deckform textarea.decktext { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+.deckform .crow { display: flex; gap: 8px; flex-wrap: wrap; }
+.checkresult .ok { color: var(--ok); font-weight: 600; }
+.checkresult .bad { color: var(--warn); font-weight: 600; }
+.checkresult li.error { color: var(--warn); }
+.checkresult li.warning { color: var(--muted); }
+@media (max-width: 600px) {
+  .sitenav a { padding: 3px 6px; }
+  table.decks th:nth-child(4), table.decks td:nth-child(4) { display: none; }
+}
+.replay[hidden], .layout[hidden], .page[hidden], .sitenav[hidden], .bar label[hidden] { display: none; }
+.offpage { display: none !important; }  /* 盤面の画面でだけ出す部品（トップ・デッキ・履歴などでは隠す） */
+.urlbox { display: flex; gap: 6px; margin: 6px 0; }
+.urlbox input { flex: 1; min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 8px; }
+.page p.bad { color: var(--warn); }
+.deckform .field[hidden] { display: none; }
+
+/* ---- フッター（権利の表記。どの画面にも出す） */
+.sitefooter { max-width: 880px; margin: 24px auto 12px; padding: 8px 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.sitefooter p { margin: 2px 0; }
+.sitefooter a { color: inherit; }
+.page.legal h3 { font-size: 14px; color: var(--ink); margin-top: 18px; }
+.page.legal li { margin: 4px 0; }
+.page .draft { border: 1px dashed var(--warn); color: var(--warn); padding: 6px 10px; border-radius: 6px; }

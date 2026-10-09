@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 
@@ -17,6 +18,19 @@ from .procedures import describe_procedures
 from .render import card_name, render_view, strip_names
 from .setup import check_deck, load_decklist, new_game
 from .store import GameStore, state_diff
+
+DB = None  # --db / 環境変数 MTGTABLE_DB: 対局を SQLite の DB に置く（GAME はパスの最後の名前を対局の id にする）
+
+
+def _store(game):
+    """GAME（対局フォルダのパス）の保存先。--db があれば、その DB の中の同じ名前の対局。"""
+    if DB:
+        from .sqlstore import SqliteGameStore
+        try:
+            return SqliteGameStore(DB, pathlib.Path(game).name)
+        except ValueError as e:
+            raise SystemExit(str(e))
+    return GameStore(game)
 
 
 def _utf8():
@@ -105,7 +119,7 @@ def cmd_new(a):
     for pid, deck in decks.items():
         state.meta["decks"][pid]["oracle"] = str(carddb.deck_cache_path(deck))
         state.meta["decks"][pid]["oracle_missing"] = caches[pid]["missing"]
-    GameStore(a.game).create(state, overwrite=a.force)
+    _store(a.game).create(state, overwrite=a.force)
     for pid, d in state.meta["decks"].items():
         print("%s: %s (%d cards, sideboard %d)" % (pid, d["name"], d["main"], d["sideboard"]))
         print("    oracle: %s%s" % (d["oracle"], "  missing: " + ", ".join(d["oracle_missing"])
@@ -114,11 +128,11 @@ def cmd_new(a):
 
 
 def cmd_view(a):
-    _view(GameStore(a.game).load(), _actor(a.as_), a.json, a.oracle, not a.no_names, **_zone_flags(a))
+    _view(_store(a.game).load(), _actor(a.as_), a.json, a.oracle, not a.no_names, **_zone_flags(a))
 
 
 def cmd_apply(a):
-    store = GameStore(a.game)
+    store = _store(a.game)
     text = sys.stdin.read() if a.file in (None, "-") else pathlib.Path(a.file).read_text(encoding="utf-8")
     try:
         batch = json.loads(text)
@@ -148,13 +162,13 @@ def cmd_apply(a):
 
 def cmd_undo(a):
     try:
-        print("cursor -> %d" % GameStore(a.game).undo(a.n, to=a.to))
+        print("cursor -> %d" % _store(a.game).undo(a.n, to=a.to))
     except ValueError as e:
         raise SystemExit(str(e))
 
 
 def cmd_redo(a):
-    print("cursor -> %d" % GameStore(a.game).redo(a.n))
+    print("cursor -> %d" % _store(a.game).redo(a.n))
 
 
 def _entry_text(e) -> str:
@@ -186,7 +200,7 @@ def _log_batches(entries, cur, last):
 
 
 def cmd_log(a):
-    store = GameStore(a.game)
+    store = _store(a.game)
     cur = store.cursor()
     entries = store.read_log()
     if a.batches is not None:
@@ -212,7 +226,7 @@ def cmd_log(a):
 
 
 def cmd_replay(a):
-    state = GameStore(a.game).replay(a.to)
+    state = _store(a.game).replay(a.to)
     if a.json:
         _emit(state.to_dict())
     else:
@@ -220,7 +234,7 @@ def cmd_replay(a):
 
 
 def cmd_diff(a):
-    store = GameStore(a.game)
+    store = _store(a.game)
     before = store.replay(a.from_)
     after = store.replay(a.to if a.to is not None else store.cursor())
     for path, x, y in state_diff(before, after):
@@ -230,13 +244,13 @@ def cmd_diff(a):
 
 
 def cmd_fork(a):
-    GameStore(a.game).fork(a.dest, a.at, overwrite=a.force)
+    _store(a.game).fork(a.dest, a.at, overwrite=a.force)
     print("forked %s -> %s" % (a.game, a.dest))
 
 
 def cmd_policy(a):
     try:
-        policies = GameStore(a.game).set_policies(_pairs(a.set, "policy"))
+        policies = _store(a.game).set_policies(_pairs(a.set, "policy"))
     except ValueError as e:
         raise SystemExit(str(e))
     print(", ".join("%s=%s" % kv for kv in policies.items()))
@@ -244,7 +258,7 @@ def cmd_policy(a):
 
 def cmd_ids(a):
     """id とカード名の対応を引く（名前無しの view を使うときの照会用）。"""
-    state = GameStore(a.game).load()
+    state = _store(a.game).load()
     viewer = _actor(a.as_)
     if a.ids:
         cids = []
@@ -302,7 +316,7 @@ def cmd_oracle(a):
         sys.exit(1 if data["missing"] else 0)
     names = list(a.names)
     if a.game:
-        state = GameStore(a.game).load()
+        state = _store(a.game).load()
         names += _known_card_names(state, _actor(a.as_), a.card)
     if not names:
         raise SystemExit("give card names, --deck FILE, or --game GAME [--card ID ...]")
@@ -326,35 +340,103 @@ def cmd_oracle(a):
 
 def cmd_export(a):
     from .web import export_site
-    games = export_site(a.root, a.dest, a.game or None, offline=a.offline)
+    games = export_site(a.root, a.dest, a.game or None, offline=a.offline, db=DB)
     print("exported %d game(s) to %s: %s" % (len(games), a.dest, ", ".join(games)))
 
 
 def cmd_serve(a):
     from .web import serve
-    serve(a.root, a.host, a.port, offline=a.offline, play=a.play)
+    from . import llm
+    if a.site and not DB:
+        raise SystemExit("serve --site needs --db PATH (or MTGTABLE_DB)")
+    ai = (a.ai or a.site) and not a.no_ai
+    if ai:
+        if not (a.play or a.site):
+            raise SystemExit("serve --ai needs --play or --site")
+        try:
+            llm.check_ready()  # キー・SDK が足りなければ、対局を中断させる前にここで止める
+        except llm.LLMError as e:
+            raise SystemExit("%s（AI を回さずに動かすなら --no-ai）" % e)
+    if a.site:
+        from .web import SITE_INFO
+        if not (SITE_INFO["operator"] and SITE_INFO["contact"]):
+            print("注意: MTGTABLE_OPERATOR / MTGTABLE_CONTACT（運営者と連絡先）が未設定。利用規約・プライバシーの画面に出る",
+                  file=sys.stderr)
+        if a.host not in ("127.0.0.1", "localhost", "::1") and not a.trust_proxy:
+            print("注意: %s で待ち受けている。HTTPS は前のリバース・プロキシ（deploy/Caddyfile）に任せ、"
+                  "サーバーは 127.0.0.1 で動かす" % a.host, file=sys.stderr)
+    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site, ai=ai, trust_proxy=a.trust_proxy)
+
+
+def cmd_db_backup(a):
+    """DB を、書き込みを止めずに一貫した形で写す（sqlite3 の backup）。dest がフォルダなら日時の名前で置き、--keep 個を残す。"""
+    import datetime
+    import sqlite3
+    if not DB:
+        raise SystemExit("db-backup needs --db PATH (or MTGTABLE_DB)")
+    dest = pathlib.Path(a.dest)
+    if dest.is_dir() or a.dest.endswith(("/", "\\")):
+        dest.mkdir(parents=True, exist_ok=True)
+        dest = dest / ("%s-%s.sqlite" % (pathlib.Path(DB).stem, datetime.datetime.now().strftime("%Y%m%d-%H%M%S")))
+    src = sqlite3.connect(DB)
+    out = sqlite3.connect(dest)
+    try:
+        src.backup(out)
+    finally:
+        out.close()
+        src.close()
+    print("backup: %s (%d bytes)" % (dest, dest.stat().st_size))
+    if a.keep:
+        old = sorted(dest.parent.glob("%s-*.sqlite" % pathlib.Path(DB).stem))[:-a.keep]
+        for p in old:
+            p.unlink()
+            print("removed old backup: %s" % p)
+
+
+def cmd_db_import(a):
+    """対局フォルダを --db の DB へ移す（初期状態・log・現在状態・席の鍵・非公開の設定・プロンプト）。"""
+    if not DB:
+        raise SystemExit("db-import needs --db PATH (or MTGTABLE_DB)")
+    from .sqlstore import SqliteGameStore
+    for game in a.games:
+        src = GameStore(game)
+        if not src.exists():
+            raise SystemExit("no game at %s" % game)
+        try:
+            SqliteGameStore(DB, src.name).import_from(src, overwrite=a.force)
+        except (ValueError, FileExistsError) as e:
+            raise SystemExit(str(e))
+        print("imported %s -> %s#%s" % (game, DB, src.name))
 
 
 def cmd_invite(a):
     """GUI で席を持つ人の URL を作る（鍵は URL の # の後ろ。サーバーには送られず、ページが読んで消す）。"""
     from urllib.parse import quote
     from . import play
-    store = GameStore(a.game)
+    store = _store(a.game)
     if not store.exists():
         raise SystemExit("no game at %s" % a.game)
     try:
-        token = play.invite(store, a.seat)
+        token = play.invite(store, a.seat, ttl=a.ttl or None)
     except ValueError as e:
         raise SystemExit(str(e))
-    root = store.root.resolve().parent
+    where = "--db %s" % DB if DB else "--root %s" % store.root.resolve().parent
     base = a.base or "http://127.0.0.1:%d/" % a.port
-    print("%s?game=%s&seat=%s#key=%s" % (base, quote(store.root.name), a.seat, token))
-    print("(serve --play --root %s で開く。鍵を作り直すと前の URL は使えなくなる)" % root, file=sys.stderr)
+    print("%s?game=%s&seat=%s#key=%s" % (base, quote(store.name), a.seat, token))
+    print("(serve --play %s で開く。鍵を作り直すと前の URL は使えなくなる)" % where, file=sys.stderr)
+
+
+def cmd_revoke(a):
+    from . import play
+    store = _existing(a.game)
+    if not play.revoke(store, a.seat):
+        raise SystemExit("%s has no key for %s" % (a.game, a.seat))
+    print("revoked the key of %s in %s (invite で作り直すまで、その席は誰も使えない)" % (a.seat, a.game))
 
 
 def _existing(game):
-    store = GameStore(game)
-    if not store.exists() or not store.state_path.exists():
+    store = _store(game)
+    if not store.exists():
         raise SystemExit("no game at %s (python -m mtgtable new %s --deck p1=... で作る)" % (game, game))
     return store
 
@@ -454,19 +536,19 @@ def cmd_answer(a):
 
 
 def cmd_auto(a):
-    """審判と AI の席を OpenAI の API で回す（人間の番になるまで。--watch なら人間の操作を待ちながら決着まで）。"""
+    """審判と AI の席を LLM の API で回す（人間の番になるまで。--watch なら人間の操作を待ちながら決着まで）。"""
     import os
     from . import llm, prompt
     store = _existing(a.game)
     if a.model:
-        os.environ["MTGTABLE_OPENAI_MODEL"] = a.model
+        os.environ["MTGTABLE_MODEL"] = a.model
+    if a.provider:
+        os.environ["MTGTABLE_LLM_PROVIDER"] = a.provider
     try:
-        llm.api_key()
-    except llm.LLMError as e:
-        raise SystemExit(str(e))
-    try:
-        print("model: 審判 %s、AI の席 %s。AI の席: %s（鍵の無い席）"
-              % (llm.model(prompt.JUDGE), llm.model("p"), ", ".join(a.ai or prompt.ai_seats(store)) or "なし"))
+        llm.check_ready()
+        print("審判 %s/%s、AI の席 %s/%s。AI の席: %s（鍵の無い席）"
+              % (llm.provider(prompt.JUDGE), llm.model(prompt.JUDGE), llm.provider("p"), llm.model("p"),
+                 ", ".join(a.ai or prompt.ai_seats(store)) or "なし"))
     except llm.LLMError as e:
         raise SystemExit(str(e))
     try:
@@ -495,6 +577,9 @@ def cmd_deck(a):
 
 def build_parser():
     ap = argparse.ArgumentParser(prog="mtgtable", description="AI が紙の MTG をプレイするためのデジタル卓")
+    ap.add_argument("--db", default=os.environ.get("MTGTABLE_DB") or None,
+                    help="対局を SQLite の DB に置く（既定は環境変数 MTGTABLE_DB。無ければ対局フォルダ）。"
+                         "GAME はパスの最後の名前を対局の id にする")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("new", help="対局を作る")
@@ -615,14 +700,39 @@ def build_parser():
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--offline", action="store_true", help="キャッシュに無いカード画像を取りに行かない")
     p.add_argument("--play", action="store_true", help="席の操作（GUI の対局）を受ける。invite した対局は席の鍵で守る")
+    p.add_argument("--site", action="store_true",
+                   help="公開のサーバーとして動かす（--db が要る。--play を含む）。所有者の鍵（Cookie）で、自分が席を持つ対局だけを"
+                        "見せ、judge の席は出さない。書き込みは同じサイトからだけ。審判と AI の席もサーバーの中で回す")
+    p.add_argument("--ai", action="store_true",
+                   help="審判と AI の席をサーバーの中で回す（--play と。auto --watch の代わり。--site では既定）")
+    p.add_argument("--no-ai", action="store_true", help="--site でも AI を回さない（手で回す・auto を使う）")
+    p.add_argument("--trust-proxy", action="store_true",
+                   help="前のリバース・プロキシ（Caddy など）が付ける X-Forwarded-For を送り元の IP として使う（レート制限・ログ）")
     p.set_defaults(fn=cmd_serve)
+
+    p = sub.add_parser("db-backup", help="--db の DB を、動かしたまま写す（バックアップ）")
+    p.add_argument("dest", help="写す先（ファイルか、フォルダ。フォルダなら日時の名前で置く）")
+    p.add_argument("--keep", type=int, default=0, help="フォルダに置くとき、新しいものからこの数だけ残す（0 で全部）")
+    p.set_defaults(fn=cmd_db_backup)
+
+    p = sub.add_parser("db-import", help="対局フォルダを --db の DB へ移す")
+    p.add_argument("games", nargs="+", help="対局フォルダ")
+    p.add_argument("--force", action="store_true", help="DB に同じ名前の対局があれば置き換える")
+    p.set_defaults(fn=cmd_db_import)
 
     p = sub.add_parser("invite", help="GUI で席を持つための URL（鍵付き）を作る")
     p.add_argument("game")
     p.add_argument("--seat", required=True, help="人間が持つ席（p1 など）")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--base", help="サーバーの URL（既定 http://127.0.0.1:PORT/）")
+    p.add_argument("--ttl", type=float, default=168,
+                   help="鍵の有効期限（時間。既定 168 = 7日。0 で期限なし）。公開のサーバーでは、席を取った後は Cookie で入る")
     p.set_defaults(fn=cmd_invite)
+
+    p = sub.add_parser("revoke", help="席の鍵を失効させる（invite で作り直すまで、その席は誰も使えない）")
+    p.add_argument("game")
+    p.add_argument("--seat", required=True)
+    p.set_defaults(fn=cmd_revoke)
 
     p = sub.add_parser("wait", help="相手が書いて自分の番が来るまで待つ（GUI の人間との対局で AI が使う）")
     p.add_argument("game")
@@ -640,11 +750,12 @@ def build_parser():
     p.add_argument("--direct", action="store_true", help="AI の席は審判を通さず Batch を直接書く（前の形。鍵の対局では使えない）")
     p.set_defaults(fn=cmd_next)
 
-    p = sub.add_parser("auto", help="審判と AI の席を OpenAI の API で回す（キーは secrets/openai_api_key か OPENAI_API_KEY）")
+    p = sub.add_parser("auto", help="審判と AI の席を LLM の API で回す（提供元・キーは secrets/README.md）")
     p.add_argument("game")
     p.add_argument("--ai", action="append", help="AI の席（省略で鍵の無い席）")
     p.add_argument("--watch", action="store_true", help="人間の番になっても終わらず、操作を待って決着まで回す")
-    p.add_argument("--model", help="モデル（全部の役割。省略で secrets/openai.json → 既定 gpt-5）")
+    p.add_argument("--model", help="モデル（全部の役割。省略で secrets/llm.json → 提供元の既定）")
+    p.add_argument("--provider", choices=("openai", "anthropic"), help="提供元（全部の役割。省略で secrets/llm.json → openai）")
     p.add_argument("--max-failures", type=int, default=3, help="返答を続けて適用できなかったら止める回数")
     p.add_argument("--server", default="http://127.0.0.1:8765",
                    help="--watch で更新通知を受けるサーバー（serve の URL）。つながらなければ1秒ごとに見る。空で通知を使わない")
@@ -675,7 +786,9 @@ def build_parser():
 
 def main(argv=None):
     _utf8()
+    global DB
     a = build_parser().parse_args(argv)
+    DB = a.db
     a.fn(a)
 
 

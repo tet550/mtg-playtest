@@ -1,0 +1,23 @@
+[Unit]
+Description=mtgtable (play site)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mtgtable
+Group=mtgtable
+WorkingDirectory=/opt/mtgtable
+EnvironmentFile=/etc/mtgtable/mtgtable.env
+ExecStart=/opt/mtgtable/.venv/bin/python -m mtgtable serve --site --host 127.0.0.1 --port 8765 --trust-proxy
+Restart=on-failure
+RestartSec=5
+# 書けるのはデータの置き場所だけ
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/mtgtable
+
+[Install]
+WantedBy=multi-user.target

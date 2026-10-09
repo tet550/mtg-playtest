@@ -275,6 +275,8 @@ test("the draft's last line decides what happens after the request", () => {
   assert.equal(requestAction([], "", { ...mine, step: "end", phase: "ending" }, "p1", 0).then, "end_turn");
   assert.equal(requestAction([], "", { ...theirs, priority: "p2" }, "p1", 0), null);  // 相手のターンで優先権が無い
   assert.equal(requestAction([], "メモ", mine, "p1", 0).kind, "request");
+  assert.equal(requestAction([cast], "", { ...theirs, priority: "p2", waiting_on: "p2" }, "p1", 0), null);  // 相手が考えている間は送れない
+  assert.equal(requestAction([cast], "", { ...mine, turn: 0, waiting_on: "p2" }, "p1", 0).kind, "request");  // ゲーム前の申し出は出せる
   assert.equal(requestAction([end], "", mine, "p1", 0).label, "審判に依頼（その後: ターン終了）");
   assert.equal(requestAction([cast, step], "", mine, "p1", 0).label, "審判に依頼（その後: メイン2へ）");
 });
@@ -300,6 +302,77 @@ test("attack targets are the opponent, their planeswalkers and my battles", () =
   ] } } };
   assert.deepEqual(attackTargets(v, "p1", "p2"), ["p2", "#c2", "#c4"]);
   assert.deepEqual(attackTargets({ zones: { battlefield: {} } }, "p1", "p2"), ["p2"]);
+});
+
+test("deck check results become lines with line numbers, errors first", async () => {
+  const { checkLines, summary } = await import("../mtgtable/web/decks.js");
+  const r = { ok: false, main: 59, sideboard: 0,
+    errors: [{ line: null, message: "メインデッキが 59 枚です" }, { line: 3, message: "見つかりません" }],
+    warnings: [{ line: 5, message: "分かりませんでした" }] };
+  assert.deepEqual(checkLines(r).map((l) => [l.kind, l.text]), [
+    ["error", "メインデッキが 59 枚です"], ["error", "3 行目: 見つかりません"], ["warning", "5 行目: 分かりませんでした"]]);
+  assert.equal(summary(r), "メイン 59 枚・サイドボード 0 枚。直す所が 2 件あります");
+  assert.equal(summary({ ok: true, main: 60, sideboard: 15, errors: [] }), "メイン 60 枚・サイドボード 15 枚。登録できます");
+  assert.deepEqual(checkLines(null), []);
+});
+
+test("site pages come from the hash", async () => {
+  const { pageOf } = await import("../mtgtable/web/site.js");
+  assert.equal(pageOf("#/decks"), "decks");
+  assert.equal(pageOf("#/top"), "top");
+  assert.equal(pageOf("#/nope"), null);
+  assert.equal(pageOf("#key=abc"), null);  // 招待の URL の鍵は画面の切り替えではない
+  assert.equal(pageOf(""), null);
+});
+
+test("idle notice only for the other human's turn, with a claim after the limit", async () => {
+  const { idleState } = await import("../mtgtable/web/play.js");
+  const idle = { seconds: 400, notice: 300, limit: 1800, humans: ["p1", "p2"], at: 1000 };
+  assert.deepEqual(idleState(idle, "p2", "p1", 1000), { who: "p2", minutes: 6, canClaim: false, left: 24 });
+  assert.equal(idleState(idle, "p1", "p1", 1000), null);  // 自分の番
+  assert.equal(idleState(idle, "judge", "p1", 1000), null);  // 審判の番
+  assert.equal(idleState({ ...idle, humans: ["p1"] }, "p2", "p1", 1000), null);  // AI の番
+  assert.equal(idleState({ ...idle, seconds: 100 }, "p2", "p1", 1000), null);  // まだ知らせない
+  assert.equal(idleState(idle, "p2", "p1", 1000 + 1500 * 1000).canClaim, true);  // 受け取ってから時間が進む
+  assert.equal(idleState(null, "p2", "p1", 1000), null);
+});
+
+test("invite links and routes", async () => {
+  const { inviteURL, inviteState } = await import("../mtgtable/web/lobby.js");
+  const { routeOf } = await import("../mtgtable/web/site.js");
+  const url = inviteURL("https://mtg.example", "ab12", "t/k+n");
+  assert.equal(url, "https://mtg.example/#/join/ab12/t%2Fk%2Bn");
+  assert.deepEqual(routeOf(new URL(url).hash), { page: "join", args: ["ab12", "t/k+n"] });
+  assert.deepEqual(routeOf("#/new"), { page: "new", args: [] });
+  assert.equal(inviteState({ game: "g1" }), "対局になった");
+  assert.equal(inviteState({ game: null, expired: true }), "期限切れ");
+  assert.equal(inviteState({ game: null, expired: false }), "相手待ち");
+});
+
+test("history helpers: view links, matchups and the view route", async () => {
+  const { viewURL, matchup, when, RESULT } = await import("../mtgtable/web/history.js");
+  const { routeOf, BOARD_PAGES } = await import("../mtgtable/web/site.js");
+  const url = viewURL("https://mtg.example", "g1", "s/k");
+  assert.equal(url, "https://mtg.example/#/view/g1/s%2Fk");
+  assert.deepEqual(routeOf(new URL(url).hash), { page: "view", args: ["g1", "s/k"] });
+  assert.deepEqual(routeOf("#/view/g1"), { page: "view", args: ["g1"] });
+  assert.equal(viewURL("https://mtg.example", "g1"), "https://mtg.example/#/view/g1");
+  assert.ok(BOARD_PAGES.includes("view") && BOARD_PAGES.includes("games"));
+  assert.equal(matchup([{ id: "p1", name: "green" }, { id: "p2", name: "piza" }]), "green（p1） 対 piza（p2）");
+  assert.equal(when("2026-10-09T16:02:43"), "2026-10-09 16:02");
+  assert.equal(RESULT.won, "勝ち");
+});
+
+test("legal pages show the operator and contact, or say they are unset", async () => {
+  const { termsSections, privacySections } = await import("../mtgtable/web/legal.js");
+  const flat = (sections) => sections.flatMap(([h, items]) => [h, ...items]).join("\n");
+  const set = flat(termsSections({ operator: "山田", contact: "mail@example.com" }));
+  assert.ok(set.includes("運営者: 山田") && set.includes("連絡先: mail@example.com"));
+  assert.ok(flat(privacySections({})).includes("連絡先: （未設定）"));
+  assert.ok(flat(privacySections({})).includes("mtg_owner"));  // 使う Cookie を書いている
+  const { routeOf } = await import("../mtgtable/web/site.js");
+  assert.equal(routeOf("#/terms").page, "terms");
+  assert.equal(routeOf("#/privacy").page, "privacy");
 });
 
 test("mana notes become the choices of mana to tap for, with their conditions", () => {

@@ -3,7 +3,8 @@ import { $, el } from "./dom.js";
 import { createSource, latestLoader } from "./source.js";
 import { Timeline } from "./timeline.js";
 import { createRenderer } from "./render.js";
-import { createPlay } from "./play.js";
+import { createPlay, toast } from "./play.js";
+import { createSite, routeOf } from "./site.js";
 
 // play: 席の鍵を持って対局しているときの {seat}（無ければ観戦）。marks: 組み立て中の Act で選んだもの
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], names: {},
@@ -49,13 +50,22 @@ const params = new URLSearchParams(location.search);
   }
 })();
 
+let mySeats = {};  // 公開のサーバーで、所有者の鍵（Cookie）で持っている席 {対局: 席}
+let gameList = [];
+let viewing = null;  // 再生・観戦（#/view/<対局>[/<共有の鍵>]）: {game, share, finished, views}
+const VIEW_LABEL = (v) => (v === "judge" ? "全体（judge）" : v);
+let site = null;  // 公開のサーバーの画面の切り替え（トップ・デッキ・対局）
 function keyOf(game) {
-  try { return JSON.parse(recall("key." + game) || "null"); } catch (_) { return null; }
+  let k = null;
+  try { k = JSON.parse(recall("key." + game) || "null"); } catch (_) { k = null; }
+  if (mySeats[game] && (!k || k.seat !== mySeats[game])) k = { seat: mySeats[game], token: null };
+  return k;
 }
 
 // 選んだ対局の鍵を持っていれば、その席で対局する（席は固定）。無ければ観戦
 function applySeatMode() {
-  const k = config.play && ui.game ? keyOf(ui.game) : null;
+  // 再生・観戦（#/view）では、自分の席でも対局が終わっていれば操作しない（どの視点でも見られる）
+  const k = config.play && ui.game && !(viewing && viewing.finished) ? keyOf(ui.game) : null;
   ui.play = k ? { seat: k.seat } : null;
   source.setKey(k ? { game: ui.game, seat: k.seat, token: k.token } : null);
   for (const name of ["card", "drop", "mana", "stack", "player", "pile", "after", "preview", "retarget"]) delete hooks[name];
@@ -79,6 +89,8 @@ function applySeatMode() {
 
 async function loadGames() {
   const games = await source.games();
+  gameList = games;
+  mySeats = Object.fromEntries(games.filter((g) => g.my_seat).map((g) => [g.id, g.my_seat]));
   const sel = $("game");
   sel.replaceChildren(...games.map((g) => {
     const o = el("option", null, `${g.id}（T${g.turn}・v${g.version}）`);
@@ -102,6 +114,8 @@ async function load() {
   const follow = timeline && ui.live && added > 1;
   if (timeline && ui.live && added === 1) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
+  ui.idle = result.timeline.idle ? { ...result.timeline.idle, at: Date.now() } : null;  // 時間切れの知らせ（公開のサーバー）
+  ui.ai = result.timeline.ai || null;  // サーバーの中で回す AI の状態（中断していれば理由）
   ui.log = result.log;
   ui.cursor = timeline.cursor;
   if (follow) return startPlay(from);
@@ -140,6 +154,78 @@ function changeSelection() {
   for (const id of ["fl-detail", "fl-stack", "combatbox"]) $(id).hidden = true;
   load().catch(showError);
   listen();
+}
+
+// 公開のサーバー: 復元 URL（#recover=...）で開いたら、この端末を同じ所有者に戻す。ヘッダーに復元 URL を作るボタン
+async function siteSetup() {
+  const token = new URLSearchParams(location.hash.slice(1)).get("recover");
+  if (token) {
+    history.replaceState(null, "", location.pathname + location.search);
+    try {
+      await source.recover(token);
+    } catch (e) {
+      showError(new Error("復元 URL が違うか、作り直されています（" + e.message + "）"));
+    }
+  }
+  // 招待の URL（?game=G&seat=p1#key=...）で来たら、その席をこの所有者のものにする（取った後は鍵が無くても入れる）
+  const game = params.get("game"), invited = game && keyOf(game);
+  if (invited && invited.token) {
+    try {
+      await source.claim(game, invited.seat, invited.token);
+    } catch (e) {
+      showError(new Error(e.status === 403 ? "この席は、もう他の人が取っています（招待の URL が使われた後です）" : e.message));
+    }
+  }
+  $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value !== "judge"));
+  site = createSite(source, { toast, games: () => gameList, openGame, config: () => config });
+  $("recovery").hidden = false;
+  $("legallinks").hidden = false;
+  $("recovery").onclick = async () => {
+    try {
+      const { token: t } = await source.recovery();
+      window.prompt("この URL を別の端末で開くと、同じ対局が見られます（作り直すと前の URL は使えなくなります。人に渡さない）",
+        `${location.origin}/#recover=${t}`);
+    } catch (e) { showError(e); }
+  };
+}
+
+// 再生・観戦: 見られる視点（サーバーの access）を席の選択に出し、その対局を開く。共有の鍵は読み取りに付ける
+async function openView(game, share) {
+  const a = await source.access(game, share);
+  viewing = { game, share, finished: a.finished, views: a.views };
+  source.setViewing({ game, share });
+  const sel = $("game");
+  if (![...sel.options].some((o) => o.value === game)) {
+    const o = el("option", null, `${game}（${a.finished ? "再生" : "観戦"}）`);
+    o.value = game;
+    sel.append(o);
+  }
+  $("seat").replaceChildren(...a.views.map((v) => { const o = el("option", null, VIEW_LABEL(v)); o.value = v; return o; }));
+  ui.game = game;
+  sel.value = game;
+  ui.seat = a.views.includes(ui.seat) ? ui.seat : a.views[0];
+  ui.live = true;
+  changeSelection();
+  $("seat").value = ui.seat;
+}
+
+async function closeView() {
+  viewing = null;
+  source.setViewing(null);
+  $("seat").replaceChildren(...["p1", "p2"].map((v) => { const o = el("option", null, v); o.value = v; return o; }));
+  await loadGames();
+  changeSelection();
+}
+
+// 作った・着いた対局を開く（一覧を取り直し、その対局のその席で）
+async function openGame(id) {
+  remember("game", id);
+  await loadGames();
+  ui.game = id;
+  $("game").value = id;
+  ui.live = true;
+  changeSelection();
+  location.hash = "#/games";
 }
 
 function showError(e) {
@@ -320,6 +406,7 @@ document.addEventListener("keydown", (e) => {
   try {
     await source.init();
     config = await source.config().catch(() => ({ play: false }));
+    if (config.site) await siteSetup();
     if (source.isStatic) {
       $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value === "judge"));
       $("conn").hidden = true;
@@ -335,6 +422,16 @@ document.addEventListener("keydown", (e) => {
     if (recall("speed")) $("speed").value = recall("speed");
     await loadGames();
     applySeatMode();
+    if (site) {  // 対局が無ければトップから
+      const route = routeOf(location.hash) || { page: gameList.length ? "games" : "top", args: [] };
+      const go = async (r) => {
+        if (r.page === "view") await openView(r.args[0], r.args[1] || null);
+        else if (viewing) await closeView();
+        await site.show(r.page, r.args);
+      };
+      window.addEventListener("hashchange", () => go(routeOf(location.hash) || { page: "games", args: [] }).catch(showError));
+      await go(route);
+    }
     await load();
     listen();
   } catch (e) { showError(e); }

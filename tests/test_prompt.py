@@ -7,8 +7,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, llm, play, prompt  # noqa: E402
-from helpers import game  # noqa: E402
+from mtgtable import llm, play, prompt  # noqa: E402
+from helpers import game, store  # noqa: E402
 
 
 def answer(batch, memo=None):
@@ -21,7 +21,7 @@ def answer(batch, memo=None):
 class PromptTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
 
     def tearDown(self):
@@ -91,7 +91,7 @@ class JudgeFlowTest(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
 
     def tearDown(self):
@@ -413,7 +413,8 @@ class JudgeFlowTest(unittest.TestCase):
         self.assertIn("some error", d.text)
         self.assertEqual(play.waiting_on(self.st.load()), play.JUDGE)
         self.st.apply({"actor": None, "acts": [{"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "x"}]}]})
-        out = prompt.escalate(self.st, "p2", "e" * 2000, "r" * 2000)
+        self.assertEqual(play.waiting_on(self.st.load()), "p1")  # 詰まった席は待たれている席
+        out = prompt.escalate(self.st, "p1", "e" * 2000, "r" * 2000)
         self.assertTrue(out["ok"], out["error"])  # 質問が無ければ依頼として（長い返答は切り詰める）
         self.assertEqual(self.st.load().declarations[-1].kind, "intent")
 

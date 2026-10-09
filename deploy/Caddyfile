@@ -1,0 +1,23 @@
+# mtgtable を HTTPS で公開する（Caddy が証明書を自動で取って更新する）。
+# mtg.example.com を自分のドメインに置き換え、DNS の A / AAAA レコードをこの VPS に向けておく。
+mtg.example.com {
+	encode gzip
+
+	# アプリは 127.0.0.1:8765 で待ち受ける（外から直接は届かない）。X-Forwarded-For は Caddy が付け直す
+	reverse_proxy 127.0.0.1:8765 {
+		# 更新の通知（SSE）を溜めずにすぐ流す
+		flush_interval -1
+	}
+
+	# 大きすぎる要求はアプリに届く前に断る（アプリの上限は 256 KB）
+	request_body {
+		max_size 1MB
+	}
+
+	log {
+		output file /var/log/caddy/mtgtable.log {
+			roll_size 50MiB
+			roll_keep 10
+		}
+	}
+}

@@ -12,16 +12,16 @@ from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, carddb  # noqa: E402
-from mtgtable.web import Handler, Viewer, STATIC, export_site  # noqa: E402
-from helpers import game  # noqa: E402
+from mtgtable import carddb  # noqa: E402
+from mtgtable.web import Handler, STATIC, export_site  # noqa: E402
+from helpers import db_path, game, store, viewer  # noqa: E402
 
 
 class ViewerServerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        st = GameStore(pathlib.Path(cls.tmp.name) / "g1")
+        st = store(cls.tmp.name, "g1")
         st.create(game().state)
         st.apply({"actor": "p1", "label": "T1", "acts": [{"proc": "turn_start", "to": "main1"},
                                                           {"act": [{"op": "draw"}]}]})
@@ -33,7 +33,7 @@ class ViewerServerTest(unittest.TestCase):
         sym = carddb.cache_dir() / "symbols" / "G.svg"
         sym.parent.mkdir(parents=True)
         sym.write_text("<svg/>", encoding="utf-8")
-        Handler.viewer = Viewer(cls.tmp.name, offline=True)
+        Handler.viewer = viewer(cls.tmp.name, offline=True)
         cls.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         cls.httpd.daemon_threads = True
         threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
@@ -120,7 +120,7 @@ class ViewerServerTest(unittest.TestCase):
     def test_export_static_site(self):
         from mtgtable.web import export_site
         out = pathlib.Path(self.tmp.name) / "site"
-        self.assertEqual(export_site(self.tmp.name, out, offline=True), ["g1"])
+        self.assertEqual(export_site(self.tmp.name, out, offline=True, db=db_path(self.tmp.name)), ["g1"])
         index = (out / "index.html").read_text(encoding="utf-8")
         self.assertIn('data-static="1"', index)
         self.assertIn('src="static/app.js"', index)  # 相対パス（GitHub Pages のサブパスでも動く）
@@ -135,7 +135,7 @@ class ViewerServerTest(unittest.TestCase):
 
     def test_export_empty_site(self):
         with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as dest:
-            self.assertEqual(export_site(root, dest, offline=True), [])
+            self.assertEqual(export_site(root, dest, offline=True, db=db_path(root)), [])
             self.assertEqual(json.loads((pathlib.Path(dest) / "data/games.json").read_text()), [])
 
 
@@ -149,11 +149,11 @@ class PlayServerTest(unittest.TestCase):
     def setUp(self):
         from mtgtable import play
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
         self.token = play.invite(self.st, "p1")
-        GameStore(pathlib.Path(self.tmp.name) / "open").create(game().state)  # invite していない対局
-        handler = type("PlayHandler", (Handler,), {"viewer": Viewer(self.tmp.name, offline=True, play=True)})
+        store(self.tmp.name, "open").create(game().state)  # invite していない対局
+        handler = type("PlayHandler", (Handler,), {"viewer": viewer(self.tmp.name, offline=True, play=True)})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.httpd.daemon_threads = True
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -187,7 +187,7 @@ class PlayServerTest(unittest.TestCase):
         self.assertIsNone(r["stopped"])
 
     def test_seat_key_guards_reading(self):
-        self.assertEqual(self.call("/api/config"), (200, {"play": True}))
+        self.assertEqual(self.call("/api/config"), (200, {"play": True, "site": False}))
         self.assertEqual(self.call("/api/games/g/timeline?seat=p1")[0], 403)
         self.assertEqual(self.call("/api/games/g/timeline?seat=p1", token="wrong")[0], 403)
         self.assertEqual(self.call("/api/games/g/timeline?seat=judge", token=self.token)[0], 403)

@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up the mtgtable database every day
+
+[Timer]
+OnCalendar=*-*-* 04:20:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
