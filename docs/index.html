@@ -46,10 +46,10 @@
 <main class="layout">
   <section class="board">
     <div id="top" class="side"></div>
-    <div id="combatbox" class="combatbox" hidden><h3>戦闘</h3><div id="combat" class="combat"></div></div>
+    <div id="combatbox" class="combatbox" hidden><h3 class="bxhead"><span>戦闘</span><span class="bxcount muted"></span><button class="bxmin" title="一時的に畳む（下の盤面を見る）。中身が変わると自動で開く">–</button></h3><div id="combat" class="combat"></div></div>
     <div id="bottom" class="side"></div>
     <!-- 盤面の上に浮かぶ小窓（見出しをドラッグで移動、– で畳む） -->
-    <div id="fl-stack" class="stackbox" hidden><h3>スタック</h3><ol id="stack" class="stack"></ol></div>
+    <div id="fl-stack" class="stackbox" hidden><h3 class="bxhead"><span>スタック</span><span class="bxcount muted"></span><button class="bxmin" title="一時的に畳む（下の盤面を見る）。中身が変わると自動で開く">–</button></h3><ol id="stack" class="stack"></ol></div>
     <div id="fl-detail" class="float" hidden>
       <div class="fhead"><span>カード</span><button class="fmin" title="畳む">–</button><button class="fclose" title="閉じる">×</button></div>
       <div id="detail" class="detail fbody"></div>

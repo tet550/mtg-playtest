@@ -1,6 +1,6 @@
 // GUI の対局: 席の Player として審判に依頼する（request_play_design）。人間も AI も卓（盤面）は動かさない。
 // 土地を出す・唱える・攻撃する・1 枚引く…は、ブラウザの中の下書き（依頼の行）に足すだけで、送るまで盤面は変わらない。
-// 「ここまで処理」・パス・ターン終了などで下書きを1つの依頼として審判に送り、審判がルールに沿って卓に書く。
+// 「審判に依頼」で下書きを1つの依頼として審判に送り（「その後」は下書きの最後の行で決まる）、審判がルールに沿って卓に書く。
 // 引く・見るなど隠れた情報の行は、手札・束に「？」の予定を出すだけ（中身は審判の処理の後に、席の view として届く）。
 import { $, el } from "./dom.js";
 
@@ -29,6 +29,36 @@ export const STOP_PRESETS = [
 ];
 
 // view の turn から、step の名前（op step の to と同じ。メインは main1 / main2）
+// 進める・終えるボタンのアイコン（線画の SVG の path。色は文字色に合わせる）
+const SVG_NS = "http://www.w3.org/2000/svg";
+const ICON = {
+  upkeep: "M4 17h16M7 17a5 5 0 0 1 10 0M12 4v3M5.6 8.6l2.1 2.1M18.4 8.6l-2.1 2.1",                          // 日の出
+  draw: "M9 7h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zM5 17V4a1 1 0 0 1 1-1h8",     // 重ねたカード
+  main1: "M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM10 8l2-1v8",              // カード（1）
+  beginning_of_combat: "M6 21V4M6 4h11l-2 4 2 4H6",                                                     // 旗
+  declare_attackers: "M4 4l11 11M15 15l-2 3M15 15l3-2M20 4L9 15M9 15l2 3M9 15l-3-2M3 21l3-3M21 21l-3-3", // 剣を交差
+  declare_blockers: "M12 3l7 3v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6z",                                     // 盾
+  combat_damage: "M12 2l2.5 6.5L21 9l-5 4.5L17.5 21 12 17l-5.5 4L8 13.5 3 9l6.5-.5z",                      // 星（ダメージ）
+  end_of_combat: "M19 5L8 16M15 5h4v4M6 14l4 4M4 20l3-3",                                                // 剣を収める
+  main2: "M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM10 8h4v3.5h-4V15h4",     // カード（2）
+  end: "M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z",                                             // 月（終了ステップ）
+  next: "M5 5l7 7-7 7M12 5l7 7-7 7",                                                                    // 次へ（»）
+  endTurn: "M5 5l9 7-9 7zM18 5v14",                                                                     // 最後まで（▶|）
+  pass: "M12 20V5M6 11l6-6 6 6",                                                                        // 相手に渡す（↑）
+};
+// 進めるボタンの並び: フェイズごとの枠（見出しは止める場所の表と同じ）を、ターンの順に1行に置く。
+// アンタップ・ステップは優先権が無く止まれないので、ボタンは無い（開始フェイズはアップキープから）
+const STEP_GROUPS = [
+  { label: "開始", steps: ["upkeep", "draw"] }, { label: "第1", steps: ["main1"] },
+  { label: "戦闘", steps: ["beginning_of_combat", "declare_attackers", "declare_blockers", "combat_damage", "end_of_combat"] },
+  { label: "第2", steps: ["main2"] }, { label: "最終", steps: ["end"] },
+];
+// 「次へ」のボタンに出す行き先（枠の見出しが無いので、どのフェイズか分かる名前）
+const NEXT_SHORT = {
+  upkeep: "アップキープ", draw: "ドロー", main1: "メイン1", beginning_of_combat: "戦闘開始", declare_attackers: "攻撃",
+  declare_blockers: "ブロック", combat_damage: "ダメージ", end_of_combat: "戦闘終了", main2: "メイン2", end: "終了ステップ",
+};
+
 export function stepName(t) { return t.step === "main" ? t.phase : t.step; }
 
 // ステップのフェイズ（view の turn.phase と同じ名前）
@@ -103,7 +133,8 @@ export function describeOp(op, nm = (id) => id) {
 // ---------------------------------------------------------------- 下書き（純粋な部品）
 
 // 依頼の「その後」（play.py の THEN_JA と同じ）。ステップ名なら、そのステップまで進める
-export const THEN_JA = { continue: "続ける（まだ自分の番）", pass: "パス（相手に渡す）", end_turn: "ターン終了",
+export const THEN_JA = { continue: "続ける（まだ自分の番）", pass: "パス（相手に渡す）",
+  resolve: "解決まで（相手が対応しなければ、積んだものを解決して自分の番を続ける）", end_turn: "ターン終了",
   turn_start: "自分のターンを始める" };
 // 「その後」に書けるステップ（play.py の STEP_THEN と同じ）
 export const STEP_THEN = ["upkeep", "draw", "main1", "beginning_of_combat", "declare_attackers", "declare_blockers",
@@ -116,7 +147,55 @@ export function cleanLine(l) {
   if (l.targets && l.targets.length) o.targets = [...l.targets];
   if (l.count) o.count = l.count;
   if (l.kind === "step" && l.to) o.to = l.to;
+  if (l.kind === "then" && l.then) o.then = l.then;
   return o;
+}
+
+// 「その後」の短い名前（送るボタン・下書きの欄に出す）
+export function thenLabel(then) {
+  return { continue: "続ける", pass: "パス", resolve: "解決まで", end_turn: "ターン終了", turn_start: "ターン開始" }[then]
+    || (STEP_JA[then] ? `${STEP_JA[then]}へ` : then);
+}
+
+// 下書きの行から、審判に送る依頼 {plan, then} を作る。最後の行が「その後」の行（ターン終了・パス）か、ステップを
+// 進める行なら、それを「その後」にする（行からは外す）。無ければ、自分のターンは続ける・相手のターンはパス
+// （相手のクリンナップで自分の番なら、自分のターンを始める）。途中の「その後」の行は、文として審判に渡す
+export function toRequest(lines, turn, seat) {
+  const plan = lines.map(cleanLine);
+  const last = plan[plan.length - 1];
+  let then = null;
+  if (last && last.kind === "then" && last.then) then = plan.pop().then;
+  else if (last && last.kind === "step" && STEP_THEN.includes(last.to)) then = plan.pop().to;
+  if (!then) then = turn.active === seat ? "continue"
+    : turn.step === "cleanup" && turn.waiting_on === seat ? "turn_start" : "pass";
+  return { plan: plan.map((l) => (l.kind === "then" ? { kind: "other", text: l.text } : l)), then };
+}
+
+// 途中で止まった計画の残り（view.resume: 相手の割り込み・本人が決める所で止まった）を、下書きの行に戻す。
+// 「その後」は最後の行にする（ターン終了・パスは「その後」の行、ステップならステップを進める行）
+export function resumeLines(resume) {
+  const lines = (resume.lines || []).map(cleanLine);
+  const t = resume.then;
+  if (t === "end_turn" || t === "pass") lines.push({ kind: "then", then: t, text: t === "pass" ? "パス（相手に渡す）" : "ターン終了" });
+  else if (STEP_THEN.includes(t)) lines.push({ kind: "step", to: t, text: `${STEP_JA[t]} へ進む` });
+  return lines;
+}
+
+// 「審判に依頼」のボタンが今することと、その名前。下書きが空でパスになるなら、審判を通さずにパスの宣言にする
+// （自分のターンでも、相手の呪文・能力がスタックにあれば）。自分のターンで下書きもスタックも空なら、次のステップへ。
+// 何も送れなければ null（相手のターンで優先権が無い）
+export function requestAction(lines, comment, turn, seat, stackSize) {
+  const r = toRequest(lines, turn, seat);
+  const empty = !r.plan.length && !comment;
+  if (empty && (r.then === "pass" || (r.then === "continue" && stackSize > 0))) {
+    return turn.priority === seat ? { kind: "pass", label: "パス" } : null;
+  }
+  if (empty && r.then === "continue") {
+    // 自分のターンで下書きが空: 次のステップへ進める（終了ステップなら、ターンを終える）。何もせずに止まらないように
+    const next = nextStep(turn);
+    r.then = STEP_THEN.includes(next) ? next : "end_turn";
+  }
+  return { kind: "request", ...r, label: `審判に依頼（その後: ${thenLabel(r.then)}）` };
 }
 
 // 下書き・送った依頼の行から、画面に出す予定: 手札に足す「？」の枚数と、束に付ける印、ブロックの予定（戦闘の欄）。
@@ -147,6 +226,16 @@ export function blockTime(v, seat) {
   if (!v.combat.attacks.length || myAsk(v, seat)) return false;
   const mine = new Set((v.zones.battlefield.cards || []).filter((c) => (c.controller || c.owner) === seat).map((c) => c.id));
   return !v.combat.blocks.some((b) => mine.has(b.blocker));
+}
+
+// 攻撃先の候補: 相手の Player、相手がコントロールするプレインズウォーカー、自分がコントロールするバトル
+// （包囲戦は唱えた Player の相手が守るので、自分のバトルを攻撃する）。攻撃できるかの判断は審判が行う
+export function attackTargets(v, seat, opponent) {
+  const bf = v.zones.battlefield.cards || [];
+  const ctl = (c) => c.controller || c.owner;
+  return [opponent,
+    ...bf.filter((c) => c.attackable === "planeswalker" && ctl(c) === opponent).map((c) => c.id),
+    ...bf.filter((c) => c.attackable === "battle" && ctl(c) === seat).map((c) => c.id)];
 }
 
 // 起動の行で、発生源をタップする（コストの {T}）と書いたもの
@@ -183,6 +272,8 @@ export function preview(v, lines, seat) {
   const shrink = (key, n) => { const z = out.zones[key]; if (z && typeof z.count === "number") z.count = Math.max(0, z.count - n); };
   const bf = (id) => (out.zones.battlefield.cards || []).find((c) => c.id === id);
   const hand = `${seat}.hand`;
+  const manaIds = new Set((out.players || []).flatMap((p) => (p.mana || []).map((m) => m.id)));
+  const manaOf = (targets) => (targets || []).length > 0 && targets.every((t) => manaIds.has(t));
   lines.forEach((l, i) => {
     const id = (l.cards || [])[0];
     const item = `plan${i}`;
@@ -216,11 +307,20 @@ export function preview(v, lines, seat) {
       }
     } else if (l.kind === "attack" && id && bf(id)) {
       if (!/タップしない/.test(l.text)) bf(id).tapped = true;
-      out.combat.attacks.push({ attacker: id, target: (l.targets || [])[0], planned: true });
+      out.combat.attacks.push({ attacker: id, target: (l.targets || [])[0], planned: true, line: i });
     } else if (l.kind === "other" && id && bf(id) && UNTAP_RE.test(l.text)) {
       bf(id).tapped = false;
     } else if (l.kind === "other" && id && bf(id) && TAP_LINE_RE.test(l.text)) {
       bf(id).tapped = true;
+    } else if (l.kind === "other" && manaOf(l.targets)) {
+      // マナを使う行（targets にプールのマナの id）: count があればその数、無ければ全部を減らす
+      for (const t of l.targets) {
+        for (const p of out.players) {
+          const m = p.mana.find((x) => x.id === t);
+          if (m) m.amount = l.count && l.targets.length === 1 ? Math.max(0, m.amount - l.count) : 0;
+        }
+      }
+      for (const p of out.players) p.mana = p.mana.filter((m) => m.amount > 0);
     } else if (l.kind === "step" && STEP_PHASE[l.to]) {
       // 予定のステップへ進める（フェイズの表示も変わる）。戦闘を抜けたら予定の攻撃は外す
       const main = l.to === "main1" || l.to === "main2";
@@ -354,6 +454,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
   const isCard = (id) => typeof id === "string" && !!findCard(ui.view, id);
   const ready = () => ui.play && ui.view && ui.live && !busy;
   const judging = () => !!ui.view && ui.view.turn.waiting_on === "judge";
+  // 審判を待っている間（最新の盤面で）は何も操作しない: 盤面は詳細を見るだけ、パネルのボタンは全部押せない
+  const locked = () => !!ui.play && ui.live && judging();
   const asked = () => !!ui.view && !!myAsk(ui.view, me());
 
   // ---- 下書き
@@ -364,12 +466,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(draftKey()) || "null"); } catch { saved = null; }
     draft = { key: draftKey(), lines: Array.isArray(saved && saved.lines) ? saved.lines : [],
-      comment: saved && typeof saved.comment === "string" ? saved.comment : "" };
+      comment: saved && typeof saved.comment === "string" ? saved.comment : "",
+      resumed: saved && typeof saved.resumed === "string" ? saved.resumed : "" };
     return draft;
   }
   function saveDraft() {
     try {
-      if (draft.lines.length || draft.comment) localStorage.setItem(draft.key, JSON.stringify({ lines: draft.lines, comment: draft.comment }));
+      if (draft.lines.length || draft.comment || draft.resumed) {
+        localStorage.setItem(draft.key, JSON.stringify({ lines: draft.lines, comment: draft.comment, resumed: draft.resumed }));
+      }
       else localStorage.removeItem(draft.key);
     } catch { /* 保存できなくても、このページの間は下書きを使える */ }
   }
@@ -384,7 +489,12 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     if (!ui.live) return toast("最新の盤面（Live）に戻ってから操作する", true);
     if (judging()) return toast("審判が処理している間は組み立てない", true);
     if (ui.view.turn.turn === 0) return toast("ゲーム前はキープ・マリガンだけ", true);
-    loadDraft().lines.push(l);
+    const lines = loadDraft().lines;
+    // 「その後」の行（ターン終了・パス）は最後に1つだけ: 足し直せば入れ替え、他の行はその前に入れる
+    const end = lines.length && lines[lines.length - 1].kind === "then";
+    if (end && l.kind === "then") lines[lines.length - 1] = l;
+    else if (end) lines.splice(lines.length - 1, 0, l);
+    else lines.push(l);
     saveDraft();
     refresh();
   }
@@ -425,6 +535,31 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
         fn: () => removeLine(i), hint: "下書きのこの行を外す（盤面は送るまで変わらない）" }));
   }
 
+  // 途中で止まった自分の計画（view.resume）: 下書きが空なら残りを戻す。下書きがあれば、戻すかを本人が選ぶ（resumeBox）。
+  // 一度戻した・捨てた計画（id）は、もう出さない
+  function pendingResume() {
+    const r = ui.play && ui.live && ui.view && ui.view.resume;
+    return r && loadDraft().resumed !== r.id ? r : null;
+  }
+  function takeResume(r, add = true, redraw = true) {
+    const d = loadDraft();
+    if (add) d.lines.push(...resumeLines(r));
+    d.resumed = r.id;
+    saveDraft();
+    if (add) toast(`途中で止まった計画 #${r.of} の残りを下書きに戻した（直してから送る）`);
+    if (redraw) refresh();
+  }
+  function resumeBox(r) {
+    const box = el("div", "compose");
+    box.append(el("div", "ctitle", `途中で止まった計画 #${r.of} の残り（${r.lines.length} 行・その後: ${thenLabel(r.then)}）`),
+      el("div", "chelp muted", r.unknown ? "審判がどこまで処理したか分からない。戻したら、済んだ行を外す"
+        : "相手の割り込みなどで止まった。下書きに戻して直してから送る"));
+    const row = el("div", "crow");
+    row.append(button("下書きに足す", () => takeResume(r), { cls: "on" }), button("捨てる", () => takeResume(r, false)));
+    box.append(row);
+    return box;
+  }
+
   // ---- 送信（依頼・宣言・回答だけ。卓の op は書かない）
 
   async function post(what, body, okText) {
@@ -450,11 +585,16 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     return ok;
   }
 
-  async function sendRequest(then) {
-    const d = loadDraft();
-    const lines = d.lines.map(cleanLine);
+  // 「審判に依頼」: 下書きの行から依頼（plan と「その後」）を作って送る。下書きが空でパスになるならパスの宣言
+  async function sendDraft() {
+    const d = loadDraft(), v = ui.view;
+    const act = requestAction(d.lines, d.comment, v.turn, me(), v.stack.length);
+    if (!act) return toast("やることか、進める先（進めるボタン）を足す", true);
+    if (act.kind === "pass") return declareKind("pass");
+    const lines = act.plan;
     const from = ui.cursor;
-    if (await post("request", { plan: lines, then, comment: d.comment }, "審判に依頼した")) {
+    blocker = null;
+    if (await post("request", { plan: lines, then: act.then, comment: d.comment }, "審判に依頼した")) {
       sent = lines;
       sentFrom = from;
       d.lines = [];
@@ -529,7 +669,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
   }
 
   // 唱える・起動・対象を選ぶの組み立てを、下書きの1行にする
-  function commit() {
+  function commit(resolve = false) {
     const c = compose;
     if (!c) return;
     const extra = c.text ? `（${c.text}）` : "";
@@ -543,6 +683,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     const verb = c.kind === "cast" ? "を唱える" : c.tap ? "をタップして能力を起動する" : "の能力を起動する";
     compose = null;
     addLine(line(c.kind, `${ref(src)} ${verb}${aim}${extra}`, { cards: [src], targets: c.targets }));
+    if (resolve === true) addLine(line("resolve", `${c.kind === "cast" ? `${ref(src)} を` : `${ref(src)} の能力を`}解決する`, { cards: [src] }));
   }
 
   // ---- メニューの中身（どれも下書きに行を足すだけ）
@@ -579,16 +720,41 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     if (r && r.n > 0) fn(Math.min(99, Math.floor(r.n)));
   }
 
+  // 攻撃する: まず相手の Player を攻撃する行を足す。プレインズウォーカー・バトルへは、戦闘の欄で攻撃先を変える（retarget）
+  const attackText = (id, target, tap) => `${ref(id)} で ${ref(target)} を攻撃する${tap ? "" : "（タップしない）"}`;
   function attackItems(c) {
     const t = ui.view.turn;
     if (t.active !== me() || c.land) return [];
-    const target = opp();
-    const attack = (tap) => () => addLine(line("attack", `${ref(c.id)} で ${target} を攻撃する${tap ? "" : "（タップしない）"}`,
-      { cards: [c.id], targets: [target] }));
+    const attack = (tap) => () => addLine(line("attack", attackText(c.id, opp(), tap), { cards: [c.id], targets: [opp()] }));
     return [
       { label: "攻撃する", fn: attack(true) },
       { label: "攻撃する（タップしない・警戒）", fn: attack(false) },
     ];
+  }
+
+  // 戦闘の欄の攻撃先（下書きの攻撃だけ）を押したときの処理。変えられないなら null（送った依頼・卓の攻撃・候補が1つ）
+  function retarget(a) {
+    if (!a.planned || !ready() || judging()) return null;
+    const i = a.line - (sent || []).length;
+    const l = loadDraft().lines[i];
+    if (!l || l.kind !== "attack" || (l.cards || [])[0] !== a.attacker) return null;
+    const targets = attackTargets(ui.view, me(), opp());
+    if (targets.length < 2) return null;
+    return async () => {
+      const to = await ask({ title: `${nm(a.attacker)} の攻撃先`, choices: targets.map((id) =>
+        ({ label: `${id === a.target ? "✓ " : ""}${attackLabel(ui.view, id)}`, value: id })) });
+      if (!to || to === a.target || loadDraft().lines[i] !== l) return;
+      loadDraft().lines[i] = line("attack", attackText(a.attacker, to, !/タップしない/.test(l.text)), { cards: [a.attacker], targets: [to] });
+      saveDraft();
+      refresh();
+    };
+  }
+
+  function attackLabel(v, id) {
+    const c = (v.zones.battlefield.cards || []).find((x) => x.id === id);
+    if (!c) return `${id}（Player）`;
+    const n = (c.counters || {})[c.attackable === "battle" ? "defense" : "loyalty"];
+    return `${nm(id)}（${c.attackable === "battle" ? "バトル" : "プレインズウォーカー"}${n !== undefined ? ` ${n}` : ""}）`;
   }
 
   function blockItems(c) {
@@ -725,11 +891,10 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
       box.append(list);
     }
     const row = el("div", "crow");
-    row.append(button(lines.length ? `ブロックを決定（${lines.length} 体・審判へ）` : "ブロックを決定（審判へ）",
-      () => { blocker = null; return sendRequest("pass"); },
-      { cls: "on", disabled: !lines.length, title: "下書きのブロック（と他の行）を審判に送り、優先権を渡す" }),
-    button("ブロックしない（審判へ）", () => { blocker = null; return noBlocks(); },
-      { disabled: lines.length > 0, title: "ブロックしないことを審判に伝え、優先権を渡す" }));
+    const none = loadDraft().lines.some((l) => l.kind === "other" && l.text === "ブロックしない");
+    box.append(el("div", "chelp muted", "決めたら、下の「審判に依頼」で送る"));
+    row.append(button("ブロックしない", () => { blocker = null; other("ブロックしない"); },
+      { disabled: lines.length > 0 || none, title: "ブロックしないことを下書きに足す" }));
     if (blocker) row.append(button("選び直す", () => { blocker = null; refresh(); }));
     box.append(row);
     return box;
@@ -741,13 +906,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     if (!ui.play || !ui.view) return false;
     const card = c.ids ? { ...c, id: c.ids[0] } : c;
     if (!ui.live) return false;
+    if (locked()) { showCard(c); return true; }  // 審判を待っている間は詳細を見るだけ
     const zone = zoneOf(shownView || ui.view, card.id);
     if (pick) { pick.accept(card); return true; }
     const q = cardAsk();
     if (q && q.cards.includes(card.id)) { toggleChosen(q, card.id); return true; }  // 審判の質問の候補を選ぶ
     if (compose) {
-      if (card.id === compose.card || card.id === compose.source) { showCard(c); return true; }
-      toggleTarget(card.id);
+      // 唱えている呪文そのものは対象にならないので何もしない。起動する能力の発生源は自分自身を対象にできる。
+      // 詳細は右クリック（長押し）で出す
+      if (card.id !== compose.card) toggleTarget(card.id);
       return true;
     }
     if (blocking() && onBlockClick(c)) return true;
@@ -770,8 +937,38 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     return true;
   }
 
+  // 手札のカードを盤面へドラッグしたときの予定（render の hooks.drop）。place: battlefield / graveyard / exile /
+  // library-top / library-bottom。できない場面なら null（ドラッグは手札の並べ替えだけになる）。
+  // 返す label は、領域に入ったときに出す説明。run で下書きに行を足す
+  function onDrop(id, place) {
+    if (!ui.play || !ui.live || !ui.view || locked() || compose || pick || ui.view.turn.turn === 0) return null;
+    const v = shownView || ui.view;
+    if (zoneOf(v, id) !== `${me()}.hand`) return null;
+    const card = findCard(v, id);
+    if (!card || card.planned) return null;
+    const mv = (word) => ({ label: `${nm(id)} を${word}`, run: () => other(`${ref(id)} を${word}`, [id]) });
+    if (place === "battlefield") {
+      const kind = (ui.view.card_kinds || {})[id] || {};  // 土地の面があれば土地として出す（唱えるならメニューから）
+      if (kind.land) return { label: `${nm(id)} を土地として出す`, run: () => addLine(line("play_land", `${ref(id)} を出す`, { cards: [id] })) };
+      return { label: `${nm(id)} を唱えて解決する`, run: () => {
+        addLine(line("cast", `${ref(id)} を唱える`, { cards: [id] }));
+        addLine(line("resolve", `${ref(id)} を解決する`, { cards: [id] }));
+      } };
+    }
+    if (place === "graveyard") return mv("捨てる");
+    if (place === "exile") return mv("追放する");
+    if (place === "library-top") return mv("ライブラリーの一番上に置く");
+    if (place === "library-bottom") return mv("ライブラリーの一番下に置く");
+    return null;
+  }
+
   function onStack(s, i, ev) {
     if (!ui.play || !ui.live) return false;
+    if (locked()) {
+      const c = s.card ? findCard(ui.view, s.card) : s.source && findCard(ui.view, s.source);
+      if (c) showCard(c);
+      return true;
+    }
     if (compose) { if (s.id !== compose.item) toggleTarget(s.id); return true; }
     if (s.planned) {  // 下書き・送った依頼で仮に積んだ項目（plan<行の番号>。番号は送った依頼の行から数える）
       const at = Number(s.id.slice(4)) - (sent || []).length;
@@ -788,7 +985,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
   }
 
   function onPlayer(pid, ev) {
-    if (!ui.play || !ui.live) return;
+    if (!ui.play || !ui.live || locked()) return;
     if (compose) return toggleTarget(pid);
     const self = pid === me();
     const life = (word) => () => amount(`${pid} が${word}`, (n) => other(`${pid} が${word.replace("…", "")} ${n}`, [], [pid]));
@@ -802,6 +999,24 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     ]);
   }
 
+  // 浮いているマナ（自分のマナ・プール）を押したとき: 使う予定を下書きに足す（何に使うかは文で補う）。
+  // 行の targets にマナの id を書くので、下書きの写しでもその分が減って見える
+  function onMana(pid, m, ev) {
+    if (!ui.play || !ui.live || locked() || pid !== me() || ui.view.turn.turn === 0) return false;
+    const sym = `{${m.color}}`;
+    const use = (n) => addLine(line("other", `マナ・プールの ${sym}（${m.id}）を ${n} 使う`, { targets: [m.id], count: n }));
+    const pool = (shownView || ui.view).players.find((p) => p.id === pid).mana;
+    openMenu(ev, `マナ ${sym} ×${m.amount}`, [
+      { label: `${sym} を 1 使う`, fn: () => use(1) },
+      m.amount > 1 && { label: `${sym} を使う…（数）`, fn: () => amount(`${sym} を使う数`, (n) => use(Math.min(n, m.amount)), m.amount) },
+      m.amount > 1 && { label: `${sym} を全部（${m.amount}）使う`, fn: () => use(m.amount) },
+      "-",
+      { label: "マナ・プールを空にする", fn: () => addLine(line("other", "マナ・プールを空にする", { targets: pool.map((x) => x.id) })),
+        hint: "浮いているマナを全部失う" },
+    ]);
+    return true;
+  }
+
   // 束: 自分のライブラリーから引く・見る・公開・シャッフルは、手札・束に「？」の予定を出すだけ（中身は審判の処理の後）
   function onPile(key, ev) {
     if (!ui.play || !ui.live) return false;
@@ -809,7 +1024,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     const open = { label: ui.open.has(key) ? "中身を閉じる" : "中身を開く（知っているカード）", fn: () => toggleOpen(key) };
     if (zone !== "library") return false;
     const items = [];
-    if (ui.view.turn.turn === 0) {  // ゲーム前はキープ・マリガンだけ（引き直しは審判が行う）
+    if (ui.view.turn.turn === 0 || locked()) {  // ゲーム前・審判を待っている間は中身を見るだけ  // ゲーム前はキープ・マリガンだけ（引き直しは審判が行う）
       openMenu(ev, `${pid} のライブラリー`, [open]);
       return true;
     }
@@ -832,7 +1047,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
   function button(text, fn, opts = {}) {
     const b = el("button", opts.cls || null, text);
     if (opts.title) b.title = opts.title;
-    b.disabled = !ready() || !!opts.disabled;
+    b.disabled = !ready() || locked() || !!opts.disabled;
     b.onclick = fn;
     return b;
   }
@@ -866,39 +1081,70 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     return box;
   }
 
-  // フェイズを進める予定: 下書きで進めた所（盤面の予定）より後の、自分のターンのステップを選ぶ
-  function stepItems() {
+  // アイコンのボタン（線画の SVG。名前は title と aria-label に出す）
+  // opts.text があれば、アイコンに短い名前を添える
+  function iconButton(d, label, fn, opts = {}) {
+    const b = button("", fn, { ...opts, cls: "ibtn" + (opts.text ? " withtext" : "") + (opts.cls ? " " + opts.cls : ""), title: opts.title || label });
+    b.setAttribute("aria-label", label);
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+    b.append(svg);
+    if (opts.text) b.append(el("span", "ilabel", opts.text));
+    return b;
+  }
+  // 進める・終える: 自分のターンのステップを全部、フェイズごとの枠に分けて決まった位置に並べる。
+  // 行けるのは下書きで進めた所（盤面の予定）より後だけで、今の所と今のフェイズの枠に印を付け、それより前は薄くする。
+  // 相手のターンは押せない。下の段は 次のステップ・ターン終了・パス。押すと下書きに行を足す（最後の行が「その後」になる）
+  function stepButtons(off, mine) {
     const t = (shownView || ui.view).turn;
     const i = STEPS.indexOf(stepName(t));
-    return STEPS.slice(i + 1).filter((s) => STEP_THEN.includes(s))
-      .map((s) => ({ label: `${STEP_JA[s]} へ進む`, fn: () => addLine(line("step", `${STEP_JA[s]} へ進む`, { to: s })) }));
-  }
-  function stepMenu(ev) {
-    const items = stepItems();
-    openMenu(ev, "フェイズを進める（予定）", items.length ? items : [{ label: "この後に進めるステップは無い", fn: () => {} }]);
+    const go = (s) => () => addLine(line("step", `${STEP_JA[s]} へ進む`, { to: s }));
+    const then = (k, text) => () => addLine({ kind: "then", then: k, text });
+    const next = mine ? STEPS.slice(i + 1).find((s) => STEP_THEN.includes(s)) : null;
+    const phase = STEP_PHASE[stepName(t)];
+    const grid = el("div", "stepgrid");
+    for (const group of STEP_GROUPS) {
+      const g = el("div", "stepgroup");
+      g.style.flexGrow = group.steps.length;
+      if (mine && group.steps.some((s) => STEP_PHASE[s] === phase)) g.classList.add("curphase");
+      g.append(el("div", "sglabel", group.label));
+      const btns = el("div", "sgbtns");
+      for (const s of group.steps) {
+        const cur = mine && STEPS.indexOf(s) === i;
+        const ok = mine && STEPS.indexOf(s) > i;
+        btns.append(iconButton(ICON[s], `${STEP_JA[s]} へ進む`, go(s),
+          { disabled: off || !ok, cls: cur ? "cur" : mine && !ok ? "past" : null,
+            title: cur ? `${STEP_JA[s]}（今ここ）` : `${STEP_JA[s]} へ進む` }));
+      }
+      g.append(btns);
+      grid.append(g);
+    }
+    const acts = el("div", "stepacts");
+    acts.append(iconButton(ICON.next, next ? `次のステップ（${STEP_JA[next]}）へ進む` : "次のステップへ進む",
+        next ? go(next) : null, { disabled: off || !next, text: next ? `次へ: ${NEXT_SHORT[next]}` : "次へ" }),
+      iconButton(ICON.endTurn, "ターン終了", then("end_turn", "ターン終了"),
+        { disabled: off || !mine, text: "ターン終了", title: "ターン終了（終了ステップ・クリンナップは審判が処理する）" }),
+      iconButton(ICON.pass, "パス（相手に渡す）", then("pass", "パス（相手に渡す）"),
+        { disabled: off || !mine, text: "パス", title: "パス（最後に優先権を相手に渡す）" }));
+    return [grid, acts];
   }
 
-  async function addFree() {
-    const r = await ask({ title: "やることを足す（ボタンに無い操作。カード名・対象・モードなども書く）", ok: "足す",
-      fields: [{ name: "text", label: "やりたいこと", value: "" }] });
-    if (r && r.text) other(r.text);
-  }
+  let freeFocus = false;  // 文の欄で足した後、描き直した欄にもう一度入力できるようにする
 
-  // パス: 下書きがあれば審判に処理してもらってから渡す。無ければ、そのままパスの宣言
-  function passPriority() {
-    return hasDraft() ? sendRequest("pass") : declareKind("pass");
-  }
-
-  function noBlocks() {
-    loadDraft().lines.push(line("other", "ブロックしない"));
-    saveDraft();
-    return sendRequest("pass");
-  }
-
-  // 依頼の欄: 下書きの行を並べ、補足を書いて、送るボタンで「その後」を選ぶ。送る前は行を外せる（盤面は変わらない）
+  // 依頼の欄: 下書きの行を並べ、送るボタンで「その後」を選ぶ。送る前は行を外せる（盤面は変わらない）。
+  // ボタンに無い操作・補足（対象・モード・X など）は、文の欄に書いて Enter で1行として足す
   function requestBox() {
     const v = ui.view, t = v.turn, seat = me();
     const d = loadDraft();
+    if (d.comment) {  // 前の形の「補足」が残っていたら、行にして見えるようにする（補足は送らない）
+      d.lines.push(line("other", d.comment));
+      d.comment = "";
+      saveDraft();
+    }
     const box = el("div", "reqbox");
     box.append(el("div", "phead2", "審判への依頼（下書き）"));
     if (d.lines.length) {
@@ -909,6 +1155,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
         if (bad) li.title = "盤面が変わり、このカードが思った所に無い。外すか、足し直す";
         const x = el("button", "chip", "×");
         x.title = "この行を外す";
+        x.disabled = locked();
         x.onclick = () => removeLine(i);
         li.append(x);
         list.append(li);
@@ -917,41 +1164,37 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     } else {
       box.append(el("div", "chelp muted", "カード・束・Player・スタックを押して、やることを足す（送るまで盤面は変わらない）"));
     }
-    const note = el("input");
-    note.placeholder = "補足（任意。例: 対象は #c12、X=2）";
-    note.value = d.comment;
-    const r2 = el("label", "crow");
-    r2.append(note);
     const off = judging() || asked();
-    const next = t.active === seat && nextStep((shownView || v).turn);  // 下書きで進めたステップの次
-    const hold = button("ここまで処理（審判へ）", () => sendRequest("continue"),
-      { disabled: off || !hasDraft(), title: "下書きを審判に処理してもらい、自分の番を続ける（マナ・コスト・誘発などは審判が処理する）" });
-    const pass = t.priority === seat && button(hasDraft() ? "パス（審判へ）" : "パス", passPriority,
-      { cls: "on", disabled: off, title: "下書きがあれば審判に処理してもらってから、優先権を相手に渡す" });
-    const step = next && STEP_THEN.includes(next) && button(`次へ: ${STEP_JA[next]}（審判へ）`, () => sendRequest(next),
-      { disabled: off, title: "下書きを処理してもらい、次のステップへ進める" });
-    const end = t.active === seat && button("ターン終了（審判へ）", () => sendRequest("end_turn"),
-      { disabled: off, title: "下書きとターン終了を審判に依頼する（終了ステップ・クリンナップは審判が処理する）" });
-    const begin = t.active !== seat && t.step === "cleanup" && t.waiting_on === seat &&
-      button("ターン開始（審判へ）", () => sendRequest("turn_start"), { cls: "on", disabled: off, title: "自分のターンを始める（アンタップ・アップキープ・ドローは審判が処理する）" });
-    // ブロックを決める所では、ブロック指定の欄（blockBox）に「ブロックしない」を出す
-    const noBlock = !blockTime(v, seat) && t.active !== seat && v.combat.attacks.length > 0 && t.waiting_on === seat &&
-      !d.lines.some((l) => l.kind === "block") && button("ブロックしない（審判へ）", noBlocks, { disabled: off });
-    note.oninput = () => {
-      d.comment = note.value.trim();
-      saveDraft();
-      hold.disabled = off || !hasDraft() || !ready();
-      if (pass) pass.textContent = hasDraft() ? "パス（審判へ）" : "パス";
+    const free = el("input");
+    free.placeholder = "やること・補足を書いて Enter で1行足す（例: 対象は #c12、X=2）";
+    free.title = "ボタンに無い操作や、対象・モード・X などの補足。Enter で下書きに1行足す";
+    free.disabled = off;
+    free.onkeydown = (e) => {
+      if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;  // 変換の確定の Enter は足さない
+      e.preventDefault();
+      const text = free.value.trim();
+      if (!text) return;
+      const n = loadDraft().lines.length;
+      freeFocus = true;
+      other(text);
+      if (loadDraft().lines.length === n) freeFocus = false;  // 足せなかった（ゲーム前など）: 文は欄に残す
     };
+    if (freeFocus) { freeFocus = false; setTimeout(() => free.focus()); }
+    const r2 = el("label", "crow");
+    r2.append(free);
+    const act = requestAction(d.lines, d.comment, t, seat, v.stack.length);
+    const send = button(act ? act.label : "審判に依頼", sendDraft, { cls: "on", disabled: off || !act,
+      title: act && act.kind === "pass" ? "優先権を相手に渡す（下書きが無いので審判は通さない）"
+        : "下書きを審判に送る。「その後」は最後の行（進めるボタンで足す）で決まる。無ければ自分のターンは続ける・相手のターンはパス" });
     const r3 = el("div", "crow");
-    r3.append(...[begin, hold, pass, step, end, noBlock].filter(Boolean));
+    r3.append(send);
     const r4 = el("div", "crow");
-    r4.append(...[t.active === seat && button("フェイズを進める…", stepMenu,
-      { disabled: off, title: "下書きの途中でステップを進める（例: 戦闘開始へ進む → 攻撃する）。審判は誘発・止める場所もいつもどおり処理する" }),
-    button("やることを足す…", addFree, { disabled: off, title: "ボタンに無い操作を文で足す" }),
-    button("直前の行を取り消す", undoLine, { disabled: !d.lines.length, title: "下書きの最後の行を外す（送る前なら何度でも）" }),
+    // 進める・終える: アイコンのボタン（押すと下書きに「その後」の行を足す）。位置は変えず、行けない所は押せない
+    const r5 = el("div", "stepbtns");
+    r5.append(...stepButtons(off, t.active === seat && t.turn > 0));
+    r4.append(...[button("直前の行を取り消す", undoLine, { disabled: !d.lines.length, title: "下書きの最後の行を外す（送る前なら何度でも）" }),
     button("全部捨てる", clearDraft, { disabled: !hasDraft() })].filter(Boolean));
-    box.append(r2, r3, r4);
+    box.append(...[r2, r3, r5, r4].filter(Boolean));
     const sentLog = (ui.log || []).filter((e) => e.mine && e.request).slice(-3).reverse();
     if (sentLog.length) {
       const list = el("details", "reqsent");
@@ -1091,7 +1334,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     if (!stops) { if (!stopsFailed) loadStops(); return null; }
     const box = el("button", "stopstrip");
     box.type = "button";
-    box.title = "止める場所を変える（相手には見えない）";
+    box.title = locked() ? "審判の処理が済んでから変える" : "止める場所を変える（相手には見えない）";
+    box.disabled = locked();
     box.onclick = editStops;
     const ev = [stops.has("opp:spell") && "呪文", stops.has("opp:attack") && "攻撃"].filter(Boolean);
     box.append(el("div", "sslabel", `止める場所 ${stops.size ? `${stops.size} か所` : "なし"}${ev.length ? `・相手の${ev.join("/")}` : ""}`),
@@ -1139,8 +1383,13 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
       box.append(tap);
     }
     const buttons = el("div", "crow");
-    const ok = { cast: "下書きに足す（唱える）", activate: "下書きに足す（起動）", target: "下書きに足す（対象）" }[c.kind];
-    buttons.append(button(ok, commit, { cls: "on" }), button("やめる", cancel));
+    // 既定は「積んで解決」（積む行と解決する行）。スタックに積んだままにする（解決の前に何かする）のはオプション
+    const buttons2 = c.kind === "target"
+      ? [button("下書きに足す（対象）", () => commit(), { cls: "on" })]
+      : [button(c.kind === "cast" ? "唱えて解決" : "起動して解決", () => commit(true), { cls: "on",
+          title: "積む行と、続けて解決する行を下書きに足す（相手が対応しなければ審判が解決する）" }),
+        button("スタックに積むだけ", () => commit(), { title: "積む行だけを足す（解決の前に、続けて何かを積むときなど）" })];
+    buttons.append(...buttons2, button("やめる", cancel));
     box.append(buttons);
     return box;
   }
@@ -1161,10 +1410,11 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     status.textContent = !ui.live ? (ui.playing ? "再生中…（最後まで進むと操作できる。Live で今すぐ最新へ）" : "過去の盤面を表示中（Live で操作）")
       : busy ? "送信中…"
         : wait === seat ? "あなたの番" + (myAsk(v, seat) ? "（審判の質問）" : t.priority === seat ? "（優先権）" : "")
-          : wait === "judge" ? "審判を待っています（処理が済むまで組み立てない）" : wait ? `${wait} を待っています` : "決着";
+          : wait === "judge" ? "審判を待っています（処理が済むまで操作できない）" : wait ? `${wait} を待っています` : "決着";
     $("playTitle").textContent = `${seat} として操作`;
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };
+    if (locked()) { compose = null; pick = null; blocker = null; closeMenu(); }  // 審判の処理で盤面が変わる
     if (compose || pick) rows.push(composeBox());
     const mine = wait === seat && ui.live;
     if (mine) rows.push(el("div", "phead2", "今の操作"));
@@ -1193,14 +1443,22 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     // 攻撃されていてブロックを決める所: 盤面のカードを押して組む
     if (!blocking()) blocker = null;
     else if (!compose && !pick) rows.push(blockBox());
+    // 途中で止まった自分の計画: 下書きが空なら戻し、あれば戻すかを選ぶ
+    const back = !question && pendingResume();
+    if (back && !hasDraft()) takeResume(back, true, false);
+    else if (back) rows.push(resumeBox(back));
     // 依頼: 下書き（やること）を組み立てて審判に送る。パス・ターン終了もここから
     if (ui.live && !question && t.turn > 0) rows.push(requestBox());
-    // いつでも: 番に関係なく行える操作と設定
-    rows.push(el("div", "phead2 sep", "いつでも"));
-    const strip = ui.live && stopsStrip();
-    if (strip) rows.push(strip);
-    row(button("発言…", declare), !strip && button("止める場所…", editStops, { title: "審判がステップを進めるとき、止めてあなたに番を回す場所" }),
-      button("投了", async () => { if (confirm("投了する？")) declareKind("concede"); }));
+    // 発言・設定: 番に関係なく行える操作と止める場所。使えない間（過去の盤面・送信中・審判の処理中・決着・投了した後）は出さない
+    const self = v.players.find((p) => p.id === seat);
+    const usable = ui.live && !busy && !locked() && !!wait && (!self || self.status === "playing");
+    if (usable) {
+      rows.push(el("div", "phead2 sep", "発言・設定"));
+      const strip = stopsStrip();
+      if (strip) rows.push(strip);
+      row(button("発言…", declare), !strip && button("止める場所…", editStops, { title: "審判がステップを進めるとき、止めてあなたに番を回す場所" }),
+        button("投了", async () => { if (confirm("投了する？")) declareKind("concede"); }));
+    }
     body.replaceChildren(status, ...rows);
   }
 
@@ -1211,7 +1469,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
   });
 
   return {
-    hooks: { card: onCard, stack: onStack, player: onPlayer, pile: onPile, after: renderPanel, preview: previewView },
+    hooks: { card: onCard, drop: onDrop, mana: onMana, stack: onStack, player: onPlayer, pile: onPile, after: renderPanel, preview: previewView, retarget },
     renderPanel,
     reset() { compose = null; pick = null; blocker = null; stops = null; stopsFailed = false; draft = null; sent = null; shownView = null; Object.assign(chosen, { seq: null, cards: [] }); },
   };

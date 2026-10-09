@@ -58,7 +58,7 @@ function applySeatMode() {
   const k = config.play && ui.game ? keyOf(ui.game) : null;
   ui.play = k ? { seat: k.seat } : null;
   source.setKey(k ? { game: ui.game, seat: k.seat, token: k.token } : null);
-  for (const name of ["card", "stack", "player", "pile", "after", "preview"]) delete hooks[name];
+  for (const name of ["card", "drop", "mana", "stack", "player", "pile", "after", "preview", "retarget"]) delete hooks[name];
   if (k) {
     Object.assign(hooks, play.hooks);
     ui.seat = k.seat;
@@ -129,6 +129,7 @@ function changeSelection() {
   stopPlay();
   applySeatMode();
   ui.open.clear();
+  ui.handOrder = {};
   ui.deltaBase = null;
   timeline = null;
   ui.view = null;
