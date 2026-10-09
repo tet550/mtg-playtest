@@ -576,9 +576,9 @@ def card_kinds(view: dict, state: GameState) -> dict:
                     continue
                 faces = card.type_line.split("//")
                 kind = {"to": "graveyard" if ("Instant" in faces[0] or "Sorcery" in faces[0]) else "battlefield"}
-                if any("Land" in f for f in faces):
+                if any(info.has_land_type(f) for f in faces):
                     kind["land"] = True
-                if any(f.strip() and "Land" not in f for f in faces):
+                if any(f.strip() and not info.has_land_type(f) for f in faces):
                     kind["spell"] = True
                 out[card.id] = kind
     return out
