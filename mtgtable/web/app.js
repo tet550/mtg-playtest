@@ -112,6 +112,7 @@ async function load() {
   if (timeline && ui.live && added === 1) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
   ui.idle = result.timeline.idle ? { ...result.timeline.idle, at: Date.now() } : null;  // 時間切れの知らせ（公開のサーバー）
+  ui.ai = result.timeline.ai || null;  // サーバーの中で回す AI の状態（中断していれば理由）
   ui.log = result.log;
   ui.cursor = timeline.cursor;
   if (follow) return startPlay(from);

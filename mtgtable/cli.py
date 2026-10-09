@@ -346,9 +346,18 @@ def cmd_export(a):
 
 def cmd_serve(a):
     from .web import serve
+    from . import llm
     if a.site and not DB:
         raise SystemExit("serve --site needs --db PATH (or MTGTABLE_DB)")
-    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site)
+    ai = (a.ai or a.site) and not a.no_ai
+    if ai:
+        if not (a.play or a.site):
+            raise SystemExit("serve --ai needs --play or --site")
+        try:
+            llm.check_ready()  # キー・SDK が足りなければ、対局を中断させる前にここで止める
+        except llm.LLMError as e:
+            raise SystemExit("%s（AI を回さずに動かすなら --no-ai）" % e)
+    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site, ai=ai)
 
 
 def cmd_db_import(a):
@@ -494,19 +503,19 @@ def cmd_answer(a):
 
 
 def cmd_auto(a):
-    """審判と AI の席を OpenAI の API で回す（人間の番になるまで。--watch なら人間の操作を待ちながら決着まで）。"""
+    """審判と AI の席を LLM の API で回す（人間の番になるまで。--watch なら人間の操作を待ちながら決着まで）。"""
     import os
     from . import llm, prompt
     store = _existing(a.game)
     if a.model:
-        os.environ["MTGTABLE_OPENAI_MODEL"] = a.model
+        os.environ["MTGTABLE_MODEL"] = a.model
+    if a.provider:
+        os.environ["MTGTABLE_LLM_PROVIDER"] = a.provider
     try:
-        llm.api_key()
-    except llm.LLMError as e:
-        raise SystemExit(str(e))
-    try:
-        print("model: 審判 %s、AI の席 %s。AI の席: %s（鍵の無い席）"
-              % (llm.model(prompt.JUDGE), llm.model("p"), ", ".join(a.ai or prompt.ai_seats(store)) or "なし"))
+        llm.check_ready()
+        print("審判 %s/%s、AI の席 %s/%s。AI の席: %s（鍵の無い席）"
+              % (llm.provider(prompt.JUDGE), llm.model(prompt.JUDGE), llm.provider("p"), llm.model("p"),
+                 ", ".join(a.ai or prompt.ai_seats(store)) or "なし"))
     except llm.LLMError as e:
         raise SystemExit(str(e))
     try:
@@ -660,7 +669,10 @@ def build_parser():
     p.add_argument("--play", action="store_true", help="席の操作（GUI の対局）を受ける。invite した対局は席の鍵で守る")
     p.add_argument("--site", action="store_true",
                    help="公開のサーバーとして動かす（--db が要る。--play を含む）。所有者の鍵（Cookie）で、自分が席を持つ対局だけを"
-                        "見せ、judge の席は出さない。書き込みは同じサイトからだけ")
+                        "見せ、judge の席は出さない。書き込みは同じサイトからだけ。審判と AI の席もサーバーの中で回す")
+    p.add_argument("--ai", action="store_true",
+                   help="審判と AI の席をサーバーの中で回す（--play と。auto --watch の代わり。--site では既定）")
+    p.add_argument("--no-ai", action="store_true", help="--site でも AI を回さない（手で回す・auto を使う）")
     p.set_defaults(fn=cmd_serve)
 
     p = sub.add_parser("db-import", help="対局フォルダを --db の DB へ移す")
@@ -698,11 +710,12 @@ def build_parser():
     p.add_argument("--direct", action="store_true", help="AI の席は審判を通さず Batch を直接書く（前の形。鍵の対局では使えない）")
     p.set_defaults(fn=cmd_next)
 
-    p = sub.add_parser("auto", help="審判と AI の席を OpenAI の API で回す（キーは secrets/openai_api_key か OPENAI_API_KEY）")
+    p = sub.add_parser("auto", help="審判と AI の席を LLM の API で回す（提供元・キーは secrets/README.md）")
     p.add_argument("game")
     p.add_argument("--ai", action="append", help="AI の席（省略で鍵の無い席）")
     p.add_argument("--watch", action="store_true", help="人間の番になっても終わらず、操作を待って決着まで回す")
-    p.add_argument("--model", help="モデル（全部の役割。省略で secrets/openai.json → 既定 gpt-5）")
+    p.add_argument("--model", help="モデル（全部の役割。省略で secrets/llm.json → 提供元の既定）")
+    p.add_argument("--provider", choices=("openai", "anthropic"), help="提供元（全部の役割。省略で secrets/llm.json → openai）")
     p.add_argument("--max-failures", type=int, default=3, help="返答を続けて適用できなかったら止める回数")
     p.add_argument("--server", default="http://127.0.0.1:8765",
                    help="--watch で更新通知を受けるサーバー（serve の URL）。つながらなければ1秒ごとに見る。空で通知を使わない")

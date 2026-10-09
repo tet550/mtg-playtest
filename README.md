@@ -29,7 +29,8 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/decks.py` | 公開のサーバーのデッキ登録（検査と、所有者ごとの保存） | — |
 | `mtgtable/lobby.py` | 公開のサーバーで対局を作る（AI と・招待した人と）・時間切れ | — |
 | `mtgtable/prompt.py`・`mtgtable/prompts/` | AI のプロンプト（Player の意図・審判・直接 Batch）の書き出しと、返答の適用 | 27節 |
-| `mtgtable/llm.py` | OpenAI の API（Chat Completions）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
+| `mtgtable/llm.py` | LLM の API（OpenAI・Anthropic）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
+| `mtgtable/worker.py` | サーバーの中で審判と AI の席を回す（`serve --ai` / `--site`）・利用の上限・中断と再開 | 27節 |
 
 Web の責務分割と設計判断は [design/web_design.md](design/web_design.md)。ビルド不要の ES modules を使用する。
 
@@ -201,7 +202,7 @@ python -m mtgtable --db data/mtg.sqlite invite g1 --seat p1 --base https://mtg.e
   対戦する。招待の URL は1回だけ使え、3日で切れる（作り直し・取り消しができる）。招待された人は自分のデッキを選んで席に
   着き、その時点で対局ができる。デッキは対局を作る時点の写しを使う（後で直しても対局は変わらない）。公開・非公開を選べる
 - 人間どうしの対局で相手の番が 5 分続くと画面に出し、30 分続いたら「時間切れで勝ちにする」（相手の投了として書く）
-- 審判（と AI の席）は、今は対局ごとに `auto --watch` を動かす（サーバーの中で回すのは計画のフェーズ 5）
+- 審判と AI の席はサーバーの中で回す（下の「LLM の API で自動で回す」。`--no-ai` で止める）
 - 利用者の識別より先（HTTPS の設定・対局を作る画面・レート制限など）はまだ。外に出すのは計画のフェーズ 7 の後
 
 ### 人間どうしで対戦する
@@ -229,25 +230,43 @@ AI は2つの役割に分かれる。**Player** は何をするかを決めて�
 
 OpenAI の API で自動で回すか（`auto`）、プロンプトをファイルに書き出して人がモデルに渡し、返答を `answer` に渡す（手動）。
 
-#### OpenAI の API で自動で回す
+#### LLM の API で自動で回す
 
-1. API キーを `secrets/openai_api_key` に1行で書く（git の管理外。環境変数 `OPENAI_API_KEY` でもよい）。詳しくは [secrets/README.md](secrets/README.md)
-2. `serve --play` を起動して GUI で対局を開き、別のターミナルで `auto` を `--watch` 付きで動かしておく
+提供元は OpenAI か Anthropic（Claude）。役割（審判・AI の席）ごとに分けてもよい。設定とキーは [secrets/README.md](secrets/README.md)。
+
+1. API キーを `secrets/openai_api_key`（か `secrets/anthropic_api_key`）に1行で書く（環境変数 `OPENAI_API_KEY` /
+   `ANTHROPIC_API_KEY` でもよい）。Anthropic を使うなら `pip install anthropic`
+2. サーバーの中で回す: `serve --play --ai`（`serve --site` では既定）。人間が書くとすぐ、審判か AI の席の番なら回る
+
+```bash
+python -m mtgtable serve --play --ai
+```
+
+別のプロセスで回すなら、`serve --play` とは別のターミナルで `auto` を `--watch` 付きで動かす（`--ai` と同時には使わない。
+同じ番を2度呼ぶ）:
 
 ```bash
 python -m mtgtable auto playtest/g1 --watch
 ```
 
+サーバーの中で回すとき（`--ai` / `--site`）:
+
+- 同じ対局は同時に1つ、全体で 4 対局まで並べて回す。1手ごとに画面へ届く
+- 返答を続けて卓に書けない・API を呼べない・利用の上限に当たったら、その対局を「中断」にし、理由を画面に出す。
+  席を持つ人が「再開する」で動かし直す
+- 利用の上限（環境変数。トークンは入力（キャッシュ分を含む）＋出力）: `MTGTABLE_AI_CALLS_PER_GAME`（既定 600 回）・
+  `MTGTABLE_AI_TOKENS_PER_GAME`（600万）・`MTGTABLE_AI_TOKENS_PER_OWNER_DAY`（所有者ごとの1日。1000万）・
+  `MTGTABLE_AI_TOKENS_PER_DAY`（サイト全体の1日。1億）。数えた分は DB（`--db`）の `ai_usage` に残る
+
 - 審判か AI の席（鍵の無い席）の番になるたびに、プロンプトを作って送り、返答を卓に書く。人間の番の間は待つ
 - 待つのは `serve` の更新通知（SSE）。GUI の操作で、その場で起きる（`--server`、既定 http://127.0.0.1:8765）。サーバーに
   つながらない間は1秒ごとに卓を見て、10秒ごとにつなぎ直す
-- モデルは `secrets/openai.json` で指定する（`{"model": "gpt-5"}`。審判・AI の席を分けるなら `judge_model` / `player_model`、
-  推論の深さは `reasoning_effort`）。一時的に変えるなら `--model` か環境変数 `MTGTABLE_OPENAI_MODEL`（ファイルより優先）。
-  何も無ければ `gpt-5`。使えるモデルはアカウントによる
-- 固定部分（役割の指示・リファレンス・デッキ）を先頭に置くので、OpenAI の自動のプロンプト・キャッシュが効く。
-  効いた量は `prompts/<役割>/usage.jsonl` の `cached_tokens`
+- 提供元・モデルは `secrets/llm.json` で指定する（審判・AI の席を分けるなら `judge_*` / `player_*`、考える深さは `effort`）。
+  一時的に変えるなら `auto --provider` / `--model`。何も無ければ OpenAI の `gpt-5`
+- 固定部分（役割の指示・リファレンス・デッキ）を先頭に置くので、プロンプト・キャッシュが効く（Anthropic では固定部分に
+  TTL 1時間の区切りを付ける）。効いた量は `prompts/<役割>/usage.jsonl` の `cached_tokens`（どの提供元でも同じ形）
 - 返答を続けて適用できなかったら止まる（`--max-failures`、既定 3）。そのときは `prompts/<役割>/` の `*.response.md` を見る
-- 送るのは、その役割に見せてよい情報だけ（AI の席には自分の view、審判には全情報）。送り先は OpenAI の API だけ
+- 送るのは、その役割に見せてよい情報だけ（AI の席には自分の view、審判には全情報）。送り先は選んだ提供元の API だけ
 
 #### 手動で回す
 
@@ -361,6 +380,7 @@ node --test tests/web.test.mjs
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
 | `test_decks.py` | デッキ登録: 検査（書式・カード名・枚数・フォーマット）、Scryfall のまとめ引き（偽の Scryfall）、デッキの API、AI のプレイ方針 |
 | `test_lobby.py` | 対局を作る: AI との対局・デッキの写し・招待（1回だけ・同時に着いても1人・期限・作り直し・取り消し）・時間切れ |
+| `test_worker.py` | サーバーの中で回す: 人間が書いたらすぐ回る・利用の上限で中断・席の鍵で再開・API の失敗・所有者と1日の数え方 |
 | `test_site.py` | 公開のサーバー: 所有者の鍵の Cookie・招待の URL で席を取る・自分の対局だけ・復元 URL・Origin・鍵の期限と失効 |
 | `test_sqlstore.py` | SQLite の保存先: 対局フォルダからの移行・一覧の要約（終わった日時）・ロールバック・同時の書き込み・CLI の `--db` |
 | `test_carddb.py` | オラクルのキャッシュ |

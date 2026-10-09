@@ -28,6 +28,7 @@ from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
 from .decks import Decks, Invalid, check as check_deck_text
+from . import llm, worker
 from .lobby import IDLE_LIMIT, IDLE_NOTICE, Lobby, Refused as LobbyRefused, repo_decks
 from .owners import Owners
 from .sqlstore import SqliteGames
@@ -87,6 +88,7 @@ class Viewer:
         self.owners = Owners(db) if site else None
         self.decks = Decks(db) if site else None
         self.lobby = Lobby(db, self.source, self.decks, self.owners, offline) if site else None
+        self.worker = None  # serve が AI のワーカーを動かすとき（審判と AI の席をサーバーの中で回す）
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
@@ -152,6 +154,20 @@ class Viewer:
             raise Forbidden("this seat needs its key (python -m mtgtable invite %s --seat pN)" % game)
         return st
 
+    def resume_ai(self, game: str, seat: str, token: Optional[str], owner: Optional[str] = None) -> dict:
+        """中断した対局の AI を再開する（席を持つ人だけ）。"""
+        st = self.authorize(game, seat, token, write=True, owner=owner)
+        if not worker.suspended(st):
+            raise Forbidden("the AI of this game is not suspended")
+        worker.resume(st)
+        if self.worker is not None:
+            self.worker.forget(game)  # 盤面は変わっていないので、見直すように言う
+        self.notify()
+        return {"ok": True}
+
+    def ai_status(self, game: str) -> Optional[dict]:
+        return worker.status(self.store(game)) if self.worker is not None else None
+
     def participant(self, game: str, owner: Optional[str]) -> BaseStore:
         """公開のサーバーで、owner がその対局の席を持つか（更新の通知など、席を問わない読み取り）。"""
         st = self.store(game)
@@ -171,7 +187,8 @@ class Viewer:
                 raise Forbidden(str(e))
             result = st._apply(batch, cur)
         result.pop("_state", None)
-        _announce(prompt.auto_build(st))  # 依頼・マリガンで審判の番になったら、審判のプロンプトをすぐ作る
+        if self.worker is None:  # 手で回すとき: 依頼・マリガンで審判の番になったら、審判のプロンプトをすぐ作る
+            _announce(prompt.auto_build(st))
         self.notify()
         return {"result": public_result(result), "cursor": st.cursor()}
 
@@ -448,6 +465,8 @@ class Handler(BaseHTTPRequestHandler):
                                                      owner=owner))
         if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "stops":
             return self._json(self.viewer.set_stops(parts[2], body.get("seat"), self._token(), body, owner=owner))
+        if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "resume" and self.viewer.play:
+            return self._json(self.viewer.resume_ai(parts[2], body.get("seat"), self._token(), owner=owner))
         self._json({"error": "not found"}, 404)
 
     def do_GET(self):  # noqa: N802
@@ -507,6 +526,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(self.viewer.view(game, seat, at, library=q.get("library") == "1"))
                 if what == "timeline":
                     tl = self.viewer.timeline(game, seat)
+                    ai = self.viewer.ai_status(game)
+                    if ai:  # AI の状態（中断しているか・理由）。取るたびに変わりうるので、写しに足す
+                        tl = dict(tl, ai=ai)
                     if self.viewer.site:  # 相手の番がどれだけ続いているか（時間切れの知らせ。取るたびに変わるので、写しに足す）
                         tl = dict(tl, idle={"seconds": self.viewer.lobby.idle_seconds(self.viewer.store(game)),
                                             "notice": IDLE_NOTICE, "limit": IDLE_LIMIT,
@@ -612,11 +634,24 @@ def export_site(root, dest, games=None, offline: bool = False, db=None) -> list:
     return [g["id"] for g in listed]
 
 
+def start_worker(viewer: Viewer, db=None, limits=None, report=print) -> "worker.Worker":
+    """AI のワーカーを動かす（審判と AI の席をサーバーの中で回す）。利用は db があれば DB に数える。"""
+    budget = worker.Budget(limits or worker.Limits.from_env(), db)
+    owner_of = (lambda game: viewer.owners.seat_owner(game, "p1")) if viewer.site else None  # 対局を作った人
+    viewer.worker = worker.Worker(viewer, budget, owner_of=owner_of, report=report).start()
+    return viewer.worker
+
+
 def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False,
-          play: bool = False, db=None, site: bool = False) -> None:
+          play: bool = False, db=None, site: bool = False, ai: bool = False) -> None:
     Handler.viewer = Viewer(root, offline, play, db=db, site=site)
+    if ai:
+        start_worker(Handler.viewer, db)
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
+    if ai:
+        print("  審判と AI の席はサーバーの中で回す（%s/%s、AI の席 %s/%s）"
+              % (llm.provider(prompt.JUDGE), llm.model(prompt.JUDGE), llm.provider("p"), llm.model("p")))
     print("mtgtable %s: http://%s:%d/  (%s, Ctrl+C で終了)"
           % ("site" if site else "play" if play else "viewer", host, port, "db: %s" % db if db else "root: %s" % root))
     if play:

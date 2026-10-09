@@ -1,25 +1,38 @@
-"""OpenAI の API で、審判と AI の席を回す（prompt.py が作るプロンプトを送り、返答を卓に書く）。
+"""審判と AI の席を、LLM の API で回す（prompt.py が作るプロンプトを送り、返答を卓に書く）。
 
-標準ライブラリ（urllib）だけで Chat Completions（POST /v1/chat/completions）を呼ぶ。
+提供元（provider）は差し替えられる。役割（審判・AI の席）ごとに別の提供元・モデルにもできる。
+- openai: Chat Completions（POST /v1/chat/completions）。標準ライブラリ（urllib）だけで呼ぶ
+- anthropic: Claude の Messages API。公式の SDK（pip install anthropic）で呼ぶ。この提供元を選んだときだけ読み込むので、
+  使わなければ標準ライブラリだけで動く
 
-キー: 環境変数 OPENAI_API_KEY か、リポジトリ直下の secrets/openai_api_key（1行。git 管理外）。
-設定ファイル secrets/openai.json（省略可。git 管理外）:
-    {"model": "gpt-5",                  全部の役割の既定のモデル
-     "judge_model": "...",              審判だけ別のモデルにする（省略で model）
-     "player_model": "...",             AI の席だけ別のモデルにする（省略で model）
-     "reasoning_effort": "medium"}      推論モデルの reasoning_effort（low / medium / high。省略で送らない）
+キー:
+- openai: 環境変数 OPENAI_API_KEY か、secrets/openai_api_key（1行。git 管理外）
+- anthropic: 環境変数 ANTHROPIC_API_KEY か、secrets/anthropic_api_key。どちらも無ければ SDK が自分で探す
+  （ANTHROPIC_AUTH_TOKEN・`ant auth login` のプロファイルなど）
+設定ファイル secrets/llm.json（無ければ前の名前の secrets/openai.json。省略可。git 管理外）:
+    {"provider": "anthropic",           全部の役割の既定の提供元（openai / anthropic。省略で openai）
+     "judge_provider": "...",           審判だけ別の提供元に（省略で provider）
+     "player_provider": "...",          AI の席だけ別の提供元に
+     "model": "...",                    全部の役割の既定のモデル（省略で提供元の既定 DEFAULT_MODELS）
+     "judge_model": "...", "player_model": "...",
+     "effort": "medium",                考える深さ（anthropic の output_config.effort: low〜max。openai の reasoning_effort にも使う）
+     "reasoning_effort": "medium"}      前の名前（openai の reasoning_effort）
 環境変数（設定ファイルより優先。どれも省略可）:
-    MTGTABLE_OPENAI_MODEL             モデル（全部の役割。auto --model も同じ）
-    MTGTABLE_OPENAI_REASONING_EFFORT  reasoning_effort
-    OPENAI_BASE_URL                   API の場所（既定 https://api.openai.com/v1。テストや互換サーバー用）
-使えるモデルはアカウントによる。何も指定しなければ DEFAULT_MODEL。
+    MTGTABLE_LLM_PROVIDER             提供元（全部の役割）
+    MTGTABLE_MODEL                    モデル（全部の役割。auto --model も同じ）。前の名前 MTGTABLE_OPENAI_MODEL も使える
+    MTGTABLE_OPENAI_REASONING_EFFORT  openai の reasoning_effort
+    OPENAI_BASE_URL / ANTHROPIC_BASE_URL  API の場所（テストや互換サーバー用）
 
-プロンプト・キャッシュ: OpenAI は、先頭が同じ長いプロンプト（1024 トークン以上）を自動でキャッシュする。prompt.py は
-固定部分（役割の指示・リファレンス・デッキ）を先頭の system に、毎回変わる部分を最後の user に置くので、そのまま効く。
-効いたかは usage.prompt_tokens_details.cached_tokens で分かる（prompts/<役割>/usage.jsonl に残す）。
+プロンプト・キャッシュ: prompt.py は固定部分（役割の指示・リファレンス・デッキ）を先頭の system に、毎回変わる部分を
+最後の user に置く。openai は先頭が同じ長いプロンプトを自動でキャッシュする。anthropic では system の2つの区切りに
+cache_control（TTL 1時間。人間の相手は1手に5分以上かけることがあるので）を付ける。効いた量は usage の cached_tokens
+（どの提供元でも同じ形に直して prompts/<役割>/usage.jsonl に残す）。
 
-調査用の記録: API を呼ぶたびに prompts/ai_log.jsonl へ1行足す（役割・プロンプトの stem・モデル・かかった秒数・
-finish_reason・usage・返答の全文・卓に書けたか / 失敗の理由・作り直したプロンプトの stem）。API を呼べなかったときも残す。
+anthropic の断り（stop_reason: refusal）: サーバー側の代わりのモデル（fallbacks: "default"）を有効にしている。
+それでも断られたら LLMError（理由の分類つき）。
+
+調査用の記録: API を呼ぶたびに prompts/ai_log.jsonl へ1行足す（役割・プロンプトの stem・提供元・モデル・かかった秒数・
+終わり方・usage・返答の全文・卓に書けたか / 失敗の理由・作り直したプロンプトの stem）。API を呼べなかったときも残す。
 """
 from __future__ import annotations
 
@@ -37,19 +50,98 @@ from typing import Optional
 from . import play, prompt
 from .store import GameStore
 
-DEFAULT_MODEL = "gpt-5"
-KEY_FILE = pathlib.Path(__file__).resolve().parents[1] / "secrets" / "openai_api_key"
-CONFIG_FILE = KEY_FILE.with_name("openai.json")
-CONFIG_KEYS = ("model", "judge_model", "player_model", "reasoning_effort")
+PROVIDERS = ("openai", "anthropic")
+DEFAULT_PROVIDER = "openai"
+DEFAULT_MODELS = {"openai": "gpt-5", "anthropic": "claude-opus-5-5"}
+DEFAULT_MODEL = DEFAULT_MODELS[DEFAULT_PROVIDER]
+SECRETS = pathlib.Path(__file__).resolve().parents[1] / "secrets"
+KEY_FILE = SECRETS / "openai_api_key"
+ANTHROPIC_KEY_FILE = SECRETS / "anthropic_api_key"
+LLM_CONFIG_FILE = SECRETS / "llm.json"
+CONFIG_FILE = SECRETS / "openai.json"  # 前の名前（llm.json が無ければこちら）
+CONFIG_KEYS = ("provider", "judge_provider", "player_provider", "model", "judge_model", "player_model",
+               "effort", "reasoning_effort")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
 TIMEOUT = 600  # 1回の応答を待つ秒数（推論モデルは長く考えることがある）
 RETRIES = 3  # 429・5xx・通信の失敗を、この回数まで待ってやり直す
+ANTHROPIC_MAX_TOKENS = 16000  # 審判の Batch も収まる（返答は1通の JSON）
+ANTHROPIC_BETAS = ["server-side-fallback-2026-07-01"]  # fallbacks: "default"（断られたら、分類に合う別のモデルで）
+FALLBACK_MODELS = ("claude-opus-5-5", "claude-opus-5", "claude-fable-5-1", "claude-sonnet-5-5")  # fallbacks を受けるモデル
 
 
 class LLMError(Exception):
     """API を呼べなかった（キーが無い・断られた・通信できない）。"""
 
 
-def api_key() -> str:
+def config_file() -> pathlib.Path:
+    return LLM_CONFIG_FILE if LLM_CONFIG_FILE.exists() else CONFIG_FILE
+
+
+def config() -> dict:
+    """設定ファイルの中身（無ければ空）。知らないキーや文字列でない値は断る（書き間違いに気づけるように）。"""
+    path = config_file()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as e:
+        raise LLMError("%s が JSON として読めない: %s" % (path, e))
+    if not isinstance(data, dict):
+        raise LLMError("%s は {\"model\": \"...\"} の形にする" % path)
+    unknown = [k for k in data if k not in CONFIG_KEYS]
+    if unknown or not all(isinstance(v, str) for v in data.values()):
+        raise LLMError("%s: 使えるキーは %s（値は文字列）。知らないキー: %s"
+                       % (path, ", ".join(CONFIG_KEYS), ", ".join(unknown) or "なし"))
+    out = {k: v.strip() for k, v in data.items() if v.strip()}
+    for k in ("provider", "judge_provider", "player_provider"):
+        if out.get(k) and out[k] not in PROVIDERS:
+            raise LLMError("%s: %s は %s のどれか" % (path, k, " / ".join(PROVIDERS)))
+    return out
+
+
+def _per_role(cfg: dict, key: str, role: Optional[str]) -> Optional[str]:
+    if not role:
+        return cfg.get(key)
+    return cfg.get(("judge_" if role == play.JUDGE else "player_") + key) or cfg.get(key)
+
+
+def provider(role: Optional[str] = None) -> str:
+    """役割（"judge" か Player の席。省略で共通）の提供元。環境変数 → 設定ファイル（役割別 → 共通）→ 既定 の順。"""
+    env = os.environ.get("MTGTABLE_LLM_PROVIDER", "").strip()
+    if env:
+        if env not in PROVIDERS:
+            raise LLMError("MTGTABLE_LLM_PROVIDER は %s のどれか" % " / ".join(PROVIDERS))
+        return env
+    return _per_role(config(), "provider", role) or DEFAULT_PROVIDER
+
+
+def model(role: Optional[str] = None) -> str:
+    """役割のモデル。環境変数 → 設定ファイル（役割別 → 共通）→ その提供元の既定 の順。"""
+    env = (os.environ.get("MTGTABLE_MODEL", "") or os.environ.get("MTGTABLE_OPENAI_MODEL", "")).strip()
+    if env:
+        return env
+    return _per_role(config(), "model", role) or DEFAULT_MODELS[provider(role)]
+
+
+def effort() -> Optional[str]:
+    value = os.environ.get("MTGTABLE_OPENAI_REASONING_EFFORT", "").strip() or config().get("effort") \
+        or config().get("reasoning_effort")
+    if value and value not in EFFORTS:
+        raise LLMError("effort は %s のどれか" % " / ".join(EFFORTS))
+    return value
+
+
+reasoning_effort = effort  # 前の名前
+
+
+def api_key(name: Optional[str] = None) -> Optional[str]:
+    """提供元のキー。openai は必須（無ければ LLMError）。anthropic は見つからなければ None（SDK が自分で探す）。"""
+    name = name or provider()
+    if name == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        if not key and ANTHROPIC_KEY_FILE.exists():
+            key = ANTHROPIC_KEY_FILE.read_text(encoding="utf-8").strip()
+        return key or None
     key = os.environ.get("OPENAI_API_KEY", "").strip()
     if not key and KEY_FILE.exists():
         key = KEY_FILE.read_text(encoding="utf-8").strip()
@@ -58,35 +150,12 @@ def api_key() -> str:
     return key
 
 
-def config() -> dict:
-    """secrets/openai.json の中身（無ければ空）。知らないキーや文字列でない値は断る（書き間違いに気づけるように）。"""
-    if not CONFIG_FILE.exists():
-        return {}
-    try:
-        data = json.loads(CONFIG_FILE.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError as e:
-        raise LLMError("%s が JSON として読めない: %s" % (CONFIG_FILE, e))
-    if not isinstance(data, dict):
-        raise LLMError("%s は {\"model\": \"...\"} の形にする" % CONFIG_FILE)
-    unknown = [k for k in data if k not in CONFIG_KEYS]
-    if unknown or not all(isinstance(v, str) for v in data.values()):
-        raise LLMError("%s: 使えるキーは %s（値は文字列）。知らないキー: %s"
-                       % (CONFIG_FILE, ", ".join(CONFIG_KEYS), ", ".join(unknown) or "なし"))
-    return {k: v.strip() for k, v in data.items() if v.strip()}
-
-
-def model(role: Optional[str] = None) -> str:
-    """役割（"judge" か Player の席。省略で共通）のモデル。環境変数 → 設定ファイル（役割別 → 共通）→ 既定 の順。"""
-    env = os.environ.get("MTGTABLE_OPENAI_MODEL", "").strip()
-    if env:
-        return env
-    cfg = config()
-    specific = cfg.get("judge_model" if role == play.JUDGE else "player_model") if role else None
-    return specific or cfg.get("model") or DEFAULT_MODEL
-
-
-def reasoning_effort() -> Optional[str]:
-    return os.environ.get("MTGTABLE_OPENAI_REASONING_EFFORT", "").strip() or config().get("reasoning_effort")
+def check_ready(roles=(play.JUDGE, "p")) -> None:
+    """使う提供元のキー・SDK がそろっているか（auto・serve の起動時。足りなければ LLMError）。"""
+    for name in {provider(r) for r in roles}:
+        api_key(name)
+        if name == "anthropic":
+            _anthropic()
 
 
 def base_url() -> str:
@@ -94,19 +163,47 @@ def base_url() -> str:
 
 
 def request_body(system: list, user: str, role: Optional[str] = None) -> dict:
-    """Chat Completions の本文。固定部分を先頭に（キャッシュが効くように、毎回同じバイト列で）。"""
+    """API の本文（その役割の提供元の形）。固定部分を先頭に（キャッシュが効くように、毎回同じバイト列で）。"""
+    name, e = provider(role), effort()
+    if name == "anthropic":
+        body = {"model": model(role), "max_tokens": ANTHROPIC_MAX_TOKENS,
+                "system": [{"type": "text", "text": s, "cache_control": {"type": "ephemeral", "ttl": "1h"}}
+                           for s in system],
+                "messages": [{"role": "user", "content": user}]}
+        if body["model"] in FALLBACK_MODELS:
+            body.update({"betas": ANTHROPIC_BETAS, "fallbacks": "default"})
+        if e:
+            body["output_config"] = {"effort": e}
+        return body
     body = {"model": model(role),
             "messages": [{"role": "system", "content": s} for s in system] + [{"role": "user", "content": user}]}
-    effort = reasoning_effort()
-    if effort:
-        body["reasoning_effort"] = effort
+    if e:
+        body["reasoning_effort"] = "high" if e in ("xhigh", "max") else e
     return body
 
 
-def complete(body: dict) -> dict:
-    """本文を送り、{"text", "usage", "model"} を返す。429・5xx・通信の失敗は少し待ってやり直す。"""
+def body_provider(body: dict) -> str:
+    """本文がどの提供元の形か（anthropic の本文には max_tokens と system の区切りがある）。"""
+    return "anthropic" if "max_tokens" in body and isinstance(body.get("system"), list) else "openai"
+
+
+def complete(body: dict, name: Optional[str] = None) -> dict:
+    """本文を送り、{"text", "usage", "model", "finish_reason", "provider"} を返す。usage はどの提供元でも
+    {"input_tokens", "output_tokens", "cached_tokens", "cache_write_tokens", "total_tokens", "raw"}。"""
+    name = name or body_provider(body)
+    res = _complete_anthropic(body) if name == "anthropic" else _complete_openai(body)
+    res["provider"] = name
+    return res
+
+
+def _usage(input_tokens: int, output_tokens: int, cached: int, written: int, raw: dict) -> dict:
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens, "cached_tokens": cached,
+            "cache_write_tokens": written, "total_tokens": input_tokens + output_tokens, "raw": raw}
+
+
+def _complete_openai(body: dict) -> dict:
     data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + api_key()}
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + api_key("openai")}
     last = None
     for attempt in range(RETRIES + 1):
         req = urllib.request.Request(base_url() + "/chat/completions", data=data, headers=headers, method="POST")
@@ -117,7 +214,10 @@ def complete(body: dict) -> dict:
             text = (choice.get("message") or {}).get("content") or ""
             if not text:
                 raise LLMError("empty response (finish_reason: %s)" % choice.get("finish_reason"))
-            return {"text": text, "usage": res.get("usage") or {}, "model": res.get("model", body["model"]),
+            u = res.get("usage") or {}
+            usage = _usage(u.get("prompt_tokens") or 0, u.get("completion_tokens") or 0,
+                           (u.get("prompt_tokens_details") or {}).get("cached_tokens") or 0, 0, u)
+            return {"text": text, "usage": usage, "model": res.get("model", body["model"]),
                     "finish_reason": choice.get("finish_reason")}
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", "replace")[:500]
@@ -133,9 +233,43 @@ def complete(body: dict) -> dict:
     raise LLMError(last)
 
 
+def _anthropic():
+    try:
+        import anthropic
+    except ImportError:
+        raise LLMError("provider anthropic には公式の SDK が要る: pip install anthropic")
+    return anthropic
+
+
+def _complete_anthropic(body: dict) -> dict:
+    """Claude の Messages API（公式の SDK。429・5xx・通信の失敗は SDK が RETRIES 回までやり直す）。"""
+    anthropic = _anthropic()
+    key = api_key("anthropic")
+    client = anthropic.Anthropic(**({"api_key": key} if key else {}), max_retries=RETRIES, timeout=TIMEOUT)
+    try:
+        msg = client.beta.messages.create(**body)
+    except anthropic.APIConnectionError as e:
+        raise LLMError("Anthropic API に接続できない: %s" % e)
+    except anthropic.RateLimitError as e:
+        raise LLMError("Anthropic API 429（混んでいる・上限）: %s" % e.message)
+    except anthropic.APIStatusError as e:  # 400・401・403・404・5xx（やり直しても通らなかった）
+        raise LLMError("Anthropic API %d: %s" % (e.status_code, e.message))
+    if msg.stop_reason == "refusal":
+        d = msg.stop_details
+        raise LLMError("Claude が断った（分類: %s）%s" % (getattr(d, "category", None) or "不明",
+                                                    (": " + d.explanation) if d and d.explanation else ""))
+    text = "".join(b.text for b in msg.content if b.type == "text")
+    if not text:
+        raise LLMError("empty response (stop_reason: %s)" % msg.stop_reason)
+    u = msg.usage
+    cached, written = u.cache_read_input_tokens or 0, u.cache_creation_input_tokens or 0
+    usage = _usage((u.input_tokens or 0) + cached + written, u.output_tokens or 0, cached, written, u.to_dict())
+    return {"text": text, "usage": usage, "model": msg.model, "finish_reason": msg.stop_reason}
+
+
 def _log_usage(built: dict, res: dict) -> None:
     rec = {"time": datetime.datetime.now().isoformat(timespec="seconds"), "stem": built["stem"],
-           "model": res["model"], "usage": res["usage"]}
+           "provider": res.get("provider"), "model": res["model"], "usage": res["usage"]}
     with open(built["dir"] / "usage.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
@@ -151,7 +285,8 @@ def _log_call(store: GameStore, built: dict, started: float, res: Optional[dict]
            "cursor": built["cursor"], "request": "prompts/%s/%s.request.json" % (built["role"], built["stem"]),
            "seconds": round(time.time() - started, 1)}
     if res:
-        rec.update({"model": res["model"], "finish_reason": res.get("finish_reason"), "usage": res["usage"],
+        rec.update({"provider": res.get("provider"), "model": res["model"], "finish_reason": res.get("finish_reason"),
+                    "usage": res["usage"],
                     "response": res["text"]})
     if out is not None:
         rec["ok"] = out["ok"]
@@ -170,13 +305,16 @@ def _log_call(store: GameStore, built: dict, started: float, res: Optional[dict]
         f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
 
 
-def step(store: GameStore, ai: Optional[list] = None) -> Optional[dict]:
-    """審判か AI の席の番なら、プロンプトを作って送り、返答を卓に書く。人間の番・決着なら None。"""
+def step(store: GameStore, ai: Optional[list] = None, guard=None) -> Optional[dict]:
+    """審判か AI の席の番なら、プロンプトを作って送り、返答を卓に書く。人間の番・決着なら None。
+    guard（サーバーの利用の上限。worker.Guard）があれば、呼ぶ前に check()（超えていれば例外）、呼んだ後に record(usage)。"""
     ai = prompt.ai_seats(store) if ai is None else ai
     play.autopass(store)  # 止める場所に当たらない応答の機会は、API を呼ばず・人間に聞かずにパス
     role = prompt.next_role(store, ai)
     if not role:
         return None
+    if guard is not None:
+        guard.check()
     built = prompt.build(store, role)
     started = time.time()
     try:
@@ -184,6 +322,8 @@ def step(store: GameStore, ai: Optional[list] = None) -> Optional[dict]:
     except LLMError as e:
         _log_call(store, built, started, error=str(e))
         raise
+    if guard is not None:
+        guard.record(res["usage"])
     _log_usage(built, res)
     try:
         out = prompt.apply_response(store, res["text"], role)
@@ -232,13 +372,13 @@ class Changes:
 
 
 def run(store: GameStore, ai: Optional[list] = None, watch: bool = False, max_failures: int = 3,
-        interval: float = 1.0, report=print, server: Optional[str] = None) -> str:
+        interval: float = 1.0, report=print, server: Optional[str] = None, guard=None) -> str:
     """審判と AI の席を、人間の番になるまで（watch なら決着まで、人間の操作を待ちながら）回す。止まった理由を返す。
     watch では、server（serve の URL）の更新通知で待つ。つながらなければ interval 秒ごとに見る。"""
     failures, escalated = 0, set()  # escalated: 審判に回した後、まだ一度も返答が通っていない席
     changes = Changes(store.name, server, interval, report=report) if watch else None
     while True:
-        out = step(store, ai)
+        out = step(store, ai, guard)
         if out is None:
             wait = play.waiting_on(store.load())
             if wait is None:
@@ -247,7 +387,7 @@ def run(store: GameStore, ai: Optional[list] = None, watch: bool = False, max_fa
                 return "waiting on %s（人間の番）" % wait
             changes.wait()
             continue
-        cached = ((out.get("usage") or {}).get("prompt_tokens_details") or {}).get("cached_tokens")
+        cached = (out.get("usage") or {}).get("cached_tokens")
         report("%s: %s%s" % (out["role"], "ok" if out["ok"] else "failed: " + (out["error"] or ""),
                              "（cached %s tokens）" % cached if cached else ""))
         failures = 0 if out["ok"] else failures + 1

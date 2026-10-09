@@ -1427,6 +1427,12 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     $("playTitle").textContent = `${seat} として操作`;
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };
+    if (ui.live && ui.ai && ui.ai.status === "suspended") {  // 審判・AI の席が止まった（上限・API の失敗など）
+      rows.push(el("div", "pask", `AI（審判・AI の席）が止まっています: ${ui.ai.reason}`));
+      row(button("再開する", async () => {
+        try { await source.post(ui.game, "resume", { seat }); toast("再開した"); reload(); } catch (e) { toast(e.message, true); }
+      }, { title: "原因が解消したら（翌日・API の復旧など）、AI をもう一度動かす" }));
+    }
     const idle = ui.live && idleState(ui.idle, wait, seat, Date.now());
     if (idle) {
       rows.push(el("div", "phint", `${idle.who} の番が ${idle.minutes} 分続いています`));
