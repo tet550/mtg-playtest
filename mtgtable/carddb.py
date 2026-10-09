@@ -24,6 +24,8 @@ import urllib.parse
 import urllib.request
 
 API = "https://api.scryfall.com/cards/named?exact="
+COLLECTION_API = "https://api.scryfall.com/cards/collection"
+COLLECTION_MAX = 75  # Scryfall の /cards/collection が1回に受ける名前の数
 USER_AGENT = "mtgtable/0.1 (personal playtest tool)"
 MIN_INTERVAL = 0.5  # Scryfall のレート制限に余裕を持たせる（429 が出たら待って再試行）
 _last = [0.0]
@@ -58,7 +60,82 @@ def _slim(data: dict) -> dict:
     if (data.get("image_uris") or {}).get("normal"):
         rec["image"] = data["image_uris"]["normal"]
     rec["scryfall_uri"] = data.get("scryfall_uri")
+    if data.get("legalities"):
+        rec["legalities"] = data["legalities"]  # フォーマットごとに使えるか（デッキ登録の検査）
     return rec
+
+
+def _save(name: str, rec: dict) -> None:
+    """カードのキャッシュに書く（正式な名前でも引けるように、名前が違えばその名前でも置く）。"""
+    p = _path(name)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    if rec.get("name") and rec["name"] != name:
+        alias = _path(rec["name"])
+        if not alias.exists():
+            alias.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _norm(name: str) -> str:
+    """名前の比べ方: 大文字・小文字と、「//」の前後の空白の違いは見ない。"""
+    return re.sub(r"\s*//\s*", " // ", name.strip()).casefold()
+
+
+def card_names(rec: dict) -> list:
+    """そのカードとして書いてよい名前（正式な名前と、両面・分割カードの各面の名前）。"""
+    names = [rec.get("name") or ""] + [f.get("name") or "" for f in rec.get("faces") or []]
+    names += (rec.get("name") or "").split(" // ")
+    return [n for n in dict.fromkeys(names) if n]
+
+
+def _post_collection(names: list) -> dict:
+    body = json.dumps({"identifiers": [{"name": n} for n in names]}).encode("utf-8")
+    req = urllib.request.Request(COLLECTION_API, data=body, method="POST",
+                                 headers={"User-Agent": USER_AGENT, "Accept": "application/json",
+                                          "Content-Type": "application/json"})
+    for attempt in range(6):
+        wait = MIN_INTERVAL - (time.time() - _last[0])
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < 5:
+                time.sleep(max(float(e.headers.get("Retry-After") or 0), 1.0 * 2 ** attempt))
+                continue
+            raise LookupError("Scryfall collection request failed (HTTP %s)" % e.code)
+        except (urllib.error.URLError, OSError) as e:
+            raise LookupError("Scryfall collection request failed (%s)" % e)
+        finally:
+            _last[0] = time.time()
+    raise LookupError("Scryfall collection request failed")
+
+
+def resolve_names(names, need_legalities: bool = False) -> dict:
+    """カード名をまとめて引く（デッキ登録の検査）。{"found": {書いた名前: rec}, "missing": [見つからない名前]}。
+
+    キャッシュにあるものはそのまま使い（need_legalities なら、フォーマットの情報の無い古いキャッシュは引き直す）、
+    残りを Scryfall の /cards/collection で 75 枚ずつ引く（1枚ずつより、ずっと少ない回数で済む）。"""
+    found, todo = {}, []
+    for name in dict.fromkeys(n.strip() for n in names if n and n.strip()):
+        rec = lookup(name, offline=True)
+        if rec and (rec.get("legalities") or not need_legalities):
+            found[name] = rec
+        else:
+            todo.append(name)
+    for i in range(0, len(todo), COLLECTION_MAX):
+        chunk = todo[i:i + COLLECTION_MAX]
+        # 分割カードの「Fire // Ice」は、/cards/collection では引けない（片方の面の名前なら引ける）。最初の面で引いて、
+        # 返ってきたカードの名前と照らし合わせる
+        cards = [_slim(c) for c in _post_collection([n.split("//")[0].strip() for n in chunk]).get("data") or []]
+        for name in chunk:
+            key = _norm(name)
+            rec = next((c for c in cards if any(_norm(n) == key for n in card_names(c))), None)
+            if rec:
+                _save(name, rec)
+                found[name] = rec
+    return {"found": found, "missing": [n for n in todo if n not in found]}
 
 
 def fetch(name: str, retries: int = 5) -> dict:
@@ -96,12 +173,7 @@ def lookup(name: str, offline: bool = False, refresh: bool = False):
     if offline:
         return None
     rec = fetch(name)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
-    if rec.get("name") and rec["name"] != name:
-        alias = _path(rec["name"])
-        if not alias.exists():
-            alias.write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    _save(name, rec)
     return rec
 
 

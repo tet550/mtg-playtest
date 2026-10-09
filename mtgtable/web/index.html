@@ -9,6 +9,7 @@
 <body>
 <header class="bar">
   <strong class="brand">mtgtable</strong>
+  <nav id="sitenav" class="sitenav" hidden></nav>
   <label>対局 <select id="game"></select></label>
   <label>席 <select id="seat">
     <option value="judge">judge（全知）</option>
@@ -43,6 +44,8 @@
   <button id="live" class="on" title="最新を追う">Live</button>
   <span id="posText" class="muted"></span>
 </div>
+
+<section id="page" class="page" hidden></section>
 
 <main class="layout">
   <section class="board">

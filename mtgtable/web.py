@@ -27,6 +27,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
+from .decks import Decks, Invalid, check as check_deck_text
 from .owners import Owners
 from .sqlstore import SqliteGames
 from .store import BaseStore, FileGames, StaleCursor
@@ -83,6 +84,7 @@ class Viewer:
         self.site = site  # 公開のサーバー: 所有者の鍵（Cookie）で、自分が席を持つ対局だけ見せる
         self.play = play or site  # 席の操作（書き込み）を受けるか
         self.owners = Owners(db) if site else None
+        self.decks = Decks(db) if site else None
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
@@ -338,8 +340,8 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         return auth[7:].strip() if auth.startswith("Bearer ") else None
 
-    def do_POST(self):  # noqa: N802
-        """POST /api/games/<対局>/request・declare・answer・stops（--play のときだけ）。本文は {"seat", "expect", ...}。"""
+    def _write(self, method: str) -> None:
+        """POST・PUT・DELETE の共通: 本文を読み、Origin を確かめ、振り分けて、例外を HTTP の状態に直す。"""
         parts = [unquote(p) for p in urlparse(self.path).path.strip("/").split("/") if p]
         try:
             length = int(self.headers.get("Content-Length") or 0)
@@ -351,28 +353,11 @@ class Handler(BaseHTTPRequestHandler):
             if self.viewer.site and not self._same_origin():
                 raise Forbidden("writes must come from this site (Origin)")
             owner = self._owner()
-            if parts == ["api", "me", "recovery"] and self.viewer.site:
-                if not owner:
-                    raise Forbidden("no owner key (open the site first)")
-                return self._json({"token": self.viewer.owners.new_recovery(owner)})
-            if parts == ["api", "me", "recover"] and self.viewer.site:
-                found = self.viewer.owners.recover(body.get("token"))
-                if not found:
-                    raise Forbidden("the recovery link is wrong or was replaced")
-                self._give_owner_key(found[1])
-                return self._json({"ok": True})
-            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "claim" and self.viewer.site:
-                # 招待の URL を開いた: 席の鍵で、その席をこの所有者のものにする（一覧に出るように）
-                if not owner:
-                    raise Forbidden("no owner key (open the site first)")
-                self.viewer.authorize(parts[2], body.get("seat"), self._token(), owner=owner)
-                return self._json({"game": parts[2], "seat": body.get("seat")})
-            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] in play.SEAT_WRITES:
-                return self._json(self.viewer.seat_write(parts[2], body.get("seat"), self._token(), parts[3], body,
-                                                         owner=owner))
-            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "stops":
-                return self._json(self.viewer.set_stops(parts[2], body.get("seat"), self._token(), body, owner=owner))
-            self._json({"error": "not found"}, 404)
+            if parts[:2] == ["api", "decks"] and self.viewer.site:
+                return self._decks(method, parts[2:], body, owner)
+            if method != "POST":
+                return self._json({"error": "not found"}, 404)
+            return self._post(parts, body, owner)
         except Forbidden as e:
             self._json({"error": str(e)}, 403)
         except StaleCursor as e:
@@ -381,8 +366,61 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"error": str(e)}, 503)
         except LookupError as e:
             self._json({"error": str(e)}, 404)
+        except Invalid as e:
+            self._json({"error": str(e), "check": e.result}, 400)
         except (ValueError, OperationError) as e:  # JSONDecodeError は ValueError
             self._json({"error": str(e)}, 400)
+
+    def do_POST(self):  # noqa: N802
+        self._write("POST")
+
+    def do_PUT(self):  # noqa: N802
+        self._write("PUT")
+
+    def do_DELETE(self):  # noqa: N802
+        self._write("DELETE")
+
+    def _decks(self, method: str, rest: list, body: dict, owner: Optional[str]) -> None:
+        """デッキ（公開のサーバー）: POST /api/decks（登録）・POST /api/decks/check（検査だけ）・
+        PUT / DELETE /api/decks/<id>。読むのは GET（do_GET）。どれも自分のデッキだけ。"""
+        if not owner:
+            raise Forbidden("no owner key (open the site first)")
+        decks = self.viewer.decks
+        if method == "POST" and rest == ["check"]:
+            return self._json(check_deck_text(body.get("text"), body.get("format") or "standard", decks.resolve))
+        if method == "POST" and not rest:
+            return self._json(decks.create(owner, body), 201)
+        if method == "PUT" and len(rest) == 1:
+            return self._json(decks.update(owner, rest[0], body))
+        if method == "DELETE" and len(rest) == 1:
+            decks.delete(owner, rest[0])
+            return self._json({"ok": True})
+        self._json({"error": "not found"}, 404)
+
+    def _post(self, parts: list, body: dict, owner: Optional[str]) -> None:
+        """POST /api/games/<対局>/request・declare・answer・stops・claim、/api/me/recovery・recover。"""
+        if parts == ["api", "me", "recovery"] and self.viewer.site:
+            if not owner:
+                raise Forbidden("no owner key (open the site first)")
+            return self._json({"token": self.viewer.owners.new_recovery(owner)})
+        if parts == ["api", "me", "recover"] and self.viewer.site:
+            found = self.viewer.owners.recover(body.get("token"))
+            if not found:
+                raise Forbidden("the recovery link is wrong or was replaced")
+            self._give_owner_key(found[1])
+            return self._json({"ok": True})
+        if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "claim" and self.viewer.site:
+            # 招待の URL を開いた: 席の鍵で、その席をこの所有者のものにする（一覧に出るように）
+            if not owner:
+                raise Forbidden("no owner key (open the site first)")
+            self.viewer.authorize(parts[2], body.get("seat"), self._token(), owner=owner)
+            return self._json({"game": parts[2], "seat": body.get("seat")})
+        if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] in play.SEAT_WRITES:
+            return self._json(self.viewer.seat_write(parts[2], body.get("seat"), self._token(), parts[3], body,
+                                                     owner=owner))
+        if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "stops":
+            return self._json(self.viewer.set_stops(parts[2], body.get("seat"), self._token(), body, owner=owner))
+        self._json({"error": "not found"}, 404)
 
     def do_GET(self):  # noqa: N802
         url = urlparse(self.path)
@@ -396,6 +434,11 @@ class Handler(BaseHTTPRequestHandler):
             owner = self._owner()
             if parts[:2] == ["api", "games"] and len(parts) == 2:
                 return self._json(self.viewer.games(owner))
+            if parts[:2] == ["api", "decks"] and self.viewer.site and len(parts) <= 3:
+                if not owner:
+                    raise Forbidden("no owner key (open the site first)")
+                return self._json(self.viewer.decks.get(owner, parts[2]) if len(parts) == 3
+                                  else self.viewer.decks.list(owner))
             if parts[:2] == ["api", "config"]:
                 if self.viewer.site and not owner:  # 初めて来たブラウザ（か鍵が消えた）: 所有者を作って鍵を渡す
                     self._give_owner_key(self.viewer.owners.create()[1])

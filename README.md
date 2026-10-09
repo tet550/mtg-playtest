@@ -26,6 +26,7 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`）と GUI の対局（`serve --play`。人間が席を持って操作） | 24〜26節 |
 | `mtgtable/play.py` | GUI の対局の部品（席の鍵・待たれている Player・`wait`） | 26節 |
 | `mtgtable/owners.py` | 公開のサーバー（`serve --site`）の所有者の鍵・復元・席を持つ人 | — |
+| `mtgtable/decks.py` | 公開のサーバーのデッキ登録（検査と、所有者ごとの保存） | — |
 | `mtgtable/prompt.py`・`mtgtable/prompts/` | AI のプロンプト（Player の意図・審判・直接 Batch）の書き出しと、返答の適用 | 27節 |
 | `mtgtable/llm.py` | OpenAI の API（Chat Completions）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
 
@@ -190,6 +191,11 @@ python -m mtgtable --db data/mtg.sqlite invite g1 --seat p1 --base https://mtg.e
 - 対局の一覧は自分が席を持つ対局だけ。judge の席・鍵の無い対局・他の人の席は見せない
 - ヘッダーの「復元 URL」で、別の端末（か Cookie を消したブラウザ）を同じ所有者に戻す URL を作る。作り直すと前の URL は使えない
 - 書き込みは、同じサイトのページからだけ（`Origin` を確かめる）
+- ヘッダーの「トップ・デッキ・対局」で画面を切り替える。デッキの画面でデッキリストを貼り付けて登録する。登録・更新のたびに
+  検査し（カード名は Scryfall の `/cards/collection` で 75 枚ずつまとめて引く。読めない行・見つからない名前は行番号つき）、
+  通ったものだけを保存する。検査の中身: メイン 60 枚以上・サイドボード 15 枚まで・同じ名前は 4 枚まで（基本土地と
+  「好きな枚数を入れてよい」カードは除く）・フォーマットで使えるか（制限カードは 1 枚）。プレイ方針（任意）は、そのデッキを使う
+  AI のプロンプトに入る
 - 利用者の識別より先（HTTPS の設定・対局を作る画面・レート制限など）はまだ。外に出すのは計画のフェーズ 7 の後
 
 ### 人間どうしで対戦する
@@ -347,6 +353,7 @@ node --test tests/web.test.mjs
 | `test_turn.py` | ターン・ステップ・ゲーム前・宣言・優先権のパス |
 | `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
+| `test_decks.py` | デッキ登録: 検査（書式・カード名・枚数・フォーマット）、Scryfall のまとめ引き（偽の Scryfall）、デッキの API、AI のプレイ方針 |
 | `test_site.py` | 公開のサーバー: 所有者の鍵の Cookie・招待の URL で席を取る・自分の対局だけ・復元 URL・Origin・鍵の期限と失効 |
 | `test_sqlstore.py` | SQLite の保存先: 対局フォルダからの移行・一覧の要約（終わった日時）・ロールバック・同時の書き込み・CLI の `--db` |
 | `test_carddb.py` | オラクルのキャッシュ |

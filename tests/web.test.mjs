@@ -303,3 +303,24 @@ test("attack targets are the opponent, their planeswalkers and my battles", () =
   assert.deepEqual(attackTargets(v, "p1", "p2"), ["p2", "#c2", "#c4"]);
   assert.deepEqual(attackTargets({ zones: { battlefield: {} } }, "p1", "p2"), ["p2"]);
 });
+
+test("deck check results become lines with line numbers, errors first", async () => {
+  const { checkLines, summary } = await import("../mtgtable/web/decks.js");
+  const r = { ok: false, main: 59, sideboard: 0,
+    errors: [{ line: null, message: "メインデッキが 59 枚です" }, { line: 3, message: "見つかりません" }],
+    warnings: [{ line: 5, message: "分かりませんでした" }] };
+  assert.deepEqual(checkLines(r).map((l) => [l.kind, l.text]), [
+    ["error", "メインデッキが 59 枚です"], ["error", "3 行目: 見つかりません"], ["warning", "5 行目: 分かりませんでした"]]);
+  assert.equal(summary(r), "メイン 59 枚・サイドボード 0 枚。直す所が 2 件あります");
+  assert.equal(summary({ ok: true, main: 60, sideboard: 15, errors: [] }), "メイン 60 枚・サイドボード 15 枚。登録できます");
+  assert.deepEqual(checkLines(null), []);
+});
+
+test("site pages come from the hash", async () => {
+  const { pageOf } = await import("../mtgtable/web/site.js");
+  assert.equal(pageOf("#/decks"), "decks");
+  assert.equal(pageOf("#/top"), "top");
+  assert.equal(pageOf("#/nope"), null);
+  assert.equal(pageOf("#key=abc"), null);  // 招待の URL の鍵は画面の切り替えではない
+  assert.equal(pageOf(""), null);
+});

@@ -33,15 +33,16 @@ export function createSource(isStatic) {
     : `/api/games/${encodeURIComponent(game)}/${resource}`;
   const mine = (game, seat) => !!key && key.game === game && key.seat === seat;
   const auth = (game, seat) => (mine(game, seat) && key.token ? { Authorization: `Bearer ${key.token}` } : undefined);
-  async function postJSON(url, body, headers) {
+  async function postJSON(url, body, headers, method = "POST") {
     const r = await fetch(url, {
-      method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body),
+      method, headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       const error = new Error(data.error || r.statusText);
       error.status = r.status;
       error.stale = !!data.stale;
+      error.check = data.check || null;  // デッキの検査に通らなかったときの、行ごとの理由
       throw error;
     }
     return data;
@@ -70,6 +71,13 @@ export function createSource(isStatic) {
     // 公開のサーバー: 復元の鍵を作り直す（別の端末で開く URL 用）・復元の鍵でこの端末を同じ所有者に戻す
     recovery: () => postJSON("/api/me/recovery", {}),
     recover: (token) => postJSON("/api/me/recover", { token }),
+    // デッキ（公開のサーバー。自分のデッキだけ）
+    decks: () => getJSON("/api/decks"),
+    deck: (id) => getJSON(`/api/decks/${encodeURIComponent(id)}`),
+    checkDeck: (text, format) => postJSON("/api/decks/check", { text, format }),
+    saveDeck: (id, body) => (id ? postJSON(`/api/decks/${encodeURIComponent(id)}`, body, {}, "PUT")
+      : postJSON("/api/decks", body)),
+    deleteDeck: (id) => postJSON(`/api/decks/${encodeURIComponent(id)}`, {}, {}, "DELETE"),
     claim: (game, seat, token) => postJSON(gameURL(game, "claim"), { seat }, { Authorization: `Bearer ${token}` }),
     subscribe(game, onChange, onConnection) {
       if (isStatic) return () => {};

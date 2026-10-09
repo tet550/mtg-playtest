@@ -94,7 +94,11 @@ def seat_system(store: GameStore, seat: str) -> str:
     if data:
         out += ["", "# あなたのデッキ（オラクル）", carddb.format_deck(data, sideboard=False).strip()]
     name = deck.get("name")
-    if name and STRATEGY.exists():
+    if deck.get("strategy") is not None:
+        # サイトで登録したデッキ: 登録したプレイ方針だけ（同じ名前の decklists/strategy/ のファイルは別のデッキのもの）
+        if deck["strategy"].strip():
+            out += ["", "# 戦略メモ（デッキ登録時のプレイ方針）", deck["strategy"].strip()]
+    elif name and STRATEGY.exists():
         for p in sorted(STRATEGY.glob("%s*.md" % name)):
             if p.stem == name or p.stem.startswith(name + "-"):
                 out += ["", "# 戦略メモ: %s" % p.name, _read(p)]

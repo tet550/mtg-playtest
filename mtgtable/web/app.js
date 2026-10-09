@@ -3,7 +3,8 @@ import { $, el } from "./dom.js";
 import { createSource, latestLoader } from "./source.js";
 import { Timeline } from "./timeline.js";
 import { createRenderer } from "./render.js";
-import { createPlay } from "./play.js";
+import { createPlay, toast } from "./play.js";
+import { createSite, pageOf } from "./site.js";
 
 // play: 席の鍵を持って対局しているときの {seat}（無ければ観戦）。marks: 組み立て中の Act で選んだもの
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], names: {},
@@ -50,6 +51,8 @@ const params = new URLSearchParams(location.search);
 })();
 
 let mySeats = {};  // 公開のサーバーで、所有者の鍵（Cookie）で持っている席 {対局: 席}
+let gameList = [];
+let site = null;  // 公開のサーバーの画面の切り替え（トップ・デッキ・対局）
 function keyOf(game) {
   let k = null;
   try { k = JSON.parse(recall("key." + game) || "null"); } catch (_) { k = null; }
@@ -83,11 +86,8 @@ function applySeatMode() {
 
 async function loadGames() {
   const games = await source.games();
+  gameList = games;
   mySeats = Object.fromEntries(games.filter((g) => g.my_seat).map((g) => [g.id, g.my_seat]));
-  if (config.site && !games.length && $("fl-detail").hidden) {  // 席を取れなかった理由を出していれば、そちらを残す
-    $("detail").textContent = "まだ対局がありません。招待された URL を開くと、その席がこの端末（と復元 URL で戻した端末）の席になります。";
-    $("fl-detail").hidden = false;
-  }
   const sel = $("game");
   sel.replaceChildren(...games.map((g) => {
     const o = el("option", null, `${g.id}（T${g.turn}・v${g.version}）`);
@@ -172,6 +172,7 @@ async function siteSetup() {
     }
   }
   $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value !== "judge"));
+  site = createSite(source, { toast, games: () => gameList });
   $("recovery").hidden = false;
   $("recovery").onclick = async () => {
     try {
@@ -376,6 +377,11 @@ document.addEventListener("keydown", (e) => {
     if (recall("speed")) $("speed").value = recall("speed");
     await loadGames();
     applySeatMode();
+    if (site) {  // 対局が無ければトップから
+      const first = pageOf(location.hash) || (gameList.length ? "games" : "top");
+      window.addEventListener("hashchange", () => site.show(pageOf(location.hash) || "games").catch(showError));
+      await site.show(first);
+    }
     await load();
     listen();
   } catch (e) { showError(e); }

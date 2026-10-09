@@ -424,7 +424,7 @@ function ask({ title, fields = [], choices = null, ok = "OK" }) {
 }
 
 let toastTimer = null;
-function toast(text, error) {
+export function toast(text, error) {
   const t = $("toast");
   t.textContent = text;
   t.className = "toast" + (error ? " error" : "");
