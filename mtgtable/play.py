@@ -708,10 +708,14 @@ def _not_busy(state: GameState, seat: str) -> None:
 def seat_request(state: GameState, seat: str, body: dict) -> tuple:
     """依頼 {"plan": [{"kind", "text", "cards", "targets", "count"}], "then", "comment"} を卓の宣言に。
     返り値は (label, ops)。plan は op に展開せず、文と一緒に宣言に残す（審判が読んで卓に書く）。
-    ゲーム前も出せる（盤面がおかしいという報告、開始時の手札から使うカードの申し出など）。"""
+    ゲーム前も出せる（盤面がおかしいという報告、開始時の手札から使うカードの申し出など）。
+    ゲームが始まった後は、待たれている席（優先権・ブロック・本人の番）だけ。相手（人間どうしの対局の相手も）が考えて
+    いる間に出すと、審判が順番を飛ばして処理してしまう。それ以外のときに伝えたいことは発言（say）で。"""
     _playing(state, seat)
     _not_busy(state, seat)
     plan = _check_plan(state, seat, body.get("plan"))
+    if state.turn.turn != 0 and waiting_on(state) != seat:
+        raise Refused("it is not %s's turn to act (waiting on %s); use say to talk" % (seat, waiting_on(state)))
     then = body.get("then") or "continue"
     comment = _text(body.get("comment"), "comment")
     if not isinstance(then, str) or (then not in THEN_JA and then not in STEP_THEN):

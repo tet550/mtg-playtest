@@ -190,6 +190,8 @@ export function requestAction(lines, comment, turn, seat, stackSize) {
   if (empty && (r.then === "pass" || (r.then === "continue" && stackSize > 0))) {
     return turn.priority === seat ? { kind: "pass", label: "パス" } : null;
   }
+  // 依頼はゲーム前か、待たれている（優先権・ブロック・自分の番）ときだけ。相手が考えている間は下書きを作っておく
+  if (turn.turn !== 0 && turn.waiting_on !== seat) return null;
   if (empty && r.then === "continue") {
     // 自分のターンで下書きが空: 次のステップへ進める（終了ステップなら、ターンを終える）。何もせずに止まらないように
     const next = nextStep(turn);
@@ -1185,6 +1187,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     const act = requestAction(d.lines, d.comment, t, seat, v.stack.length);
     const send = button(act ? act.label : "審判に依頼", sendDraft, { cls: "on", disabled: off || !act,
       title: act && act.kind === "pass" ? "優先権を相手に渡す（下書きが無いので審判は通さない）"
+        : !act && t.turn !== 0 && t.waiting_on !== seat ? "相手の番（送れるのは自分の番が来てから。下書きは作っておける）"
         : "下書きを審判に送る。「その後」は最後の行（進めるボタンで足す）で決まる。無ければ自分のターンは続ける・相手のターンはパス" });
     const r3 = el("div", "crow");
     r3.append(send);

@@ -275,6 +275,8 @@ test("the draft's last line decides what happens after the request", () => {
   assert.equal(requestAction([], "", { ...mine, step: "end", phase: "ending" }, "p1", 0).then, "end_turn");
   assert.equal(requestAction([], "", { ...theirs, priority: "p2" }, "p1", 0), null);  // 相手のターンで優先権が無い
   assert.equal(requestAction([], "メモ", mine, "p1", 0).kind, "request");
+  assert.equal(requestAction([cast], "", { ...theirs, priority: "p2", waiting_on: "p2" }, "p1", 0), null);  // 相手が考えている間は送れない
+  assert.equal(requestAction([cast], "", { ...mine, turn: 0, waiting_on: "p2" }, "p1", 0).kind, "request");  // ゲーム前の申し出は出せる
   assert.equal(requestAction([end], "", mine, "p1", 0).label, "審判に依頼（その後: ターン終了）");
   assert.equal(requestAction([cast, step], "", mine, "p1", 0).label, "審判に依頼（その後: メイン2へ）");
 });

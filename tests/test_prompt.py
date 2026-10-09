@@ -413,7 +413,8 @@ class JudgeFlowTest(unittest.TestCase):
         self.assertIn("some error", d.text)
         self.assertEqual(play.waiting_on(self.st.load()), play.JUDGE)
         self.st.apply({"actor": None, "acts": [{"act": [{"op": "declare", "player": "p1", "kind": "ruled", "text": "x"}]}]})
-        out = prompt.escalate(self.st, "p2", "e" * 2000, "r" * 2000)
+        self.assertEqual(play.waiting_on(self.st.load()), "p1")  # 詰まった席は待たれている席
+        out = prompt.escalate(self.st, "p1", "e" * 2000, "r" * 2000)
         self.assertTrue(out["ok"], out["error"])  # 質問が無ければ依頼として（長い返答は切り詰める）
         self.assertEqual(self.st.load().declarations[-1].kind, "intent")
 
