@@ -7,9 +7,36 @@ const TRACKED = "#top [data-ids], #bottom [data-ids], #stack .sitem:not(.ability
 const MAX_JOBS = 80;  // 一度にこれより多く動くときは（大きな巻き戻しなど）動かさない
 const EASE = "cubic-bezier(.2, .7, .2, 1)";
 const LISTS = ["cards", "known", "known_positions", "known_unordered"];
+// 盤面の上に重なる窓（下から順）。写しは窓より上の層で動くので、窓の下に隠れたカードの写しは出さない（窓の上に飛び出さない）
+const COVERS = [".zone.opened", "#combatbox", "#fl-stack", "#fl-detail", "#fl-play", "body.log-open .logpane"];
 
 function center(r) {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+// 要素が入っている窓の段（COVERS の番号。盤面そのものなら -1）
+function layerOf(e) {
+  let layer = -1;
+  COVERS.forEach((sel, i) => { if (e.closest(sel)) layer = i; });
+  return layer;
+}
+
+// 今見えている窓と、その位置
+function coverRects() {
+  const covers = [];
+  COVERS.forEach((sel, i) => {
+    for (const e of document.querySelectorAll(sel)) {
+      const rect = e.getBoundingClientRect();
+      if (rect.width && rect.height) covers.push({ layer: i, rect });
+    }
+  });
+  return covers;
+}
+
+// rect の中心が、layer より上の窓の下に隠れているか
+function covered(rect, layer, covers) {
+  const p = center(rect);
+  return covers.some((c) => c.layer > layer && p.x >= c.rect.left && p.x <= c.rect.right && p.y >= c.rect.top && p.y <= c.rect.bottom);
 }
 
 // view の中でカードがどの領域にあるか（見えないところにあれば null）
@@ -43,7 +70,7 @@ export function createMotion() {
       if (e.closest(".zone.opened")) continue;
       const rect = e.getBoundingClientRect();
       if (!rect.width) continue;
-      const item = { el: e, rect, tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
+      const item = { el: e, rect, layer: layerOf(e), tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
       for (const id of item.ids) if (!cards.has(id)) cards.set(id, item);
     }
     const places = new Map();
@@ -51,7 +78,7 @@ export function createMotion() {
       const rect = (e.querySelector(".pstack") || e).getBoundingClientRect();
       if (rect.width) places.set(e.dataset.zone, rect);
     }
-    return { cards, places };
+    return { cards, places, covers: coverRects() };
   }
 
   // 動いている途中なら、すぐ終わらせる（次の描画の前に呼ぶ）
@@ -95,23 +122,23 @@ export function createMotion() {
     run(g, frames, duration, () => { g.remove(); now.el.style.visibility = ""; });
   }
 
-  // 前の位置・向きから今の位置へ（タップは 90° 回す）
-  function move(was, now, duration) {
+  // 前の位置・向きから今の位置へ（タップは 90° 回す）。hide: 始め・終わりが窓の下に隠れているか（隠れている側は透明にする）
+  function move(was, now, duration, hide) {
     const a = center(was.rect), b = center(now.rect);
     const turn = was.tapped === now.tapped ? 0 : now.tapped ? -90 : 90;
     const [sx, sy] = turn
       ? [was.rect.height / now.rect.width, was.rect.width / now.rect.height]
       : [was.rect.width / now.rect.width, was.rect.height / now.rect.height];
-    fly(now, [{ transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) rotate(${turn}deg) scale(${sx}, ${sy})` },
-      { transform: "none" }], duration);
+    fly(now, [{ transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) rotate(${turn}deg) scale(${sx}, ${sy})`, opacity: hide[0] ? 0 : 1 },
+      { transform: "none", opacity: hide[1] ? 0 : 1 }], duration);
   }
 
   // 束（ライブラリーなど）から出てくる
-  function enter(now, from, duration) {
+  function enter(now, from, duration, hide) {
     const a = center(from), b = center(now.rect);
     const s = Math.min(from.width / now.rect.width, from.height / now.rect.height);
-    fly(now, [{ transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) scale(${s})`, opacity: 0.4 },
-      { transform: "none", opacity: 1 }], duration);
+    fly(now, [{ transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) scale(${s})`, opacity: hide[0] ? 0 : 0.4 },
+      { transform: "none", opacity: hide[1] ? 0 : 1 }], duration);
   }
 
   // どこからか分からないもの（トークンなど）は、その場に現れる
@@ -120,13 +147,13 @@ export function createMotion() {
   }
 
   // 画面から消えるカードは、写しを行き先の束まで飛ばす（行き先が見えなければ、その場で消える）
-  function leave(was, to, duration) {
+  function leave(was, to, duration, hide) {
     const g = ghost(was.el, was.rect);
     const a = center(was.rect);
     const end = to
       ? `translate(${center(to).x - a.x}px, ${center(to).y - a.y}px) scale(${Math.min(to.width / was.rect.width, to.height / was.rect.height)})`
       : "scale(.8)";
-    run(g, [{ transform: "none", opacity: 1 }, { transform: end, opacity: to ? 0.9 : 0, offset: 0.85 },
+    run(g, [{ transform: "none", opacity: hide[0] ? 0 : 1 }, { transform: end, opacity: hide[1] ? 0 : 0.9, offset: 0.85 },
       { transform: end, opacity: 0 }], duration, () => g.remove());
   }
 
@@ -173,23 +200,30 @@ export function createMotion() {
     const after = capture();
     const jobs = [];
     const done = new Set();
+    // 始め・終わりが窓の下に隠れているか。両方とも隠れていれば動かさない（写しが窓の上に出てしまうので）
+    const hidden0 = (rect, layer) => covered(rect, layer, before.covers);
+    const hidden1 = (rect, layer) => covered(rect, layer, after.covers);
+    const add = (hide, job) => { if (!(hide[0] && hide[1])) jobs.push(() => job(hide)); };
     for (const now of after.cards.values()) {
       if (done.has(now)) continue;
       done.add(now);
       const was = now.ids.map((id) => before.cards.get(id)).find(Boolean);
       if (!was) {
         const from = origin(now.ids[0], oldView, newView, before);
-        jobs.push(() => (from ? enter(now, from, duration) : appear(now, duration)));
+        if (from) add([hidden0(from, -1), hidden1(now.rect, now.layer)], (hide) => enter(now, from, duration, hide));
+        else jobs.push(() => appear(now, duration));
         continue;
       }
       const dx = Math.abs(was.rect.left - now.rect.left), dy = Math.abs(was.rect.top - now.rect.top);
       const dw = Math.abs(was.rect.width - now.rect.width);
-      if (dx > 1 || dy > 1 || dw > 1 || was.tapped !== now.tapped) jobs.push(() => move(was, now, duration));
+      if (dx > 1 || dy > 1 || dw > 1 || was.tapped !== now.tapped) {
+        add([hidden0(was.rect, was.layer), hidden1(now.rect, now.layer)], (hide) => move(was, now, duration, hide));
+      }
     }
     for (const was of new Set(before.cards.values())) {
       if (was.ids.some((id) => after.cards.has(id))) continue;
       const to = destination(was.ids[0], oldView, newView, after);
-      jobs.push(() => leave(was, to, duration));
+      add([hidden0(was.rect, was.layer), !to || hidden1(to, -1)], (hide) => leave(was, to, duration, hide));
     }
     if (jobs.length > MAX_JOBS) return;
     for (const job of jobs) job();
