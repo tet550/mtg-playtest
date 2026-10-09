@@ -240,6 +240,36 @@ export function attackTargets(v, seat, opponent) {
     ...bf.filter((c) => c.attackable === "battle" && ctl(c) === seat).map((c) => c.id)];
 }
 
+// カードの Note「mana: …」（土地を出したときに書く、出せるマナ）から、タップして出すマナの候補を読む。
+// 例: "mana: {G} or {U}" → {G}・{U}、"mana: {C}, or any color (pay 1 life)" → {C} と5色（条件「(pay 1 life)」付き）。
+// 「,」「;」（括弧の外）で区切った節ごとに、続けて書いた記号（{C}{C} など）を1つの候補とし、記号以外の文をその節の条件とする
+const COLORS = ["{W}", "{U}", "{B}", "{R}", "{G}"];
+export function manaChoices(notes) {
+  const out = [];
+  for (const n of notes || []) {
+    const m = /^\s*mana\s*:\s*(.*)$/is.exec(n.text || "");
+    if (!m) continue;
+    const parts = [];
+    let depth = 0, cur = "";
+    for (const ch of m[1]) {
+      if (ch === "(") depth++;
+      if (ch === ")") depth = Math.max(0, depth - 1);
+      if ((ch === "," || ch === ";") && !depth) { parts.push(cur); cur = ""; } else cur += ch;
+    }
+    parts.push(cur);
+    for (const part of parts) {
+      const syms = part.match(/(?:\{[^{}]+\})+/g) || [];
+      const any = /\bany colou?r\b/i.test(part);
+      const cond = part.replace(/(?:\s*\bor\b)?\s*(?:\{[^{}]+\})+/gi, " ").replace(/(?:\bor\s+)?\bany colou?r\b/gi, " ")
+        .replace(/\s+/g, " ").trim().replace(/^(?:or|and)\b\s*/i, "").replace(/^\(([^()]*)\)$/, "$1");
+      for (const mana of [...syms, ...(any ? COLORS : [])]) {
+        if (!out.some((o) => o.mana === mana && o.cond === cond)) out.push({ mana, cond });
+      }
+    }
+  }
+  return out;
+}
+
 // 起動の行で、発生源をタップする（コストの {T}）と書いたもの
 export const TAP_RE = /をタップして/;
 // メニューの「タップ」「アンタップ」で足す行（<X> (#c1) をタップする／アンタップする）
@@ -801,6 +831,13 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
       if (mine) {
         items.push(c.tapped ? { label: "アンタップ", fn: () => other(`${ref(id)} をアンタップする`, [id]) }
           : { label: "タップ", fn: () => other(`${ref(id)} をタップする`, [id]) });
+        // Note に書いたマナ能力: 出すマナを選んでタップする（条件は文に残し、満たすかは審判が見る）
+        if (!c.tapped) {
+          for (const { mana, cond } of manaChoices(c.notes)) {
+            items.push({ label: `タップして ${mana} を出す${cond ? `（${cond}）` : ""}`,
+              fn: () => other(`${ref(id)} をタップする（${mana} を出す${cond ? `。${cond}` : ""}）`, [id]) });
+          }
+        }
         items.push({ label: "能力を起動…", fn: () => start({ kind: "activate", source: id, targets: [], text: "" }) });
         items.push(...attackItems(c), ...blockItems(c));
       } else {

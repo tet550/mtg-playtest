@@ -1345,6 +1345,13 @@ def op_land(ctx: Context, p: dict) -> dict:
     if p.get("tapped"):
         move["tapped"] = True
     _sub(ctx, move)
+    # 表が土地でない両面カード（モードを持つ両面カード）は、土地の面を上にして出す
+    c = ctx.state.cards[card]
+    faces = c.type_line.split("//")
+    if not info.has_land_type(faces[0]):
+        land_face = next((i for i, f in enumerate(faces) if info.has_land_type(f)), None)
+        if land_face is not None:
+            _sub(ctx, {"op": "set", "card": card, "face": land_face})
     text = str(p["mana"])
     note = _sub(ctx, {"op": "note_add", "target": card,
                       "text": text if text.startswith("mana:") else "mana: " + text})["notes"][0]

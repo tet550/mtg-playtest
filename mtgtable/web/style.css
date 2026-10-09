@@ -2,6 +2,14 @@
   --bg: #f5f4ef; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #d9d7cf;
   --card: #fbfaf6; --card-line: #bdb9ad; --accent: #2f5d8a; --warn: #a1452e; --ok: #3c7a3f;
   --badge: #ece9df; --tapped: #e6e3d8; --hl: #fff2b8;
+  /* 画面全体の重なり順（下から）。盤面（.board）は isolation で1枚の層にまとめ、中の小窓（戦闘・スタック・カード）の
+     z-index は盤面の中だけで効く。<dialog>（showModal）はブラウザの最上層なので、これらすべての上に出る */
+  --z-motion: 20;   /* 動いているカードの写し: 盤面の小窓より上（スタックへ入る・出るのが見える） */
+  --z-play: 30;     /* GUI の対局の操作パネル */
+  --z-drawer: 40;   /* スマホの縦画面の Log の引き出し */
+  --z-menu: 50;     /* 右クリック・長押しのメニュー */
+  --z-toast: 60;
+  --z-drag: 70;     /* 手札をドラッグしている写しと、落とす先の Tip */
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -127,11 +135,11 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 .hand > .card.dragging { opacity: .25; }
 .hand > .card[data-ids] { user-select: none; -webkit-user-select: none; }
 .hand img { -webkit-user-drag: none; user-drag: none; }
-.dragghost { position: fixed; left: 0; top: 0; margin: 0 !important; z-index: 900; pointer-events: none; cursor: grabbing;
+.dragghost { position: fixed; left: 0; top: 0; margin: 0 !important; z-index: var(--z-drag); pointer-events: none; cursor: grabbing;
   transform-origin: center; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .55)); transition: none; }
 /* 手札のカードを落とせる領域（GUI の対局）と、そこで何をするかの Tip */
 .dropover { outline: 2px dashed #6aa9ff; outline-offset: 2px; border-radius: 8px; background: rgba(106, 169, 255, .08); }
-#droptip { position: fixed; z-index: 1000; pointer-events: none; padding: 4px 8px; border-radius: 6px; font-size: 12px;
+#droptip { position: fixed; z-index: calc(var(--z-drag) + 1); pointer-events: none; padding: 4px 8px; border-radius: 6px; font-size: 12px;
   background: rgba(20, 22, 26, .92); color: #fff; border: 1px solid rgba(255, 255, 255, .25); white-space: nowrap; }
 #droptip[hidden] { display: none; }
 .card.inhand.withart { width: 98px; }
@@ -270,13 +278,15 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 }
 
 /* ---- 戦闘は盤面の上に重ねる小窓、宣言は右の列へ ---- */
-.board { position: relative; }
+.board { position: relative; isolation: isolate; }
+/* 盤面の中の重なり順: 各 Player の領域（中の手札・開いた束の一覧・吹き出しの z-index はその中だけ）< 戦闘 < スタック < カードの小窓 */
+.side { isolation: isolate; }
 .combatbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 8px; }
 .combatbox[hidden] { display: none; }
 .decl { font-size: 11px; max-height: 4.5em; overflow: auto; margin-bottom: 4px; }
 .plabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-size: 10px; }
 @media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
-  .combatbox { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 6;
+  .combatbox { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 3;
     box-shadow: 0 6px 24px rgba(0, 0, 0, .35); max-height: 90%; overflow: auto; }
   .combat { --h: min(13vh, 120px); }
   .decl { flex: none; }
@@ -406,7 +416,7 @@ body.log-open .resizer:hover { background: var(--accent); }
 }
 #logToggle.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-.float { position: absolute; z-index: 8; display: flex; flex-direction: column; min-height: 0;
+.float { position: absolute; z-index: 5; display: flex; flex-direction: column; min-height: 0;
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .38); }
 .float[hidden] { display: none; }
 .fhead { flex: none; display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; cursor: move;
@@ -416,9 +426,6 @@ body.log-open .resizer:hover { background: var(--accent); }
 .float .fbody { overflow: auto; margin: 0; }
 .float.min .fbody { display: none; }
 .float.min .fhead { border-bottom: none; }
-#fl-decl { left: 50%; transform: translateX(-50%); top: calc(50% - 20px); width: 340px; max-height: 20%; }
-#fl-decl[style*="left"] { transform: none; }
-#fl-decl .decl { padding: 4px 10px; height: auto; font-size: 11px; }
 #fl-detail { right: 10px; bottom: 10px; width: 300px; max-height: 60%; }
 #fl-detail .detail { height: auto; max-height: none; border: none; border-radius: 0 0 10px 10px; margin: 0; }
 
@@ -426,10 +433,9 @@ body.log-open .resizer:hover { background: var(--accent); }
 @media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
   .combatbox { right: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 }
-#fl-decl { top: 10px; transform: translateX(-50%); }
 
 /* スタックは戦闘と同じく位置を固定（盤面の右・縦中央）。カードの小窓は右上から */
-.stackbox { position: absolute; z-index: 7; right: 10px; top: 50%; transform: translateY(-50%); width: 320px;
+.stackbox { position: absolute; z-index: 4; right: 10px; top: 50%; transform: translateY(-50%); width: 320px;
   max-height: 60%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 4px 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
 .stackbox[hidden] { display: none; }
@@ -471,11 +477,10 @@ body:not(.log-open) #logClose { display: none; }
   .stackbox { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: min(78%, 300px);
     margin: 0; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
   #fl-detail { width: min(82%, 300px); right: 6px; top: 6px; }
-  #fl-decl { width: min(86%, 340px); top: 6px; }
   .phead .chip.mana { max-width: 40%; }
   /* Log は横から重なる引き出しに */
   body.log-open .resizer { display: none; }
-  body.log-open .logpane { position: fixed; top: 0; right: 0; bottom: 0; width: 88vw; z-index: 50; margin: 0; padding: 8px;
+  body.log-open .logpane { position: fixed; top: 0; right: 0; bottom: 0; width: 88vw; z-index: var(--z-drawer); margin: 0; padding: 8px;
     background: var(--bg); box-shadow: -8px 0 28px rgba(0, 0, 0, .45); }
   .logpane .log { max-height: none; }
 }
@@ -486,20 +491,7 @@ body:not(.log-open) #logClose { display: none; }
 @media (max-width: 899px) and (orientation: portrait) {
   /* 重なりを減らす: 戦闘は中央、スタックは上寄り、宣言は下 */
   .stackbox { top: 27%; }
-  #fl-decl { top: auto; bottom: 6px; }
   .stackbox, .float { font-size: 12px; }
-}
-@media (max-width: 899px) and (orientation: portrait) { #fl-decl { max-height: 11%; } }
-
-/* 宣言も位置を固定（PC は盤面の上の中央、スマホの縦画面は下） */
-.declbox { position: absolute; z-index: 7; left: 50%; top: 10px; transform: translateX(-50%); width: 340px; max-height: 20%;
-  display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  padding: 3px 10px 4px; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
-.declbox[hidden] { display: none; }
-.declbox h3 { flex: none; margin: 1px 0 2px; }
-.declbox .decl { overflow: auto; height: auto; max-height: none; margin: 0; font-size: 11px; }
-@media (max-width: 899px) and (orientation: portrait) {
-  .declbox { top: auto; bottom: 6px; width: min(86%, 340px); max-height: 11%; font-size: 12px; }
 }
 
 /* ---- 宣言の吹き出し（ライフの真下から戦場の側へはみ出す。上向きのしっぽ） ---- */
@@ -537,7 +529,7 @@ body:not(.log-open) #logClose { display: none; }
 @media (max-width: 899px) and (orientation: portrait) { .phead { height: 22px; } }
 
 /* カードの動き（motion.js）: 画面全体に重ねた層で写しを動かす。クリックは下に通す */
-#motionlayer { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: visible; }
+#motionlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; overflow: visible; }
 #motionlayer > .card { will-change: transform, opacity; }
 
 /* 見出しの右側: 優先権は決まった欄、マナなどは残りの幅の中だけ（入らない分は切る）。左の名前・ライフ・フェイズを押さない */
@@ -554,7 +546,7 @@ body:not(.log-open) #logClose { display: none; }
 
 /* ---------------------------------------------------------------- GUI の対局（serve --play・席の鍵） */
 .chip.playing { background: var(--ok); }
-#fl-play { position: fixed; z-index: 30; right: 12px; bottom: 12px; width: 330px; max-height: 70vh; }
+#fl-play { position: fixed; z-index: var(--z-play); right: 12px; bottom: 12px; width: 330px; max-height: 70vh; }
 #fl-play .fbody { padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; }
 .pstatus { font-weight: 700; color: var(--muted); }
 .pstatus.mine { color: var(--ok); }
@@ -592,7 +584,7 @@ body:not(.log-open) #logClose { display: none; }
 .pplan { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--accent); color: #fff; }
 .reqlines li.stale { color: var(--warn); }
 .reqlines li.stale::after { content: "（盤面が変わった）"; font-size: 11px; }
-.menu { position: fixed; z-index: 100; min-width: 200px; max-width: 320px; max-height: 80vh; overflow: auto;
+.menu { position: fixed; z-index: var(--z-menu); min-width: 200px; max-width: 320px; max-height: 80vh; overflow: auto;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, .4); display: flex; flex-direction: column; }
 .menu[hidden] { display: none; }
@@ -608,7 +600,7 @@ body:not(.log-open) #logClose { display: none; }
 .askform .arow span { min-width: 90px; color: var(--muted); }
 .askform .arow input:not([type="checkbox"]) { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: 3px 6px; }
 .askform .achoices, .askform .abuttons { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.toast { position: fixed; z-index: 120; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(90vw, 560px);
+.toast { position: fixed; z-index: var(--z-toast); left: 50%; bottom: 18px; transform: translateX(-50%); max-width: min(90vw, 560px);
   background: var(--ink); color: var(--bg); padding: 6px 14px; border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }
 .toast.error { background: var(--warn); color: #fff; }
 .toast[hidden] { display: none; }

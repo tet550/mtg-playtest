@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Timeline } from "../mtgtable/web/timeline.js";
 import { createSource, latestLoader } from "../mtgtable/web/source.js";
-import { attackTargets, blockTime, cleanLine, describeOp, hasKept, mulligans, nextStep, planMarks, planned, preview, requestAction, resumeLines, stepName, toRequest, zoneOf } from "../mtgtable/web/play.js";
+import { attackTargets, blockTime, cleanLine, describeOp, hasKept, manaChoices, mulligans, nextStep, planMarks, planned, preview, requestAction, resumeLines, stepName, toRequest, zoneOf } from "../mtgtable/web/play.js";
 
 test("timeline supports seeking, deletion, root replacement and keyframes without mutating input", () => {
   const data = { cursor: 4, frames: [
@@ -373,4 +373,23 @@ test("legal pages show the operator and contact, or say they are unset", async (
   const { routeOf } = await import("../mtgtable/web/site.js");
   assert.equal(routeOf("#/terms").page, "terms");
   assert.equal(routeOf("#/privacy").page, "privacy");
+});
+
+test("mana notes become the choices of mana to tap for, with their conditions", () => {
+  const pick = (text) => manaChoices([{ text }]).map((c) => c.mana + (c.cond ? ` | ${c.cond}` : ""));
+  assert.deepEqual(pick("mana: {G} or {U}"), ["{G}", "{U}"]);
+  assert.deepEqual(pick("mana: {C}, or any color (pay 1 life)"),
+    ["{C}", "{W} | pay 1 life", "{U} | pay 1 life", "{B} | pay 1 life", "{R} | pay 1 life", "{G} | pay 1 life"]);
+  assert.deepEqual(pick("mana: {G}, or {B} (if you control a Swamp or Forest)"), ["{G}", "{B} | if you control a Swamp or Forest"]);
+  assert.deepEqual(pick("mana: {C}; {R} or {G} only if it entered this turn or you control a basic land"),
+    ["{C}", "{R} | only if it entered this turn or you control a basic land", "{G} | only if it entered this turn or you control a basic land"]);
+  assert.deepEqual(pick("mana: {C}{C}"), ["{C}{C}"]);
+  assert.deepEqual(pick("+1/+1 until end of turn"), []);
+});
+
+test("tapping for mana from the menu taps the land in the preview", () => {
+  const v = { turn: {}, players: [], links: [], stack: [], combat: { attacks: [], blocks: [] },
+    zones: { battlefield: { cards: [{ id: "#c1", name: "Forest", controller: "p1", land: true }] } } };
+  const out = preview(v, [cleanLine({ kind: "other", text: "<Forest> (#c1) をタップする（{G} を出す）", cards: ["#c1"] })], "p1");
+  assert.equal(out.zones.battlefield.cards[0].tapped, true);
 });

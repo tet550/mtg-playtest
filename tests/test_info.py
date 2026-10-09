@@ -208,6 +208,33 @@ class SicknessAndLandsTest(unittest.TestCase):
         self.assertTrue(lines[i + 1].strip().startswith(forest))
         self.assertTrue(lines[i + 2].strip().startswith(bear))
 
+    def test_land_is_judged_by_card_types_of_the_face_up(self):
+        e = self._game()
+        bear = find(e, "p1", "hand", "Grizzly Bears")
+        forest = find(e, "p1", "hand", "Forest")
+        # 両面カード（表はクリーチャー、裏は土地）と、サブタイプに Land を含む土地でないトークン
+        e.state.cards[bear].type_line = "Legendary Creature — God // Land"
+        ok(e, "p1", {"op": "move", "cards": [bear, forest], "to": "battlefield"},
+           {"op": "create", "name": "Lander", "definition": {"type_line": "Token Artifact — Lander"}, "as": "lander"})
+        bf = self._bf(e)
+        lander = next(i for i, c in bf.items() if c.get("name") == "Lander")
+        self.assertNotIn("land", bf[lander])
+        self.assertNotIn("land", bf[bear])
+        self.assertTrue(bf[forest]["land"])
+        ok(e, None, {"op": "set", "card": bear, "face": 1})
+        self.assertTrue(self._bf(e)[bear]["land"])
+
+    def test_land_play_turns_a_modal_double_faced_card_to_its_land_face(self):
+        e = self._game()
+        bear = find(e, "p1", "hand", "Grizzly Bears")
+        e.state.cards[bear].type_line = "Instant // Land"
+        ok(e, "p1", {"op": "step", "to": "main1"}, {"op": "land", "card": bear, "mana": "{U}"})
+        self.assertEqual(e.state.cards[bear].face, 1)
+        self.assertTrue(self._bf(e)[bear]["land"])
+        forest = find(e, "p1", "hand", "Forest")
+        ok(e, "p1", {"op": "land", "card": forest, "mana": "{G}"})
+        self.assertEqual(e.state.cards[forest].face, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
