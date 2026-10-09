@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import http.cookies
 import json
 import pathlib
 import threading
@@ -26,6 +27,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
+from .owners import Owners
 from .sqlstore import SqliteGames
 from .store import BaseStore, FileGames, StaleCursor
 
@@ -35,6 +37,8 @@ _TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=
 IMAGE_MAX_AGE = 7 * 24 * 3600  # ブラウザにもキャッシュさせる
 KEYFRAME_EVERY = 25  # 時系列は、この件数ごとに丸ごとの view、間は前の view からの差分
 MAX_BODY = 256 * 1024  # 書き込みの要求の大きさの上限
+OWNER_COOKIE = "mtg_owner"  # 公開のサーバーの所有者の鍵
+OWNER_MAX_AGE = 5 * 365 * 24 * 3600
 
 
 def _announce(built) -> None:
@@ -71,10 +75,14 @@ def view_diff(a, b, path=()) -> list:
 class Viewer:
     """対局の読み取りと、途中の時点の状態のキャッシュ。対局は root（対局フォルダの親）か db（SQLite）から開く。"""
 
-    def __init__(self, root, offline: bool = False, play: bool = False, db=None):
+    def __init__(self, root, offline: bool = False, play: bool = False, db=None, site: bool = False):
+        if site and not db:
+            raise ValueError("serve --site needs --db (the site keeps owners in the database)")
         self.source = SqliteGames(db) if db else FileGames(root)
         self.offline = offline
-        self.play = play  # 席の操作（書き込み）を受けるか
+        self.site = site  # 公開のサーバー: 所有者の鍵（Cookie）で、自分が席を持つ対局だけ見せる
+        self.play = play or site  # 席の操作（書き込み）を受けるか
+        self.owners = Owners(db) if site else None
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
@@ -96,31 +104,61 @@ class Viewer:
             raise LookupError("unknown game %r" % game)
         return st
 
-    def games(self) -> list:
+    def games(self, owner: Optional[str] = None) -> list:
+        """対局の一覧。公開のサーバーでは owner が席を持つ対局だけで、my_seat にその席（鍵が無くても Cookie で対局できる）。"""
+        mine = self.owners.seats_of(owner) if self.site else None
         out = []
         for gid in self.source.ids():
+            if mine is not None and gid not in mine:
+                continue
             st = self.source.open(gid)
             g = st.summary()
-            out.append({"id": gid, "version": g["version"], "turn": g["turn"], "players": g["players"],
-                        "seats": sorted(play.seats(st)) if self.play else []})
+            row = {"id": gid, "version": g["version"], "turn": g["turn"], "players": g["players"],
+                   "seats": sorted(play.seats(st)) if self.play else []}
+            if mine is not None:
+                row["my_seat"] = mine[gid]
+            out.append(row)
         return out
 
     def guarded(self, st: BaseStore) -> bool:
         """席の鍵で守る対局か（--play で、invite した対局）。"""
         return self.play and bool(play.seats(st))
 
-    def authorize(self, game: str, seat: Optional[str], token: Optional[str], write: bool = False) -> BaseStore:
-        """seat として読む・書くことを許すか。書くには --play と、その席の鍵が要る。"""
+    def authorize(self, game: str, seat: Optional[str], token: Optional[str], write: bool = False,
+                  owner: Optional[str] = None) -> BaseStore:
+        """seat として読む・書くことを許すか。書くには --play と、その席の鍵が要る。
+        公開のサーバー（site）では、その席を持つ所有者（Cookie）か、まだ誰も取っていない席の鍵だけ。鍵を使った所有者が
+        その席を取る（以後は Cookie だけで通り、同じ鍵を他の人が使っても通らない）。judge の席と、鍵の無い対局は見せない。"""
         st = self.store(game)
         if write and not self.play:
             raise Forbidden("this server is read-only (start it with serve --play)")
+        if self.site:
+            if seat is None:
+                raise Forbidden("the judge seat is not shown on this server")
+            holder = self.owners.seat_owner(game, seat)
+            if owner and holder == owner:
+                return st
+            if holder is None and play.check_token(st, seat, token):
+                if owner:
+                    self.owners.claim(game, seat, owner)
+                return st
+            raise Forbidden("this seat is not yours" if holder else
+                            "this seat needs its key (the invite URL)")
         if (write or self.guarded(st)) and (seat is None or not play.check_token(st, seat, token)):
             raise Forbidden("this seat needs its key (python -m mtgtable invite %s --seat pN)" % game)
         return st
 
-    def seat_write(self, game: str, seat: str, token: Optional[str], what: str, body: dict) -> dict:
+    def participant(self, game: str, owner: Optional[str]) -> BaseStore:
+        """公開のサーバーで、owner がその対局の席を持つか（更新の通知など、席を問わない読み取り）。"""
+        st = self.store(game)
+        if self.site and not self.owners.seats_of(owner, game):
+            raise Forbidden("this game is not yours")
+        return st
+
+    def seat_write(self, game: str, seat: str, token: Optional[str], what: str, body: dict,
+                   owner: Optional[str] = None) -> dict:
         """席の Player の書き込み（request / declare / answer）。卓の op は受けない（play.seat_batch が宣言に変える）。"""
-        st = self.authorize(game, seat, token, write=True)
+        st = self.authorize(game, seat, token, write=True, owner=owner)
         with st.lock():
             cur = st._check(body.get("expect"))
             try:
@@ -133,13 +171,13 @@ class Viewer:
         self.notify()
         return {"result": public_result(result), "cursor": st.cursor()}
 
-    def get_stops(self, game: str, seat: str, token: Optional[str]) -> dict:
-        st = self.authorize(game, seat, token, write=True)
+    def get_stops(self, game: str, seat: str, token: Optional[str], owner: Optional[str] = None) -> dict:
+        st = self.authorize(game, seat, token, write=True, owner=owner)
         return {"stops": play.get_stops(st, seat)}
 
-    def set_stops(self, game: str, seat: str, token: Optional[str], body: dict) -> dict:
+    def set_stops(self, game: str, seat: str, token: Optional[str], body: dict, owner: Optional[str] = None) -> dict:
         """止める場所（非公開。卓の記録には載せず、本人と審判のプロンプトにだけ出る）。"""
-        st = self.authorize(game, seat, token, write=True)
+        st = self.authorize(game, seat, token, write=True, owner=owner)
         if play.waiting_on(st.load()) == play.JUDGE:  # 審判が今の止める場所で処理している間は変えない
             raise Forbidden("the judge is processing; change the stops after the ruling")
         return {"stops": play.set_stops(st, seat, body.get("stops"))}
@@ -262,8 +300,36 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", cache)
+        for cookie in getattr(self, "_cookies", ()):
+            self.send_header("Set-Cookie", cookie)
+        self._cookies = []
         self.end_headers()
         self.wfile.write(body)
+
+    # ---- 公開のサーバー（site）: 所有者の鍵の Cookie と、書き込みの Origin
+
+    def _owner(self) -> Optional[str]:
+        if not self.viewer.site:
+            return None
+        jar = http.cookies.SimpleCookie()
+        try:
+            jar.load(self.headers.get("Cookie", ""))
+        except http.cookies.CookieError:
+            return None
+        morsel = jar.get(OWNER_COOKIE)
+        return self.viewer.owners.owner_of(morsel.value if morsel else None)
+
+    def _give_owner_key(self, key: str) -> None:
+        """所有者の鍵を Cookie で渡す（JavaScript からは読めない。手元の 127.0.0.1 以外では HTTPS だけで送る）。"""
+        host = urlparse("//" + (self.headers.get("Host") or "")).hostname or ""
+        secure = "" if host in ("localhost", "127.0.0.1", "::1") else "; Secure"
+        self._cookies = getattr(self, "_cookies", []) + [
+            "%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax%s" % (OWNER_COOKIE, key, OWNER_MAX_AGE, secure)]
+
+    def _same_origin(self) -> bool:
+        """書き込みは、このサーバーのページからだけ（Cookie で通るので、他のサイトからの送信を断る）。"""
+        origin = self.headers.get("Origin")
+        return bool(origin) and urlparse(origin).netloc == (self.headers.get("Host") or "")
 
     def _json(self, obj, code: int = 200) -> None:
         self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
@@ -282,10 +348,30 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise ValueError("body must be a JSON object")
+            if self.viewer.site and not self._same_origin():
+                raise Forbidden("writes must come from this site (Origin)")
+            owner = self._owner()
+            if parts == ["api", "me", "recovery"] and self.viewer.site:
+                if not owner:
+                    raise Forbidden("no owner key (open the site first)")
+                return self._json({"token": self.viewer.owners.new_recovery(owner)})
+            if parts == ["api", "me", "recover"] and self.viewer.site:
+                found = self.viewer.owners.recover(body.get("token"))
+                if not found:
+                    raise Forbidden("the recovery link is wrong or was replaced")
+                self._give_owner_key(found[1])
+                return self._json({"ok": True})
+            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "claim" and self.viewer.site:
+                # 招待の URL を開いた: 席の鍵で、その席をこの所有者のものにする（一覧に出るように）
+                if not owner:
+                    raise Forbidden("no owner key (open the site first)")
+                self.viewer.authorize(parts[2], body.get("seat"), self._token(), owner=owner)
+                return self._json({"game": parts[2], "seat": body.get("seat")})
             if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] in play.SEAT_WRITES:
-                return self._json(self.viewer.seat_write(parts[2], body.get("seat"), self._token(), parts[3], body))
+                return self._json(self.viewer.seat_write(parts[2], body.get("seat"), self._token(), parts[3], body,
+                                                         owner=owner))
             if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "stops":
-                return self._json(self.viewer.set_stops(parts[2], body.get("seat"), self._token(), body))
+                return self._json(self.viewer.set_stops(parts[2], body.get("seat"), self._token(), body, owner=owner))
             self._json({"error": "not found"}, 404)
         except Forbidden as e:
             self._json({"error": str(e)}, 403)
@@ -307,10 +393,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._static("index.html")
             if parts[0] == "static" and len(parts) == 2:
                 return self._static(parts[1])
+            owner = self._owner()
             if parts[:2] == ["api", "games"] and len(parts) == 2:
-                return self._json(self.viewer.games())
+                return self._json(self.viewer.games(owner))
             if parts[:2] == ["api", "config"]:
-                return self._json({"play": self.viewer.play})
+                if self.viewer.site and not owner:  # 初めて来たブラウザ（か鍵が消えた）: 所有者を作って鍵を渡す
+                    self._give_owner_key(self.viewer.owners.create()[1])
+                return self._json({"play": self.viewer.play, "site": self.viewer.site})
             if parts[:2] == ["api", "image"]:
                 p = self.viewer.image(q.get("name", ""), int(q.get("face", 0)))
                 if p is None:
@@ -328,9 +417,11 @@ class Handler(BaseHTTPRequestHandler):
                 game, what = parts[2], parts[3]
                 seat = None if q.get("seat", "judge") == "judge" else q["seat"]
                 if what != "events":  # 通知は version・cursor だけ（auto の審判は席の鍵を持たずにつなぐ）
-                    self.viewer.authorize(game, seat, self._token())
+                    self.viewer.authorize(game, seat, self._token(), owner=owner)
+                elif self.viewer.site:  # 公開のサーバーでは、席を持つ人だけ
+                    self.viewer.participant(game, owner)
                 if what == "stops" and seat is not None:
-                    return self._json(self.viewer.get_stops(game, seat, self._token()))
+                    return self._json(self.viewer.get_stops(game, seat, self._token(), owner=owner))
                 if what == "log" and seat is not None and self.viewer.play:
                     return self._json(play.player_log(self.viewer.store(game), seat))
                 if what == "view":
@@ -439,12 +530,12 @@ def export_site(root, dest, games=None, offline: bool = False, db=None) -> list:
 
 
 def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False,
-          play: bool = False, db=None) -> None:
-    Handler.viewer = Viewer(root, offline, play, db=db)
+          play: bool = False, db=None, site: bool = False) -> None:
+    Handler.viewer = Viewer(root, offline, play, db=db, site=site)
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
     print("mtgtable %s: http://%s:%d/  (%s, Ctrl+C で終了)"
-          % ("play" if play else "viewer", host, port, "db: %s" % db if db else "root: %s" % root))
+          % ("site" if site else "play" if play else "viewer", host, port, "db: %s" % db if db else "root: %s" % root))
     if play:
         print("  席の URL は python -m mtgtable invite <対局> --seat p1 --port %d で作る" % port)
     try:

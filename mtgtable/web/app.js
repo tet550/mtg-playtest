@@ -49,8 +49,12 @@ const params = new URLSearchParams(location.search);
   }
 })();
 
+let mySeats = {};  // 公開のサーバーで、所有者の鍵（Cookie）で持っている席 {対局: 席}
 function keyOf(game) {
-  try { return JSON.parse(recall("key." + game) || "null"); } catch (_) { return null; }
+  let k = null;
+  try { k = JSON.parse(recall("key." + game) || "null"); } catch (_) { k = null; }
+  if (mySeats[game] && (!k || k.seat !== mySeats[game])) k = { seat: mySeats[game], token: null };
+  return k;
 }
 
 // 選んだ対局の鍵を持っていれば、その席で対局する（席は固定）。無ければ観戦
@@ -79,6 +83,11 @@ function applySeatMode() {
 
 async function loadGames() {
   const games = await source.games();
+  mySeats = Object.fromEntries(games.filter((g) => g.my_seat).map((g) => [g.id, g.my_seat]));
+  if (config.site && !games.length && $("fl-detail").hidden) {  // 席を取れなかった理由を出していれば、そちらを残す
+    $("detail").textContent = "まだ対局がありません。招待された URL を開くと、その席がこの端末（と復元 URL で戻した端末）の席になります。";
+    $("fl-detail").hidden = false;
+  }
   const sel = $("game");
   sel.replaceChildren(...games.map((g) => {
     const o = el("option", null, `${g.id}（T${g.turn}・v${g.version}）`);
@@ -140,6 +149,37 @@ function changeSelection() {
   for (const id of ["fl-detail", "fl-stack", "combatbox"]) $(id).hidden = true;
   load().catch(showError);
   listen();
+}
+
+// 公開のサーバー: 復元 URL（#recover=...）で開いたら、この端末を同じ所有者に戻す。ヘッダーに復元 URL を作るボタン
+async function siteSetup() {
+  const token = new URLSearchParams(location.hash.slice(1)).get("recover");
+  if (token) {
+    history.replaceState(null, "", location.pathname + location.search);
+    try {
+      await source.recover(token);
+    } catch (e) {
+      showError(new Error("復元 URL が違うか、作り直されています（" + e.message + "）"));
+    }
+  }
+  // 招待の URL（?game=G&seat=p1#key=...）で来たら、その席をこの所有者のものにする（取った後は鍵が無くても入れる）
+  const game = params.get("game"), invited = game && keyOf(game);
+  if (invited && invited.token) {
+    try {
+      await source.claim(game, invited.seat, invited.token);
+    } catch (e) {
+      showError(new Error(e.status === 403 ? "この席は、もう他の人が取っています（招待の URL が使われた後です）" : e.message));
+    }
+  }
+  $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value !== "judge"));
+  $("recovery").hidden = false;
+  $("recovery").onclick = async () => {
+    try {
+      const { token: t } = await source.recovery();
+      window.prompt("この URL を別の端末で開くと、同じ対局が見られます（作り直すと前の URL は使えなくなります。人に渡さない）",
+        `${location.origin}/#recover=${t}`);
+    } catch (e) { showError(e); }
+  };
 }
 
 function showError(e) {
@@ -320,6 +360,7 @@ document.addEventListener("keydown", (e) => {
   try {
     await source.init();
     config = await source.config().catch(() => ({ play: false }));
+    if (config.site) await siteSetup();
     if (source.isStatic) {
       $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value === "judge"));
       $("conn").hidden = true;

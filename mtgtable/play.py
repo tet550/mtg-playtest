@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import hashlib
 import re
 import secrets
@@ -34,22 +35,44 @@ def seats(store: GameStore) -> dict:
     return store.read_doc("seats") or {}
 
 
-def invite(store: GameStore, seat: str) -> str:
-    """seat の鍵を新しく作って返す（前の鍵は使えなくなる）。対局フォルダにはハッシュだけを残す。"""
+def _now() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc)
+
+
+def invite(store: GameStore, seat: str, ttl: Optional[float] = None) -> str:
+    """seat の鍵を新しく作って返す（前の鍵は使えなくなる）。保存先にはハッシュだけを残す。
+    ttl（時間）を渡すと、その時間が過ぎた鍵は使えない（公開のサーバーでは、席を取る前の招待の URL が残り続けないように）。"""
     state = store.load()
     if seat not in state.players:
         raise ValueError("unknown seat %r (players: %s)" % (seat, ", ".join(state.player_order)))
     token = secrets.token_urlsafe(24)
+    rec = {"token_sha256": _hash(token)}
+    if ttl:
+        rec["expires"] = (_now() + datetime.timedelta(hours=ttl)).isoformat(timespec="seconds")
     with store.lock():
         data = seats(store)
-        data[seat] = {"token_sha256": _hash(token)}
+        data[seat] = rec
         store.write_doc("seats", data)
     return token
 
 
+def revoke(store: GameStore, seat: str) -> bool:
+    """seat の鍵を失効させる。席は人間の席のまま（AI に替わらない）で、invite で作り直すまで誰も使えない。
+    鍵があったかを返す。"""
+    with store.lock():
+        data = seats(store)
+        if seat not in data:
+            return False
+        data[seat] = {"revoked": _now().isoformat(timespec="seconds")}
+        store.write_doc("seats", data)
+    return True
+
+
 def check_token(store: GameStore, seat: str, token: Optional[str]) -> bool:
     rec = seats(store).get(seat)
-    return bool(token and rec) and secrets.compare_digest(rec["token_sha256"], _hash(token))
+    if not (token and rec and rec.get("token_sha256")) or not secrets.compare_digest(rec["token_sha256"], _hash(token)):
+        return False
+    return not rec.get("expires") or datetime.datetime.fromisoformat(rec["expires"]) > _now()
 
 
 # ---------------------------------------------------------------- 手番の受け渡し

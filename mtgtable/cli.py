@@ -346,7 +346,9 @@ def cmd_export(a):
 
 def cmd_serve(a):
     from .web import serve
-    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB)
+    if a.site and not DB:
+        raise SystemExit("serve --site needs --db PATH (or MTGTABLE_DB)")
+    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site)
 
 
 def cmd_db_import(a):
@@ -373,13 +375,21 @@ def cmd_invite(a):
     if not store.exists():
         raise SystemExit("no game at %s" % a.game)
     try:
-        token = play.invite(store, a.seat)
+        token = play.invite(store, a.seat, ttl=a.ttl or None)
     except ValueError as e:
         raise SystemExit(str(e))
     where = "--db %s" % DB if DB else "--root %s" % store.root.resolve().parent
     base = a.base or "http://127.0.0.1:%d/" % a.port
     print("%s?game=%s&seat=%s#key=%s" % (base, quote(store.name), a.seat, token))
     print("(serve --play %s で開く。鍵を作り直すと前の URL は使えなくなる)" % where, file=sys.stderr)
+
+
+def cmd_revoke(a):
+    from . import play
+    store = _existing(a.game)
+    if not play.revoke(store, a.seat):
+        raise SystemExit("%s has no key for %s" % (a.game, a.seat))
+    print("revoked the key of %s in %s (invite で作り直すまで、その席は誰も使えない)" % (a.seat, a.game))
 
 
 def _existing(game):
@@ -648,6 +658,9 @@ def build_parser():
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--offline", action="store_true", help="キャッシュに無いカード画像を取りに行かない")
     p.add_argument("--play", action="store_true", help="席の操作（GUI の対局）を受ける。invite した対局は席の鍵で守る")
+    p.add_argument("--site", action="store_true",
+                   help="公開のサーバーとして動かす（--db が要る。--play を含む）。所有者の鍵（Cookie）で、自分が席を持つ対局だけを"
+                        "見せ、judge の席は出さない。書き込みは同じサイトからだけ")
     p.set_defaults(fn=cmd_serve)
 
     p = sub.add_parser("db-import", help="対局フォルダを --db の DB へ移す")
@@ -660,7 +673,14 @@ def build_parser():
     p.add_argument("--seat", required=True, help="人間が持つ席（p1 など）")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--base", help="サーバーの URL（既定 http://127.0.0.1:PORT/）")
+    p.add_argument("--ttl", type=float, default=168,
+                   help="鍵の有効期限（時間。既定 168 = 7日。0 で期限なし）。公開のサーバーでは、席を取った後は Cookie で入る")
     p.set_defaults(fn=cmd_invite)
+
+    p = sub.add_parser("revoke", help="席の鍵を失効させる（invite で作り直すまで、その席は誰も使えない）")
+    p.add_argument("game")
+    p.add_argument("--seat", required=True)
+    p.set_defaults(fn=cmd_revoke)
 
     p = sub.add_parser("wait", help="相手が書いて自分の番が来るまで待つ（GUI の人間との対局で AI が使う）")
     p.add_argument("game")

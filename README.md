@@ -25,6 +25,7 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/cli.py` | コマンドライン | 26節 |
 | `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`）と GUI の対局（`serve --play`。人間が席を持って操作） | 24〜26節 |
 | `mtgtable/play.py` | GUI の対局の部品（席の鍵・待たれている Player・`wait`） | 26節 |
+| `mtgtable/owners.py` | 公開のサーバー（`serve --site`）の所有者の鍵・復元・席を持つ人 | — |
 | `mtgtable/prompt.py`・`mtgtable/prompts/` | AI のプロンプト（Player の意図・審判・直接 Batch）の書き出しと、返答の適用 | 27節 |
 | `mtgtable/llm.py` | OpenAI の API（Chat Completions）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
 
@@ -110,7 +111,8 @@ python -m mtgtable db-import playtest/g1 # 今の対局フォルダを DB へ移
 | `ops` | Operation と手順の一覧 |
 | `export DEST [--game ID ...]` | 観戦ビューアを静的サイトに書き出す（GitHub Pages など用。judge の席だけ。カードの画像・文・マナ・シンボルはサイトに含めず、見る人のブラウザが Scryfall から取る） |
 | `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない。`--play` で GUI の対局も受ける（下の「GUI で AI と対戦する」） |
-| `invite GAME --seat p1` | GUI で席を持つための鍵付き URL を作る |
+| `invite GAME --seat p1` | GUI で席を持つための鍵付き URL を作る。鍵は既定で7日で切れる（`--ttl 時間`。0 で期限なし） |
+| `revoke GAME --seat p1` | 席の鍵を失効させる（席は人間の席のまま。`invite` で作り直すまで誰も使えない） |
 | `db-import GAME...` | 対局フォルダを `--db` の DB へ移す（`--force` で置き換え） |
 | `wait GAME --as p2` | 相手（GUI の人間）が書いて自分の番が来るまで待つ（AI 用）。`--prompt` で番が来たらプロンプトも書き出す |
 | `next GAME --ai p2` | 審判か AI の席の番まで待ち、そのプロンプトを `playtest/<対局>/prompts/` に書き出す |
@@ -172,6 +174,23 @@ python -m mtgtable serve --play
 - キープ・マリガンは宣言だけ（引き直し・下に置くカードは審判が処理し、下に置くカードは審判が聞く）
 - 鍵の無い席・judge は見えない（鍵を作った対局だけ。他の対局は今までどおり観戦できる）。外部に公開するサーバーとしての
   運用（HTTPS・DB・AI の HTTP 接続など）は [design/web_design.md](design/web_design.md) の「サーバーで動かすときに残っていること」
+
+### 公開のサーバーとして動かす（`serve --site`）
+
+[design/site_plan.md](design/site_plan.md) のフェーズ 2 まで。`--db` が要り、`--play` を含む。
+
+```bash
+python -m mtgtable --db data/mtg.sqlite serve --site --host 127.0.0.1 --port 8765   # 前に HTTPS のリバース・プロキシを置く
+python -m mtgtable --db data/mtg.sqlite invite g1 --seat p1 --base https://mtg.example.com/
+```
+
+- 初めて来たブラウザに「所有者の鍵」を Cookie（HttpOnly・SameSite=Lax、外向きの名前では Secure）で渡す。DB にはハッシュだけ
+- 招待の URL を開いた所有者が、その席を取る。以後はその所有者だけが、Cookie だけで（鍵を覚えていない端末でも）その席に入れる。
+  同じ招待の URL を他の人が開いても通らない
+- 対局の一覧は自分が席を持つ対局だけ。judge の席・鍵の無い対局・他の人の席は見せない
+- ヘッダーの「復元 URL」で、別の端末（か Cookie を消したブラウザ）を同じ所有者に戻す URL を作る。作り直すと前の URL は使えない
+- 書き込みは、同じサイトのページからだけ（`Origin` を確かめる）
+- 利用者の識別より先（HTTPS の設定・対局を作る画面・レート制限など）はまだ。外に出すのは計画のフェーズ 7 の後
 
 ### 人間どうしで対戦する
 
@@ -328,6 +347,7 @@ node --test tests/web.test.mjs
 | `test_turn.py` | ターン・ステップ・ゲーム前・宣言・優先権のパス |
 | `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
+| `test_site.py` | 公開のサーバー: 所有者の鍵の Cookie・招待の URL で席を取る・自分の対局だけ・復元 URL・Origin・鍵の期限と失効 |
 | `test_sqlstore.py` | SQLite の保存先: 対局フォルダからの移行・一覧の要約（終わった日時）・ロールバック・同時の書き込み・CLI の `--db` |
 | `test_carddb.py` | オラクルのキャッシュ |
 | `test_web.py` | 観戦ビューアのサーバー（席ごとの view・log・静的ファイル）と GUI の対局の API（席の鍵・依頼・宣言・回答だけの書き込み・409） |

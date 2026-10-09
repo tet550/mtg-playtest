@@ -187,7 +187,7 @@ class PlayServerTest(unittest.TestCase):
         self.assertIsNone(r["stopped"])
 
     def test_seat_key_guards_reading(self):
-        self.assertEqual(self.call("/api/config"), (200, {"play": True}))
+        self.assertEqual(self.call("/api/config"), (200, {"play": True, "site": False}))
         self.assertEqual(self.call("/api/games/g/timeline?seat=p1")[0], 403)
         self.assertEqual(self.call("/api/games/g/timeline?seat=p1", token="wrong")[0], 403)
         self.assertEqual(self.call("/api/games/g/timeline?seat=judge", token=self.token)[0], 403)

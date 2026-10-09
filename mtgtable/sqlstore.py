@@ -5,6 +5,7 @@
     games  対局ごとに1行: 初期状態・現在状態・cursor・変化の印（stamp）・一覧に出す要約・作った／更新した／終わった日時
     log    Operation Log を1件1行（対局の id と seq）
     docs   卓の外の文書（席の鍵 "seats"・席ごとの非公開の設定 "private/<席>"）
+    owners・owner_keys・participants  公開のサーバーの利用者（所有者）と、どの対局のどの席を持つか（owners.py）
 
 書き込みの排他は `BEGIN IMMEDIATE`（書き手は DB 全体で1人ずつ。読み手は WAL で止まらない）。lock() の中の読み書きは、
 同じ接続（同じトランザクション）を使う。プロンプトなどの作業ファイルは root（既定は DB の隣の <名前>-files/<対局>/）に置く。
@@ -48,6 +49,24 @@ CREATE TABLE IF NOT EXISTS docs (
     data TEXT NOT NULL,
     PRIMARY KEY (game, name)
 );
+CREATE TABLE IF NOT EXISTS owners (
+    id TEXT PRIMARY KEY,
+    recovery_sha256 TEXT UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS owner_keys (
+    key_sha256 TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS participants (
+    game TEXT NOT NULL,
+    seat TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    joined_at TEXT NOT NULL,
+    PRIMARY KEY (game, seat)
+);
+CREATE INDEX IF NOT EXISTS participants_owner ON participants (owner);
 """
 
 _ready: set = set()  # スキーマを作った DB（プロセスごとに1回）

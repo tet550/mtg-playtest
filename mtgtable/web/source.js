@@ -25,13 +25,27 @@ async function getJSON(url, headers) {
 
 export function createSource(isStatic) {
   let cards = {};
-  let key = null;  // 席の鍵 {game, seat, token}（GUI の対局）。その対局・席の要求にだけ付ける
+  let key = null;  // 対局する席 {game, seat, token}（GUI の対局）。鍵はその対局・席の要求にだけ付ける。
+  // 公開のサーバーで、席を取った後は token が無くてよい（所有者の鍵の Cookie で通る）
   const oracleCache = new Map();
   const gameURL = (game, resource) => isStatic
     ? `data/${encodeURIComponent(game)}/${resource}.json`
     : `/api/games/${encodeURIComponent(game)}/${resource}`;
-  const auth = (game, seat) => (key && key.game === game && key.seat === seat
-    ? { Authorization: `Bearer ${key.token}` } : undefined);
+  const mine = (game, seat) => !!key && key.game === game && key.seat === seat;
+  const auth = (game, seat) => (mine(game, seat) && key.token ? { Authorization: `Bearer ${key.token}` } : undefined);
+  async function postJSON(url, body, headers) {
+    const r = await fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const error = new Error(data.error || r.statusText);
+      error.status = r.status;
+      error.stale = !!data.stale;
+      throw error;
+    }
+    return data;
+  }
   return {
     isStatic,
     async init() { if (isStatic) cards = await getJSON("data/cards.json"); },
@@ -41,31 +55,22 @@ export function createSource(isStatic) {
     async load(game, seat) {
       const url = gameURL(game, "timeline") + (isStatic ? "" : `?seat=${encodeURIComponent(seat)}`);
       const headers = auth(game, seat);
-      // Log は judge の席と、鍵を持つ席（その Player に見せる形の Log）だけ
+      // Log は judge の席と、対局している席（その Player に見せる形の Log）だけ
       const [timeline, log] = await Promise.all([
         getJSON(url, headers),
         seat === "judge" ? getJSON(gameURL(game, "log"))
-          : headers ? getJSON(gameURL(game, "log") + `?seat=${encodeURIComponent(seat)}`, headers) : [],
+          : mine(game, seat) ? getJSON(gameURL(game, "log") + `?seat=${encodeURIComponent(seat)}`, headers) : [],
       ]);
       return { timeline, log };
     },
     // 止める場所（非公開。その席の鍵が要る）
     getStops: (game, seat) => getJSON(gameURL(game, "stops") + `?seat=${encodeURIComponent(seat)}`, auth(game, seat)),
     // 席の Player として書く（request / declare / answer / stops）。409（見ていた盤面より進んでいた）は error.stale
-    async post(game, action, body) {
-      const r = await fetch(gameURL(game, action), {
-        method: "POST", headers: { "Content-Type": "application/json", ...auth(game, body.seat) },
-        body: JSON.stringify(body),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        const error = new Error(data.error || r.statusText);
-        error.status = r.status;
-        error.stale = !!data.stale;
-        throw error;
-      }
-      return data;
-    },
+    post: (game, action, body) => postJSON(gameURL(game, action), body, auth(game, body.seat)),
+    // 公開のサーバー: 復元の鍵を作り直す（別の端末で開く URL 用）・復元の鍵でこの端末を同じ所有者に戻す
+    recovery: () => postJSON("/api/me/recovery", {}),
+    recover: (token) => postJSON("/api/me/recover", { token }),
+    claim: (game, seat, token) => postJSON(gameURL(game, "claim"), { seat }, { Authorization: `Bearer ${token}` }),
     subscribe(game, onChange, onConnection) {
       if (isStatic) return () => {};
       const events = new EventSource(gameURL(game, "events"));
