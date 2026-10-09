@@ -28,6 +28,7 @@ from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
 from .decks import Decks, Invalid, check as check_deck_text
+from .lobby import IDLE_LIMIT, IDLE_NOTICE, Lobby, Refused as LobbyRefused, repo_decks
 from .owners import Owners
 from .sqlstore import SqliteGames
 from .store import BaseStore, FileGames, StaleCursor
@@ -85,6 +86,7 @@ class Viewer:
         self.play = play or site  # 席の操作（書き込み）を受けるか
         self.owners = Owners(db) if site else None
         self.decks = Decks(db) if site else None
+        self.lobby = Lobby(db, self.source, self.decks, self.owners, offline) if site else None
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
@@ -355,10 +357,13 @@ class Handler(BaseHTTPRequestHandler):
             owner = self._owner()
             if parts[:2] == ["api", "decks"] and self.viewer.site:
                 return self._decks(method, parts[2:], body, owner)
+            if self.viewer.site and (parts[:2] == ["api", "invites"] or parts == ["api", "games"]
+                                     or parts[:2] == ["api", "games"] and parts[3:] == ["timeout"]):
+                return self._lobby(method, parts, body, owner)
             if method != "POST":
                 return self._json({"error": "not found"}, 404)
             return self._post(parts, body, owner)
-        except Forbidden as e:
+        except (Forbidden, LobbyRefused) as e:
             self._json({"error": str(e)}, 403)
         except StaleCursor as e:
             self._json({"error": str(e), "stale": True}, 409)
@@ -394,6 +399,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(decks.update(owner, rest[0], body))
         if method == "DELETE" and len(rest) == 1:
             decks.delete(owner, rest[0])
+            return self._json({"ok": True})
+        self._json({"error": "not found"}, 404)
+
+    def _lobby(self, method: str, parts: list, body: dict, owner: Optional[str]) -> None:
+        """対局を作る（公開のサーバー）: POST /api/games（AI と・招待）・POST /api/games/<対局>/timeout（時間切れ）・
+        POST /api/invites/<id>/join・renew・DELETE /api/invites/<id>。招待の中身は GET（do_GET）。"""
+        if not owner:
+            raise Forbidden("no owner key (open the site first)")
+        lobby = self.viewer.lobby
+        if method == "POST" and parts == ["api", "games"]:
+            out = lobby.create(owner, body)
+            self.viewer.notify()
+            return self._json(out, 201)
+        if method == "POST" and parts[3:] == ["timeout"]:
+            out = lobby.timeout(owner, parts[2], body.get("seat"))
+            self.viewer.notify()
+            return self._json(out)
+        if method == "POST" and len(parts) == 4 and parts[3] == "join":
+            return self._json(lobby.join(owner, parts[2], body), 201)
+        if method == "POST" and len(parts) == 4 and parts[3] == "renew":
+            return self._json(lobby.renew(owner, parts[2]))
+        if method == "DELETE" and len(parts) == 3:
+            lobby.cancel(owner, parts[2])
             return self._json({"ok": True})
         self._json({"error": "not found"}, 404)
 
@@ -439,6 +467,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise Forbidden("no owner key (open the site first)")
                 return self._json(self.viewer.decks.get(owner, parts[2]) if len(parts) == 3
                                   else self.viewer.decks.list(owner))
+            if parts == ["api", "ai-decks"] and self.viewer.site:
+                return self._json(repo_decks())
+            if parts[:2] == ["api", "invites"] and self.viewer.site and len(parts) <= 3:
+                if not owner:
+                    raise Forbidden("no owner key (open the site first)")
+                return self._json(self.viewer.lobby.invite_info(parts[2], q.get("token")) if len(parts) == 3
+                                  else self.viewer.lobby.invites(owner))
             if parts[:2] == ["api", "config"]:
                 if self.viewer.site and not owner:  # 初めて来たブラウザ（か鍵が消えた）: 所有者を作って鍵を渡す
                     self._give_owner_key(self.viewer.owners.create()[1])
@@ -471,7 +506,12 @@ class Handler(BaseHTTPRequestHandler):
                     at = int(q["at"]) if q.get("at") not in (None, "") else None
                     return self._json(self.viewer.view(game, seat, at, library=q.get("library") == "1"))
                 if what == "timeline":
-                    return self._json(self.viewer.timeline(game, seat))
+                    tl = self.viewer.timeline(game, seat)
+                    if self.viewer.site:  # 相手の番がどれだけ続いているか（時間切れの知らせ。取るたびに変わるので、写しに足す）
+                        tl = dict(tl, idle={"seconds": self.viewer.lobby.idle_seconds(self.viewer.store(game)),
+                                            "notice": IDLE_NOTICE, "limit": IDLE_LIMIT,
+                                            "humans": sorted(self.viewer.owners.seats_in(game))})
+                    return self._json(tl)
                 if what == "log":
                     if seat is not None:  # ラベルに非公開の情報が入りうるので judge の席だけ
                         return self._json({"error": "log is shown only to the judge seat"}, 403)
@@ -479,7 +519,7 @@ class Handler(BaseHTTPRequestHandler):
                 if what == "events":
                     return self._events(game)
             self._json({"error": "not found"}, 404)
-        except Forbidden as e:
+        except (Forbidden, LobbyRefused) as e:
             self._json({"error": str(e)}, 403)
         except (LookupError, ValueError) as e:
             self._json({"error": str(e)}, 404)

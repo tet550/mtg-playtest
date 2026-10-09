@@ -27,6 +27,7 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/play.py` | GUI の対局の部品（席の鍵・待たれている Player・`wait`） | 26節 |
 | `mtgtable/owners.py` | 公開のサーバー（`serve --site`）の所有者の鍵・復元・席を持つ人 | — |
 | `mtgtable/decks.py` | 公開のサーバーのデッキ登録（検査と、所有者ごとの保存） | — |
+| `mtgtable/lobby.py` | 公開のサーバーで対局を作る（AI と・招待した人と）・時間切れ | — |
 | `mtgtable/prompt.py`・`mtgtable/prompts/` | AI のプロンプト（Player の意図・審判・直接 Batch）の書き出しと、返答の適用 | 27節 |
 | `mtgtable/llm.py` | OpenAI の API（Chat Completions）で審判と AI の席を回す（`auto`）。キーは `secrets/` | 27節 |
 
@@ -196,6 +197,11 @@ python -m mtgtable --db data/mtg.sqlite invite g1 --seat p1 --base https://mtg.e
   通ったものだけを保存する。検査の中身: メイン 60 枚以上・サイドボード 15 枚まで・同じ名前は 4 枚まで（基本土地と
   「好きな枚数を入れてよい」カードは除く）・フォーマットで使えるか（制限カードは 1 枚）。プレイ方針（任意）は、そのデッキを使う
   AI のプロンプトに入る
+- 「対局を作る」で、登録したデッキを選んで AI と（AI のデッキは `decklists/` のものか自分のデッキ）、または人を招待して
+  対戦する。招待の URL は1回だけ使え、3日で切れる（作り直し・取り消しができる）。招待された人は自分のデッキを選んで席に
+  着き、その時点で対局ができる。デッキは対局を作る時点の写しを使う（後で直しても対局は変わらない）。公開・非公開を選べる
+- 人間どうしの対局で相手の番が 5 分続くと画面に出し、30 分続いたら「時間切れで勝ちにする」（相手の投了として書く）
+- 審判（と AI の席）は、今は対局ごとに `auto --watch` を動かす（サーバーの中で回すのは計画のフェーズ 5）
 - 利用者の識別より先（HTTPS の設定・対局を作る画面・レート制限など）はまだ。外に出すのは計画のフェーズ 7 の後
 
 ### 人間どうしで対戦する
@@ -354,6 +360,7 @@ node --test tests/web.test.mjs
 | `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
 | `test_decks.py` | デッキ登録: 検査（書式・カード名・枚数・フォーマット）、Scryfall のまとめ引き（偽の Scryfall）、デッキの API、AI のプレイ方針 |
+| `test_lobby.py` | 対局を作る: AI との対局・デッキの写し・招待（1回だけ・同時に着いても1人・期限・作り直し・取り消し）・時間切れ |
 | `test_site.py` | 公開のサーバー: 所有者の鍵の Cookie・招待の URL で席を取る・自分の対局だけ・復元 URL・Origin・鍵の期限と失効 |
 | `test_sqlstore.py` | SQLite の保存先: 対局フォルダからの移行・一覧の要約（終わった日時）・ロールバック・同時の書き込み・CLI の `--db` |
 | `test_carddb.py` | オラクルのキャッシュ |

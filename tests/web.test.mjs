@@ -324,3 +324,27 @@ test("site pages come from the hash", async () => {
   assert.equal(pageOf("#key=abc"), null);  // 招待の URL の鍵は画面の切り替えではない
   assert.equal(pageOf(""), null);
 });
+
+test("idle notice only for the other human's turn, with a claim after the limit", async () => {
+  const { idleState } = await import("../mtgtable/web/play.js");
+  const idle = { seconds: 400, notice: 300, limit: 1800, humans: ["p1", "p2"], at: 1000 };
+  assert.deepEqual(idleState(idle, "p2", "p1", 1000), { who: "p2", minutes: 6, canClaim: false, left: 24 });
+  assert.equal(idleState(idle, "p1", "p1", 1000), null);  // 自分の番
+  assert.equal(idleState(idle, "judge", "p1", 1000), null);  // 審判の番
+  assert.equal(idleState({ ...idle, humans: ["p1"] }, "p2", "p1", 1000), null);  // AI の番
+  assert.equal(idleState({ ...idle, seconds: 100 }, "p2", "p1", 1000), null);  // まだ知らせない
+  assert.equal(idleState(idle, "p2", "p1", 1000 + 1500 * 1000).canClaim, true);  // 受け取ってから時間が進む
+  assert.equal(idleState(null, "p2", "p1", 1000), null);
+});
+
+test("invite links and routes", async () => {
+  const { inviteURL, inviteState } = await import("../mtgtable/web/lobby.js");
+  const { routeOf } = await import("../mtgtable/web/site.js");
+  const url = inviteURL("https://mtg.example", "ab12", "t/k+n");
+  assert.equal(url, "https://mtg.example/#/join/ab12/t%2Fk%2Bn");
+  assert.deepEqual(routeOf(new URL(url).hash), { page: "join", args: ["ab12", "t/k+n"] });
+  assert.deepEqual(routeOf("#/new"), { page: "new", args: [] });
+  assert.equal(inviteState({ game: "g1" }), "対局になった");
+  assert.equal(inviteState({ game: null, expired: true }), "期限切れ");
+  assert.equal(inviteState({ game: null, expired: false }), "相手待ち");
+});

@@ -4,7 +4,7 @@ import { createSource, latestLoader } from "./source.js";
 import { Timeline } from "./timeline.js";
 import { createRenderer } from "./render.js";
 import { createPlay, toast } from "./play.js";
-import { createSite, pageOf } from "./site.js";
+import { createSite, routeOf } from "./site.js";
 
 // play: 席の鍵を持って対局しているときの {seat}（無ければ観戦）。marks: 組み立て中の Act で選んだもの
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], names: {},
@@ -111,6 +111,7 @@ async function load() {
   const follow = timeline && ui.live && added > 1;
   if (timeline && ui.live && added === 1) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
+  ui.idle = result.timeline.idle ? { ...result.timeline.idle, at: Date.now() } : null;  // 時間切れの知らせ（公開のサーバー）
   ui.log = result.log;
   ui.cursor = timeline.cursor;
   if (follow) return startPlay(from);
@@ -172,7 +173,7 @@ async function siteSetup() {
     }
   }
   $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value !== "judge"));
-  site = createSite(source, { toast, games: () => gameList });
+  site = createSite(source, { toast, games: () => gameList, openGame });
   $("recovery").hidden = false;
   $("recovery").onclick = async () => {
     try {
@@ -181,6 +182,17 @@ async function siteSetup() {
         `${location.origin}/#recover=${t}`);
     } catch (e) { showError(e); }
   };
+}
+
+// 作った・着いた対局を開く（一覧を取り直し、その対局のその席で）
+async function openGame(id) {
+  remember("game", id);
+  await loadGames();
+  ui.game = id;
+  $("game").value = id;
+  ui.live = true;
+  changeSelection();
+  location.hash = "#/games";
 }
 
 function showError(e) {
@@ -378,9 +390,12 @@ document.addEventListener("keydown", (e) => {
     await loadGames();
     applySeatMode();
     if (site) {  // 対局が無ければトップから
-      const first = pageOf(location.hash) || (gameList.length ? "games" : "top");
-      window.addEventListener("hashchange", () => site.show(pageOf(location.hash) || "games").catch(showError));
-      await site.show(first);
+      const route = routeOf(location.hash) || { page: gameList.length ? "games" : "top", args: [] };
+      window.addEventListener("hashchange", () => {
+        const r = routeOf(location.hash) || { page: "games", args: [] };
+        site.show(r.page, r.args).catch(showError);
+      });
+      await site.show(route.page, route.args);
     }
     await load();
     listen();

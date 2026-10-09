@@ -2,17 +2,27 @@
 // 対局の画面は今までの盤面（app.js）。トップとデッキは、盤面の代わりに #page に描く。URL は #/top・#/decks・#/games
 import { $, el } from "./dom.js";
 import { createDecks } from "./decks.js";
+import { createLobby } from "./lobby.js";
 
-export const PAGES = { top: "トップ", decks: "デッキ", games: "対局" };
+export const PAGES = { top: "トップ", decks: "デッキ", new: "対局を作る", games: "対局" };
+const HIDDEN = ["join"];  // ヘッダーに出さない画面（招待の URL: #/join/<招待>/<鍵>）
 
-export function pageOf(hash) {
-  const m = /^#\/(\w+)/.exec(hash || "");
-  return m && m[1] in PAGES ? m[1] : null;
+// #/decks → {page: "decks", args: []}、#/join/abc/xyz → {page: "join", args: ["abc", "xyz"]}
+export function routeOf(hash) {
+  const m = /^#\/(\w+)((?:\/[^/]*)*)$/.exec(hash || "");
+  if (!m || !(m[1] in PAGES || HIDDEN.includes(m[1]))) return null;
+  return { page: m[1], args: m[2].split("/").slice(1).map(decodeURIComponent) };
 }
 
-export function createSite(source, { toast, games }) {
+export function pageOf(hash) {
+  const r = routeOf(hash);
+  return r ? r.page : null;
+}
+
+export function createSite(source, { toast, games, openGame }) {
   const decks = createDecks(source, { toast });
   let current = null;
+  const lobby = createLobby(source, { toast, openGame, active: () => current === "new" });
 
   function nav() {
     const box = $("sitenav");
@@ -40,14 +50,16 @@ export function createSite(source, { toast, games }) {
       steps.append(li);
     };
     item("デッキを登録する（デッキリストを貼り付けると、カード名と枚数を確かめます）。", "#/decks", "デッキへ");
+    item("対局を作る（AI と対戦するか、人を招待する）。", "#/new", "対局を作るへ");
     item(mine.length ? `対局する（あなたの対局: ${mine.length} 件）。` : "招待された URL を開くと、その席で対局できます。",
       mine.length ? "#/games" : null, "対局へ");
     item("別の端末でも続けるには、ヘッダーの「復元 URL」をその端末で開きます。");
     root.append(steps);
   }
 
-  async function show(page) {
+  async function show(page, args = []) {
     current = page;
+    if (page !== "new") lobby.stop();
     nav();
     const board = page === "games";
     for (const sel of [".replay", "main.layout"]) document.querySelector(sel).hidden = !board;
@@ -59,6 +71,8 @@ export function createSite(source, { toast, games }) {
     document.body.classList.toggle("sitepage", !board);
     if (page === "top") renderTop(root);
     if (page === "decks") await decks.render(root);
+    if (page === "new") await lobby.render(root);
+    if (page === "join") await lobby.renderJoin(root, args[0], args[1]);
   }
 
   return { show };

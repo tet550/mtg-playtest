@@ -749,3 +749,8 @@ table.decks .dops { white-space: nowrap; text-align: right; }
 }
 .replay[hidden], .layout[hidden], .page[hidden], .sitenav[hidden], .bar label[hidden] { display: none; }
 .bar .offpage { display: none; }
+.urlbox { display: flex; gap: 6px; margin: 6px 0; }
+.urlbox input { flex: 1; min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 8px; }
+.page p.bad { color: var(--warn); }
+.deckform .field[hidden] { display: none; }

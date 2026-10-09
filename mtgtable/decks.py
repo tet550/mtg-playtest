@@ -111,6 +111,13 @@ def _copy_limit(rec: dict, fmt: str) -> Optional[int]:
     return COPIES
 
 
+def table_name(written: str, rec: dict) -> str:
+    """卓に置く名前: 書いた名前がそのカードの名前（両面カードの表の面など）なら、大文字・小文字と空白だけ正式に直したもの。
+    リポジトリのデッキリストと同じく、両面カードは表の面の名前になる（「Delver of Secrets」）。"""
+    key = carddb._norm(written)
+    return next((n for n in carddb.card_names(rec) if carddb._norm(n) == key), rec["name"])
+
+
 def check(text, fmt: str = "standard", resolve=None) -> dict:
     """デッキリストを検査する。{"ok", "errors": [{"line", "card", "message"}], "warnings", "main", "sideboard",
     "cards": {書いた名前: 正式な名前}}。resolve はカード名を引く関数（既定は carddb.resolve_names。テストで差し替える）。"""
@@ -146,7 +153,7 @@ def check(text, fmt: str = "standard", resolve=None) -> dict:
     for card in res["missing"]:
         out["errors"].append(_error("「%s」というカードが見つかりません（英語名で書く）" % card, first_line[card], card))
     found = res["found"]
-    out["cards"] = {card: found[card]["name"] for card in first_line if card in found}
+    out["cards"] = {card: table_name(card, found[card]) for card in first_line if card in found}
     total, line_of = Counter(), {}
     for _, n, card, line in rows:
         if card in found:

@@ -19,7 +19,11 @@ async function scryfallOracle(name) {
 async function getJSON(url, headers) {
   const r = await (headers ? fetch(url, { headers }) : fetch(url));
   const body = await r.json();
-  if (!r.ok) throw new Error(body.error || r.statusText);
+  if (!r.ok) {
+    const error = new Error(body.error || r.statusText);
+    error.status = r.status;
+    throw error;
+  }
   return body;
 }
 
@@ -78,6 +82,14 @@ export function createSource(isStatic) {
     saveDeck: (id, body) => (id ? postJSON(`/api/decks/${encodeURIComponent(id)}`, body, {}, "PUT")
       : postJSON("/api/decks", body)),
     deleteDeck: (id) => postJSON(`/api/decks/${encodeURIComponent(id)}`, {}, {}, "DELETE"),
+    // 対局を作る・招待（公開のサーバー）
+    aiDecks: () => getJSON("/api/ai-decks"),
+    createGame: (body) => postJSON("/api/games", body),
+    invites: () => getJSON("/api/invites"),
+    invite: (id, token) => getJSON(`/api/invites/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`),
+    joinInvite: (id, token, deck) => postJSON(`/api/invites/${encodeURIComponent(id)}/join`, { token, deck }),
+    renewInvite: (id) => postJSON(`/api/invites/${encodeURIComponent(id)}/renew`, {}),
+    cancelInvite: (id) => postJSON(`/api/invites/${encodeURIComponent(id)}`, {}, {}, "DELETE"),
     claim: (game, seat, token) => postJSON(gameURL(game, "claim"), { seat }, { Authorization: `Bearer ${token}` }),
     subscribe(game, onChange, onConnection) {
       if (isStatic) return () => {};

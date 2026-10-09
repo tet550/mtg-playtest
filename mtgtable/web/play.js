@@ -423,6 +423,16 @@ function ask({ title, fields = [], choices = null, ok = "OK" }) {
   });
 }
 
+// 時間切れの知らせ（公開のサーバーの人間どうしの対局）: 相手（人間）の番が続いている分。idle はサーバーが時系列に付けた
+// {seconds, notice, limit, humans} と、受け取った時刻 at。知らせる前・自分の番・審判や AI の番なら null
+export function idleState(idle, wait, seat, now) {
+  if (!idle || !wait || wait === seat || wait === "judge" || !(idle.humans || []).includes(wait)) return null;
+  const seconds = idle.seconds + Math.max(0, now - idle.at) / 1000;
+  if (seconds < idle.notice) return null;
+  return { who: wait, minutes: Math.floor(seconds / 60), canClaim: seconds >= idle.limit,
+    left: Math.max(1, Math.ceil((idle.limit - seconds) / 60)) };
+}
+
 let toastTimer = null;
 export function toast(text, error) {
   const t = $("toast");
@@ -1417,6 +1427,16 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     $("playTitle").textContent = `${seat} として操作`;
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };
+    const idle = ui.live && idleState(ui.idle, wait, seat, Date.now());
+    if (idle) {
+      rows.push(el("div", "phint", `${idle.who} の番が ${idle.minutes} 分続いています`));
+      row(idle.canClaim
+        ? button("時間切れで勝ちにする", async () => {
+          if (!confirm(`${idle.who} の時間切れ（投了）にしますか？`)) return;
+          try { await source.post(ui.game, "timeout", { seat }); toast("時間切れで決着した"); reload(); } catch (e) { toast(e.message, true); }
+        }, { title: "相手が長く操作していないとき、相手の投了として対局を終える" })
+        : el("span", "muted", `あと ${idle.left} 分で、時間切れを申し立てられます`));
+    }
     if (locked()) { compose = null; pick = null; blocker = null; closeMenu(); }  // 審判の処理で盤面が変わる
     if (compose || pick) rows.push(composeBox());
     const mine = wait === seat && ui.live;
@@ -1465,6 +1485,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     body.replaceChildren(status, ...rows);
   }
 
+  setInterval(() => { if (ui.play && ui.idle) renderPanel(); }, 30000);  // 時間切れの知らせの分を進める
   addEventListener("pointerdown", (e) => { if (!e.target.closest("#menu")) closeMenu(); }, true);
   addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMenu();

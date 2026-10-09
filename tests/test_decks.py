@@ -30,6 +30,8 @@ CARDS = {
                     "legalities": {"standard": "not_legal", "modern": "not_legal", "vintage": "restricted"}},
     "Fire // Ice": {"name": "Fire // Ice", "type_line": "Instant // Instant", "legalities": LEGAL},
     "Mystery": {"name": "Mystery", "type_line": "Artifact"},  # legalities が分からない
+    "delver of secrets": {"name": "Delver of Secrets // Insectile Aberration", "type_line": "Creature — Human Wizard",
+                          "legalities": LEGAL, "faces": [{"name": "Delver of Secrets"}, {"name": "Insectile Aberration"}]},
 }
 
 
@@ -91,6 +93,8 @@ class CheckTest(unittest.TestCase):
         r = self.check(text)
         self.assertTrue(r["ok"], r["errors"])
         self.assertEqual(decks.decklist(text, r["cards"], "x").main, [(56, "Forest"), (4, "Fire // Ice")])
+        r = self.check(deck("56 Forest", "4 delver of secrets"))
+        self.assertEqual(r["cards"]["delver of secrets"], "Delver of Secrets")  # 両面カードは表の面の名前で卓に置く
 
     def test_size_limits_and_scryfall_failure(self):
         self.assertIn("長すぎ", self.check("1 Forest\n" * 300)["errors"][0]["message"])

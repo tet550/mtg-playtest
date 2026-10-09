@@ -24,7 +24,7 @@ class Browser:
         self.base, self.cookie = base, None
         self.host = base.split("//", 1)[1]
 
-    def call(self, path, body=None, token=None, origin="same", host=None):
+    def call(self, path, body=None, token=None, origin="same", host=None, method=None):
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = "Bearer " + token
@@ -35,7 +35,7 @@ class Browser:
         if host:
             headers["Host"] = host
         data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(self.base + path, data=data, headers=headers)
+        req = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req) as r:
                 self._keep(r.headers.get_all("Set-Cookie"))

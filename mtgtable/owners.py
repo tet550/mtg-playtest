@@ -93,3 +93,7 @@ class Owners:
         else:
             rows = self._run("SELECT game, seat FROM participants WHERE owner = ? AND game = ?", (owner, game), many=True)
         return {g: s for g, s in rows}
+
+    def seats_in(self, game: str) -> dict:
+        """対局の、所有者が持つ席 {席: 所有者}（人間の席）。"""
+        return {seat: o for seat, o in self._run("SELECT seat, owner FROM participants WHERE game = ?", (game,), many=True)}
