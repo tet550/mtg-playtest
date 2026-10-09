@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import http.cookies
 import json
 import pathlib
@@ -28,7 +29,8 @@ from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
 from .decks import Decks, Invalid, check as check_deck_text
-from . import llm, worker
+from . import history as history_mod, llm, worker
+from .history import History, Refused as HistoryRefused
 from .lobby import IDLE_LIMIT, IDLE_NOTICE, Lobby, Refused as LobbyRefused, repo_decks
 from .owners import Owners
 from .sqlstore import SqliteGames
@@ -75,6 +77,18 @@ def view_diff(a, b, path=()) -> list:
     return out
 
 
+def _saved_timeline(st: BaseStore, seat: Optional[str]):
+    """終わった対局の時系列を置くファイル（終わっていなければ None）。変化の印（stamp）を名前に入れるので、
+    巻き戻しなどで変われば別のファイルになる。"""
+    try:
+        if st.summary()["ended"] is None:
+            return None
+    except (OSError, LookupError, KeyError):
+        return None
+    tag = hashlib.sha1(repr(st.stamp()).encode()).hexdigest()[:12]
+    return st.root / "cache" / ("timeline-%s-%s.json" % (seat or "judge", tag))
+
+
 class Viewer:
     """対局の読み取りと、途中の時点の状態のキャッシュ。対局は root（対局フォルダの親）か db（SQLite）から開く。"""
 
@@ -89,6 +103,7 @@ class Viewer:
         self.decks = Decks(db) if site else None
         self.lobby = Lobby(db, self.source, self.decks, self.owners, offline) if site else None
         self.worker = None  # serve が AI のワーカーを動かすとき（審判と AI の席をサーバーの中で回す）
+        self.history = History(db, self.source, self.owners) if site else None
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
@@ -168,10 +183,18 @@ class Viewer:
     def ai_status(self, game: str) -> Optional[dict]:
         return worker.status(self.store(game)) if self.worker is not None else None
 
-    def participant(self, game: str, owner: Optional[str]) -> BaseStore:
-        """公開のサーバーで、owner がその対局の席を持つか（更新の通知など、席を問わない読み取り）。"""
+    def read(self, game: str, seat: Optional[str], token: Optional[str], owner: Optional[str] = None,
+             share: Optional[str] = None) -> BaseStore:
+        """seat（None は全体の視点）として読むことを許すか。公開のサーバーでは、見える範囲（history.access: 自分の席・
+        終わった公開の対局・終わった自分の対局・共有 URL）に入っていれば通す。入っていなければ席の鍵（招待の URL で席を取る）。"""
+        if self.site and self.history.can_view(game, seat or history_mod.JUDGE, owner, share):
+            return self.store(game)
+        return self.authorize(game, seat, token, owner=owner)
+
+    def participant(self, game: str, owner: Optional[str], share: Optional[str] = None) -> BaseStore:
+        """公開のサーバーで、その対局のどれかの視点を見られるか（更新の通知など、席を問わない読み取り）。"""
         st = self.store(game)
-        if self.site and not self.owners.seats_of(owner, game):
+        if self.site and not self.history.access(game, owner, share)["views"]:
             raise Forbidden("this game is not yours")
         return st
 
@@ -244,6 +267,15 @@ class Viewer:
         with self._lock:
             if key in self._timelines:
                 return self._timelines[key]
+        saved = _saved_timeline(st, seat)  # 終わった対局は、一度作った時系列をファイルに残して使い回す
+        if saved is not None and saved.exists():
+            try:
+                out = json.loads(saved.read_text(encoding="utf-8"))
+                with self._lock:
+                    self._timelines[key] = out
+                return out
+            except (OSError, ValueError):
+                pass
         cur = st.cursor()
         frames, prev = [], None
         for pos, s in st.replay_iter(cur):
@@ -254,6 +286,14 @@ class Viewer:
             frames.append({"k": v} if prev is None or pos % KEYFRAME_EVERY == 0 else {"d": view_diff(prev, v)})
             prev = v
         out = {"cursor": cur, "seat": seat or "judge", "keyframe_every": KEYFRAME_EVERY, "frames": frames}
+        if saved is not None:
+            try:
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                tmp = saved.with_suffix(".tmp")
+                tmp.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+                tmp.replace(saved)
+            except OSError:
+                pass
         with self._lock:
             self._timelines[key] = out
             while len(self._timelines) > 4:
@@ -374,13 +414,16 @@ class Handler(BaseHTTPRequestHandler):
             owner = self._owner()
             if parts[:2] == ["api", "decks"] and self.viewer.site:
                 return self._decks(method, parts[2:], body, owner)
+            if self.viewer.site and parts[:2] == ["api", "games"] and len(parts) >= 4 \
+                    and parts[3] in ("shares", "consent", "hide"):
+                return self._history(method, parts, body, owner)
             if self.viewer.site and (parts[:2] == ["api", "invites"] or parts == ["api", "games"]
                                      or parts[:2] == ["api", "games"] and parts[3:] == ["timeout"]):
                 return self._lobby(method, parts, body, owner)
             if method != "POST":
                 return self._json({"error": "not found"}, 404)
             return self._post(parts, body, owner)
-        except (Forbidden, LobbyRefused) as e:
+        except (Forbidden, LobbyRefused, HistoryRefused) as e:
             self._json({"error": str(e)}, 403)
         except StaleCursor as e:
             self._json({"error": str(e), "stale": True}, 409)
@@ -417,6 +460,25 @@ class Handler(BaseHTTPRequestHandler):
         if method == "DELETE" and len(rest) == 1:
             decks.delete(owner, rest[0])
             return self._json({"ok": True})
+        self._json({"error": "not found"}, 404)
+
+    def _history(self, method: str, parts: list, body: dict, owner: Optional[str]) -> None:
+        """履歴（公開のサーバー）: POST /api/games/<対局>/shares（共有 URL を作る）・DELETE .../shares/<id>（取り消す）・
+        POST .../consent（全体の視点の共有に同意）・POST .../hide（自分の履歴から消す）。"""
+        if not owner:
+            raise Forbidden("no owner key (open the site first)")
+        h, game, what = self.viewer.history, parts[2], parts[3]
+        if method == "POST" and what == "shares" and len(parts) == 4:
+            return self._json(h.share(owner, game, str(body.get("view") or "")), 201)
+        if method == "DELETE" and what == "shares" and len(parts) == 5:
+            h.revoke(owner, game, parts[4])
+            return self._json({"ok": True})
+        if method == "POST" and what == "consent" and len(parts) == 4:
+            return self._json(h.consent(owner, game))
+        if method == "POST" and what == "hide" and len(parts) == 4:
+            out = h.hide(owner, game)
+            self.viewer.notify()
+            return self._json(out)
         self._json({"error": "not found"}, 404)
 
     def _lobby(self, method: str, parts: list, body: dict, owner: Optional[str]) -> None:
@@ -486,6 +548,23 @@ class Handler(BaseHTTPRequestHandler):
                     raise Forbidden("no owner key (open the site first)")
                 return self._json(self.viewer.decks.get(owner, parts[2]) if len(parts) == 3
                                   else self.viewer.decks.list(owner))
+            if parts == ["api", "history"] and self.viewer.site:
+                if not owner:
+                    raise Forbidden("no owner key (open the site first)")
+                return self._json(self.viewer.history.mine(owner))
+            if parts == ["api", "public"] and self.viewer.site:
+                return self._json(self.viewer.history.public(q.get("deck") or None, q.get("before") or None,
+                                                             int(q.get("limit") or history_mod.PAGE)))
+            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] in ("access", "shares") and self.viewer.site:
+                if parts[3] == "access":
+                    a = self.viewer.history.access(parts[2], owner, q.get("share"))
+                    if not a["views"]:
+                        raise Forbidden("この対局は見られません（終わった公開の対局か、自分の対局か、共有 URL のものだけ）")
+                    a["consents"] = len(self.viewer.history.consents(parts[2]))
+                    return self._json(a)
+                if not owner:
+                    raise Forbidden("no owner key (open the site first)")
+                return self._json(self.viewer.history.shares(owner, parts[2]))
             if parts == ["api", "ai-decks"] and self.viewer.site:
                 return self._json(repo_decks())
             if parts[:2] == ["api", "invites"] and self.viewer.site and len(parts) <= 3:
@@ -513,10 +592,11 @@ class Handler(BaseHTTPRequestHandler):
             if parts[:2] == ["api", "games"] and len(parts) == 4:
                 game, what = parts[2], parts[3]
                 seat = None if q.get("seat", "judge") == "judge" else q["seat"]
+                share = q.get("share")
                 if what != "events":  # 通知は version・cursor だけ（auto の審判は席の鍵を持たずにつなぐ）
-                    self.viewer.authorize(game, seat, self._token(), owner=owner)
-                elif self.viewer.site:  # 公開のサーバーでは、席を持つ人だけ
-                    self.viewer.participant(game, owner)
+                    self.viewer.read(game, seat, self._token(), owner=owner, share=share)
+                elif self.viewer.site:  # 公開のサーバーでは、どれかの視点を見られる人だけ
+                    self.viewer.participant(game, owner, share)
                 if what == "stops" and seat is not None:
                     return self._json(self.viewer.get_stops(game, seat, self._token(), owner=owner))
                 if what == "log" and seat is not None and self.viewer.play:
@@ -541,7 +621,7 @@ class Handler(BaseHTTPRequestHandler):
                 if what == "events":
                     return self._events(game)
             self._json({"error": "not found"}, 404)
-        except (Forbidden, LobbyRefused) as e:
+        except (Forbidden, LobbyRefused, HistoryRefused) as e:
             self._json({"error": str(e)}, 403)
         except (LookupError, ValueError) as e:
             self._json({"error": str(e)}, 404)

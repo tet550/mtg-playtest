@@ -52,6 +52,8 @@ const params = new URLSearchParams(location.search);
 
 let mySeats = {};  // 公開のサーバーで、所有者の鍵（Cookie）で持っている席 {対局: 席}
 let gameList = [];
+let viewing = null;  // 再生・観戦（#/view/<対局>[/<共有の鍵>]）: {game, share, finished, views}
+const VIEW_LABEL = (v) => (v === "judge" ? "全体（judge）" : v);
 let site = null;  // 公開のサーバーの画面の切り替え（トップ・デッキ・対局）
 function keyOf(game) {
   let k = null;
@@ -62,7 +64,8 @@ function keyOf(game) {
 
 // 選んだ対局の鍵を持っていれば、その席で対局する（席は固定）。無ければ観戦
 function applySeatMode() {
-  const k = config.play && ui.game ? keyOf(ui.game) : null;
+  // 再生・観戦（#/view）では、自分の席でも対局が終わっていれば操作しない（どの視点でも見られる）
+  const k = config.play && ui.game && !(viewing && viewing.finished) ? keyOf(ui.game) : null;
   ui.play = k ? { seat: k.seat } : null;
   source.setKey(k ? { game: ui.game, seat: k.seat, token: k.token } : null);
   for (const name of ["card", "drop", "mana", "stack", "player", "pile", "after", "preview", "retarget"]) delete hooks[name];
@@ -183,6 +186,34 @@ async function siteSetup() {
         `${location.origin}/#recover=${t}`);
     } catch (e) { showError(e); }
   };
+}
+
+// 再生・観戦: 見られる視点（サーバーの access）を席の選択に出し、その対局を開く。共有の鍵は読み取りに付ける
+async function openView(game, share) {
+  const a = await source.access(game, share);
+  viewing = { game, share, finished: a.finished, views: a.views };
+  source.setViewing({ game, share });
+  const sel = $("game");
+  if (![...sel.options].some((o) => o.value === game)) {
+    const o = el("option", null, `${game}（${a.finished ? "再生" : "観戦"}）`);
+    o.value = game;
+    sel.append(o);
+  }
+  $("seat").replaceChildren(...a.views.map((v) => { const o = el("option", null, VIEW_LABEL(v)); o.value = v; return o; }));
+  ui.game = game;
+  sel.value = game;
+  ui.seat = a.views.includes(ui.seat) ? ui.seat : a.views[0];
+  ui.live = true;
+  changeSelection();
+  $("seat").value = ui.seat;
+}
+
+async function closeView() {
+  viewing = null;
+  source.setViewing(null);
+  $("seat").replaceChildren(...["p1", "p2"].map((v) => { const o = el("option", null, v); o.value = v; return o; }));
+  await loadGames();
+  changeSelection();
 }
 
 // 作った・着いた対局を開く（一覧を取り直し、その対局のその席で）
@@ -392,11 +423,13 @@ document.addEventListener("keydown", (e) => {
     applySeatMode();
     if (site) {  // 対局が無ければトップから
       const route = routeOf(location.hash) || { page: gameList.length ? "games" : "top", args: [] };
-      window.addEventListener("hashchange", () => {
-        const r = routeOf(location.hash) || { page: "games", args: [] };
-        site.show(r.page, r.args).catch(showError);
-      });
-      await site.show(route.page, route.args);
+      const go = async (r) => {
+        if (r.page === "view") await openView(r.args[0], r.args[1] || null);
+        else if (viewing) await closeView();
+        await site.show(r.page, r.args);
+      };
+      window.addEventListener("hashchange", () => go(routeOf(location.hash) || { page: "games", args: [] }).catch(showError));
+      await go(route);
     }
     await load();
     listen();

@@ -748,7 +748,7 @@ table.decks .dops { white-space: nowrap; text-align: right; }
   table.decks th:nth-child(4), table.decks td:nth-child(4) { display: none; }
 }
 .replay[hidden], .layout[hidden], .page[hidden], .sitenav[hidden], .bar label[hidden] { display: none; }
-.bar .offpage { display: none; }
+.offpage { display: none !important; }  /* 盤面の画面でだけ出す部品（トップ・デッキ・履歴などでは隠す） */
 .urlbox { display: flex; gap: 6px; margin: 6px 0; }
 .urlbox input { flex: 1; min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
   border-radius: 6px; padding: 4px 8px; }

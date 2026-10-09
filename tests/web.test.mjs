@@ -348,3 +348,17 @@ test("invite links and routes", async () => {
   assert.equal(inviteState({ game: null, expired: true }), "期限切れ");
   assert.equal(inviteState({ game: null, expired: false }), "相手待ち");
 });
+
+test("history helpers: view links, matchups and the view route", async () => {
+  const { viewURL, matchup, when, RESULT } = await import("../mtgtable/web/history.js");
+  const { routeOf, BOARD_PAGES } = await import("../mtgtable/web/site.js");
+  const url = viewURL("https://mtg.example", "g1", "s/k");
+  assert.equal(url, "https://mtg.example/#/view/g1/s%2Fk");
+  assert.deepEqual(routeOf(new URL(url).hash), { page: "view", args: ["g1", "s/k"] });
+  assert.deepEqual(routeOf("#/view/g1"), { page: "view", args: ["g1"] });
+  assert.equal(viewURL("https://mtg.example", "g1"), "https://mtg.example/#/view/g1");
+  assert.ok(BOARD_PAGES.includes("view") && BOARD_PAGES.includes("games"));
+  assert.equal(matchup([{ id: "p1", name: "green" }, { id: "p2", name: "piza" }]), "green（p1） 対 piza（p2）");
+  assert.equal(when("2026-10-09T16:02:43"), "2026-10-09 16:02");
+  assert.equal(RESULT.won, "勝ち");
+});
