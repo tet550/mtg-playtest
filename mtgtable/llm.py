@@ -236,7 +236,7 @@ def run(store: GameStore, ai: Optional[list] = None, watch: bool = False, max_fa
     """審判と AI の席を、人間の番になるまで（watch なら決着まで、人間の操作を待ちながら）回す。止まった理由を返す。
     watch では、server（serve の URL）の更新通知で待つ。つながらなければ interval 秒ごとに見る。"""
     failures, escalated = 0, set()  # escalated: 審判に回した後、まだ一度も返答が通っていない席
-    changes =Changes(store.root.name, server, interval, report=report) if watch else None
+    changes = Changes(store.name, server, interval, report=report) if watch else None
     while True:
         out = step(store, ai)
         if out is None:

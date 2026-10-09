@@ -7,8 +7,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, llm, play, prompt  # noqa: E402
-from helpers import game  # noqa: E402
+from mtgtable import llm, play, prompt  # noqa: E402
+from helpers import game, store  # noqa: E402
 
 
 def answer(batch, memo=None):
@@ -21,7 +21,7 @@ def answer(batch, memo=None):
 class PromptTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
 
     def tearDown(self):
@@ -91,7 +91,7 @@ class JudgeFlowTest(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
 
     def tearDown(self):

@@ -1,10 +1,34 @@
-"""テストの共通部品: 小さなデッキ2つで対局を作る・Act を適用して成功を確かめる・カードを探す。"""
+"""テストの共通部品: 小さなデッキ2つで対局を作る・Act を適用して成功を確かめる・カードを探す・保存先を開く。
+
+保存先は環境変数 MTGTABLE_TEST_STORE で選ぶ（file: 対局フォルダ（既定）/ sqlite: SQLite）。CI は両方で回す。"""
+import os
 import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import Engine, new_game, parse_decklist  # noqa: E402
+from mtgtable import Engine, GameStore, new_game, parse_decklist  # noqa: E402
+
+STORE = os.environ.get("MTGTABLE_TEST_STORE", "file")
+
+
+def db_path(tmp):
+    return pathlib.Path(tmp) / "mtg.sqlite" if STORE == "sqlite" else None
+
+
+def store(tmp, name="g"):
+    """tmp の下の対局 name（まだ作らない）。"""
+    if STORE == "sqlite":
+        from mtgtable.sqlstore import SqliteGameStore
+        return SqliteGameStore(db_path(tmp), name)
+    return GameStore(pathlib.Path(tmp) / name)
+
+
+def viewer(tmp, **kw):
+    """tmp の下の対局を見る Viewer（store と同じ保存先）。"""
+    from mtgtable.web import Viewer
+    return Viewer(tmp, db=db_path(tmp), **kw)
+
 
 DECK_A = """# a
 Deck

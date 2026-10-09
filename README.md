@@ -17,7 +17,8 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/operations.py` | Operation（卓上の基本操作）とカード参照 | 19節 |
 | `mtgtable/engine.py` | Act・Batch・Precondition | 20〜23節 |
 | `mtgtable/procedures.py` | 手順（複数の Act の並びの省略: `turn_start` `turn_end`） | 20節 |
-| `mtgtable/store.py` | Operation Log・Undo/Redo・Replay・Snapshot(fork)・State Diff | 29節 |
+| `mtgtable/store.py` | Operation Log・Undo/Redo・Replay・Snapshot(fork)・State Diff。保存先は対局フォルダ（既定） | 29節 |
+| `mtgtable/sqlstore.py` | 同じ保存の SQLite 版（`--db`。サーバー用） | 29節 |
 | `mtgtable/setup.py` | デッキリスト読み込みと初期状態 | — |
 | `mtgtable/carddb.py` | Rule Reference（Scryfall のオラクルをローカルにキャッシュ） | 28節 |
 | `mtgtable/render.py` | PlayerView のテキスト表示 | 24節（表示とモデルの分離） |
@@ -84,6 +85,24 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 オブジェクトの id には必ず `#` が付く（`#c12` カード、`#t3` トークン、`#s4` スタック、`#n2` Note、
 `#l5` Link、`#m1` マナ）。入力では `#` を省いてもよい。Player（`p1`）と領域名（`p1.hand`）は `#` なし。
 
+### 対局を SQLite の DB に置く
+
+既定では対局は1つのフォルダ（`playtest/g1` など）。`--db`（か環境変数 `MTGTABLE_DB`）を付けると、対局を SQLite の
+DB に置く（サーバーで動かすときの形。[design/site_plan.md](design/site_plan.md) のフェーズ 1）。コマンドの使い方は同じで、
+GAME はパスの最後の名前を対局の id にする（`playtest/g1` → `g1`）。
+
+```bash
+export MTGTABLE_DB=data/mtg.sqlite   # PowerShell: $env:MTGTABLE_DB = 'data/mtg.sqlite'
+python -m mtgtable new g1 --deck p1=decklists/piza.txt --deck p2=decklists/jund-sacrifice.txt --seed 1
+python -m mtgtable serve --play          # DB の対局を見る・遊ぶ
+python -m mtgtable db-import playtest/g1 # 今の対局フォルダを DB へ移す（席の鍵・止める場所・プロンプトも）
+```
+
+- DB に入るのは初期状態・log・現在状態・席の鍵・席ごとの止める場所。AI のプロンプトと返答（作業ファイル）は
+  DB の隣の `data/mtg-files/<対局>/prompts/` に置く
+- 書き込みは DB 全体で1人ずつ（`BEGIN IMMEDIATE`）。読み手は止まらない（WAL）。サーバーと CLI（`auto` など）が同時に書いても壊さない
+- 環境変数: `MTGTABLE_DB`（DB の場所）、`OPENAI_API_KEY`（AI のキー。[secrets/README.md](secrets/README.md)）
+
 その他のコマンド:
 
 | コマンド | 内容 |
@@ -92,6 +111,7 @@ python -m mtgtable apply playtest/g1 batch.json --as p1 --view
 | `export DEST [--game ID ...]` | 観戦ビューアを静的サイトに書き出す（GitHub Pages など用。judge の席だけ。カードの画像・文・マナ・シンボルはサイトに含めず、見る人のブラウザが Scryfall から取る） |
 | `serve [--port 8765]` | 観戦ビューアを起動し、http://127.0.0.1:8765/ で `playtest/` の対局を見る（席ごとの view、log の再生、AI が書いた変更を自動で反映、カード画像）。`--offline` で画像を取りに行かない。`--play` で GUI の対局も受ける（下の「GUI で AI と対戦する」） |
 | `invite GAME --seat p1` | GUI で席を持つための鍵付き URL を作る |
+| `db-import GAME...` | 対局フォルダを `--db` の DB へ移す（`--force` で置き換え） |
 | `wait GAME --as p2` | 相手（GUI の人間）が書いて自分の番が来るまで待つ（AI 用）。`--prompt` で番が来たらプロンプトも書き出す |
 | `next GAME --ai p2` | 審判か AI の席の番まで待ち、そのプロンプトを `playtest/<対局>/prompts/` に書き出す |
 | `prompt GAME --as p2` / `--judge` | プロンプトを今すぐ書き出す |
@@ -281,7 +301,7 @@ Replay は初期状態に `steps` だけを適用し直す。乱数（シャッ�
 
 ## 未実装（今後）
 
-- GUI の対局のサーバー運用（HTTPS・DB・AI の HTTP 接続。今はローカルの1台だけ）。Human vs Human の画面は未確認
+- GUI の対局のサーバー運用（HTTPS・利用者の識別・AI をサーバーで回す。今はローカルの1台だけ）。Human vs Human の画面は未確認
 - Judge / Orchestrator の自動進行（27節）。現状は `--as judge` での手動操作だけ
 - 旧実装にあった対局記録の集計・ベンチマーク・Goldfish の統計
 
@@ -289,6 +309,7 @@ Replay は初期状態に `steps` だけを適用し直す。乱数（シャッ�
 
 ```bash
 python -m unittest discover -s tests
+MTGTABLE_TEST_STORE=sqlite python -m unittest discover -s tests   # 同じテストを SQLite の保存先で（CI は両方）
 ```
 
 Web の通信・時系列復元のテスト（開発時のみ Node.js 24 が必要）:
@@ -299,7 +320,7 @@ node --test tests/web.test.mjs
 
 | ファイル | 対象 |
 |---|---|
-| `helpers.py` | 共通部品（小さなデッキ2つの対局、`ok` など） |
+| `helpers.py` | 共通部品（小さなデッキ2つの対局、`ok`、保存先を開く `store` / `viewer` など） |
 | `test_setup.py` | デッキリスト・初期状態 |
 | `test_info.py` | 公開範囲・記憶・Player View・表示 |
 | `test_operations.py` | 基本の Operation（カード・Link・トークン・スタック・戦闘・マナ・ライブラリー・ログの文字列） |
@@ -307,6 +328,7 @@ node --test tests/web.test.mjs
 | `test_turn.py` | ターン・ステップ・ゲーム前・宣言・優先権のパス |
 | `test_batch.py` | Act・Batch・エイリアス・Act ごとの actor・代理の宣言 |
 | `test_store.py` | Operation Log・Undo/Redo・Replay・Diff・Fork |
+| `test_sqlstore.py` | SQLite の保存先: 対局フォルダからの移行・一覧の要約（終わった日時）・ロールバック・同時の書き込み・CLI の `--db` |
 | `test_carddb.py` | オラクルのキャッシュ |
 | `test_web.py` | 観戦ビューアのサーバー（席ごとの view・log・静的ファイル）と GUI の対局の API（席の鍵・依頼・宣言・回答だけの書き込み・409） |
 | `test_play.py` | 待たれている Player・`wait`・書き込みの排他・席の鍵 |

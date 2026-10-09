@@ -6,8 +6,8 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, OperationError  # noqa: E402
-from helpers import find, game, hand, ok  # noqa: E402
+from mtgtable import OperationError  # noqa: E402
+from helpers import find, game, hand, ok, store  # noqa: E402
 
 
 class ActAndBatchTest(unittest.TestCase):
@@ -64,7 +64,7 @@ class ActAndBatchTest(unittest.TestCase):
 class AliasTest(unittest.TestCase):
     def test_alias_spans_batch_and_replays(self):
         with tempfile.TemporaryDirectory() as tmp:
-            st = GameStore(pathlib.Path(tmp) / "g")
+            st = store(tmp, "g")
             st.create(game().state)
             r = st.apply({"actor": "p1", "acts": [
                 {"act": [{"op": "create", "name": "Clue", "as": "clue"}]},

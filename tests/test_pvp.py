@@ -11,18 +11,18 @@ from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, play, prompt  # noqa: E402
-from mtgtable.web import Handler, Viewer  # noqa: E402
-from helpers import game  # noqa: E402
+from mtgtable import play, prompt  # noqa: E402
+from mtgtable.web import Handler  # noqa: E402
+from helpers import game, store, viewer  # noqa: E402
 
 
 class TwoHumansTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
         self.keys = {p: play.invite(self.st, p) for p in ("p1", "p2")}
-        handler = type("PlayHandler", (Handler,), {"viewer": Viewer(self.tmp.name, offline=True, play=True)})
+        handler = type("PlayHandler", (Handler,), {"viewer": viewer(self.tmp.name, offline=True, play=True)})
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         self.httpd.daemon_threads = True
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()

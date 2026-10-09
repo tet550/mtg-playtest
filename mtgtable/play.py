@@ -4,7 +4,7 @@
 審判への依頼・回答と、盤面を変えない宣言だけで、盤面は審判が動かす（request_play_design）。
 書き込みの排他は GameStore（.lock と expect）が受け持ち、ここでは次の4つを持つ:
 
-- 席の鍵: `invite` が席ごとの鍵を作り、対局フォルダの seats.json にはハッシュだけを置く。
+- 席の鍵: `invite` が席ごとの鍵を作り、保存先（対局フォルダの seats.json か DB）にはハッシュだけを置く。
   サーバーは鍵を持つ人にだけ、その席としての書き込みを許す（席を名乗るだけでは書けない）
 - 待たれている Player（waiting_on）: 優先権・スタック・ステップから「今、誰が動く番か」を決める。
   GUI の表示と `wait` の両方がこれを使う。エンジンの優先権の記録（pass）と同じ約束事で、ルールの判定はしない
@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import secrets
 import time
@@ -22,7 +21,7 @@ from typing import Optional
 
 from . import carddb, info
 from .model import GameState
-from .store import GameStore, _dump
+from .store import GameStore
 
 
 # ---------------------------------------------------------------- 席の鍵
@@ -31,13 +30,8 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _seats_path(store: GameStore):
-    return store.root / "seats.json"
-
-
 def seats(store: GameStore) -> dict:
-    p = _seats_path(store)
-    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    return store.read_doc("seats") or {}
 
 
 def invite(store: GameStore, seat: str) -> str:
@@ -49,7 +43,7 @@ def invite(store: GameStore, seat: str) -> str:
     with store.lock():
         data = seats(store)
         data[seat] = {"token_sha256": _hash(token)}
-        _dump(_seats_path(store), data)
+        store.write_doc("seats", data)
     return token
 
 
@@ -209,13 +203,12 @@ def autopass(store: GameStore, limit: int = 20) -> list:
     return done
 
 
-def _private_path(store: GameStore, seat: str):
-    return store.root / "private" / ("%s.json" % seat)
+def _private_doc(seat: str) -> str:
+    return "private/%s" % seat
 
 
 def get_stops(store: GameStore, seat: str) -> list:
-    p = _private_path(store, seat)
-    return list(json.loads(p.read_text(encoding="utf-8")).get("stops", [])) if p.exists() else []
+    return list((store.read_doc(_private_doc(seat)) or {}).get("stops", []))
 
 
 def check_stops(codes) -> list:
@@ -228,11 +221,9 @@ def check_stops(codes) -> list:
 
 def set_stops(store: GameStore, seat: str, codes) -> list:
     codes = check_stops(codes)
-    p = _private_path(store, seat)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    data = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    data = store.read_doc(_private_doc(seat)) or {}
     data["stops"] = codes
-    _dump(p, data)
+    store.write_doc(_private_doc(seat), data)
     return codes
 
 

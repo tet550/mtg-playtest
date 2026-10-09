@@ -10,15 +10,15 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, carddb, info, play, prompt  # noqa: E402
+from mtgtable import carddb, info, play, prompt  # noqa: E402
 from mtgtable.store import StaleCursor  # noqa: E402
-from helpers import game  # noqa: E402
+from helpers import game, store  # noqa: E402
 
 
 class PlayTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
 
     def tearDown(self):
@@ -396,18 +396,28 @@ class PlayTest(unittest.TestCase):
             self.apply("p2", [{"op": "declare", "kind": "keep"}], expect=0)
         with self.assertRaises(StaleCursor):
             self.st.undo(1, expect=0)
-        with self.st.lock():
-            with self.assertRaises(TimeoutError):
+        errors = []
+
+        def other_writer():  # 別の書き手（別のスレッド・プロセス）は、書き終わるまで待たされる
+            try:
                 with self.st.lock(timeout=0.1):
                     pass
-        self.assertFalse(self.st.lock_path.exists())
+            except TimeoutError as e:
+                errors.append(e)
+        with self.st.lock():
+            t = threading.Thread(target=other_writer)
+            t.start()
+            t.join()
+        self.assertEqual(len(errors), 1)
+        with self.st.lock(timeout=0.1):  # 書き終われば取れる
+            pass
 
     def test_seat_keys_are_stored_as_hashes(self):
         token = play.invite(self.st, "p1")
         self.assertTrue(play.check_token(self.st, "p1", token))
         self.assertFalse(play.check_token(self.st, "p2", token))
         self.assertFalse(play.check_token(self.st, "p1", None))
-        self.assertNotIn(token, (self.st.root / "seats.json").read_text(encoding="utf-8"))
+        self.assertNotIn(token, json.dumps(self.st.read_doc("seats")))
         again = play.invite(self.st, "p1")
         self.assertFalse(play.check_token(self.st, "p1", token))  # 作り直すと前の鍵は使えない
         self.assertTrue(play.check_token(self.st, "p1", again))

@@ -112,8 +112,8 @@ AI（p2・Claude Code）── CLI apply ／ wait ──────────
 
 | 項目 | 今 | サーバーでは |
 |---|---|---|
-| 正本の保存 | 対局フォルダ（JSON・JSONL）。`GameStore` だけが読み書き | `GameStore` の実装を DB / オブジェクト・ストレージに差し替える（apply・undo・cursor・read_log・lock の形は保つ） |
-| 排他 | `.lock` ファイル（同じファイル・システム） | DB のトランザクションか行ロック。`expect` はそのまま（409 の約束事は API に残す） |
+| 正本の保存 | 対局フォルダ（JSON・JSONL。`store.GameStore`）か SQLite（`sqlstore.SqliteGameStore`、`--db`）。共通の処理は `BaseStore` | 済み（SQLite）。台数を増やすなら同じ形で PostgreSQL などを足す |
+| 排他 | `.lock` ファイル（対局フォルダ）か `BEGIN IMMEDIATE`（SQLite。DB 全体で書き手1人） | 済み。`expect` はそのまま（409 の約束事は API に残す） |
 | 更新の通知 | SSE が 0.5 秒ごとに mtime を見る | 書いた側が通知を出す（ai_play_and_log_design 6.4 の act_begin / act_end）。席ごとに公開範囲で絞った event を流す |
 | AI の接続 | `auto`（OpenAI の API）か、プロンプトを書き出して人がモデルに渡す（下の「AI の席のプロンプト」） | `auto` の回し方をサーバーのワーカーに移す（審判か AI の席が待たれたら呼ぶ）。審判（judge）の API は別の鍵 |
 | 認証 | 席ごとの鍵（ベアラー・トークン）。HTTP のまま | HTTPS 必須。鍵の有効期限・失効、対局の作成・招待の API。`--host` で外に出すのはそれまで行わない |

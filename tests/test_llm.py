@@ -10,8 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import GameStore, llm, play  # noqa: E402
-from helpers import game  # noqa: E402
+from mtgtable import llm, play  # noqa: E402
+from helpers import game, store  # noqa: E402
 
 
 class FakeOpenAI(BaseHTTPRequestHandler):
@@ -49,7 +49,7 @@ class FakeOpenAI(BaseHTTPRequestHandler):
 class LLMTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.st = GameStore(pathlib.Path(self.tmp.name) / "g")
+        self.st = store(self.tmp.name, "g")
         self.st.create(game().state)
         play.invite(self.st, "p1")  # p1 は GUI の人間、p2 は AI
         FakeOpenAI.requests, FakeOpenAI.fail_next = [], 0

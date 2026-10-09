@@ -2,11 +2,12 @@
 
 `python -m mtgtable serve [--root playtest] [--port 8765] [--play]` で起動し、http://127.0.0.1:8765/ を開く。
 対局フォルダ（initial.json・log.jsonl・state.json）が正本で、AI が CLI で書いた変更も SSE で画面に届く。
+`--db data/mtg.sqlite`（か環境変数 MTGTABLE_DB）なら、対局フォルダの代わりに SQLite の DB から読む（sqlstore）。
 
 席（seat）ごとに、その Player が知り得る情報だけを返す（info.player_view）。log は AI のラベルに非公開の
 情報が入りうるので、全知の judge の席にだけ返す。画面上の配置・選択などは画面の側だけで持つ（25節）。
 
-`--play` では、`invite` で鍵を作った対局（seats.json がある対局）を席の鍵で守る: 読むのも書くのも、
+`--play` では、`invite` で鍵を作った対局（席の鍵がある対局）を席の鍵で守る: 読むのも書くのも、
 鍵を持つ席だけ（judge の席・他の席は見せない）。席が書けるのは依頼（request）・宣言（declare）・回答（answer）
 だけで、卓の op は書けない（盤面は審判が動かす。play.seat_batch）。見ていた cursor（expect）と違えば 409 で断る
 （CLI の AI・審判と同時に書いても、古い盤面のまま書かない）。
@@ -25,7 +26,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
-from .store import GameStore, StaleCursor
+from .sqlstore import SqliteGames
+from .store import BaseStore, FileGames, StaleCursor
 
 STATIC = pathlib.Path(__file__).with_name("web")
 _TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -67,10 +69,10 @@ def view_diff(a, b, path=()) -> list:
 
 
 class Viewer:
-    """対局フォルダの読み取りと、途中の時点の状態のキャッシュ。"""
+    """対局の読み取りと、途中の時点の状態のキャッシュ。対局は root（対局フォルダの親）か db（SQLite）から開く。"""
 
-    def __init__(self, root, offline: bool = False, play: bool = False):
-        self.root = pathlib.Path(root)
+    def __init__(self, root, offline: bool = False, play: bool = False, db=None):
+        self.source = SqliteGames(db) if db else FileGames(root)
         self.offline = offline
         self.play = play  # 席の操作（書き込み）を受けるか
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
@@ -88,30 +90,26 @@ class Viewer:
         with self._changed:
             self._changed.wait(timeout)
 
-    def store(self, game: str) -> GameStore:
-        st = GameStore(self.root / game)
-        if "/" in game or "\\" in game or game.startswith(".") or not st.exists():
+    def store(self, game: str) -> BaseStore:
+        st = self.source.open(game)
+        if not st.exists():
             raise LookupError("unknown game %r" % game)
         return st
 
     def games(self) -> list:
         out = []
-        for d in sorted(self.root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
-            st = GameStore(d)
-            if not d.is_dir() or not st.exists() or not st.state_path.exists():
-                continue
-            s = st.load()
-            out.append({"id": d.name, "version": s.version, "turn": s.turn.turn,
-                        "players": [{"id": p, "name": s.players[p].name, "status": s.players[p].status}
-                                    for p in s.player_order],
+        for gid in self.source.ids():
+            st = self.source.open(gid)
+            g = st.summary()
+            out.append({"id": gid, "version": g["version"], "turn": g["turn"], "players": g["players"],
                         "seats": sorted(play.seats(st)) if self.play else []})
         return out
 
-    def guarded(self, st: GameStore) -> bool:
+    def guarded(self, st: BaseStore) -> bool:
         """席の鍵で守る対局か（--play で、invite した対局）。"""
         return self.play and bool(play.seats(st))
 
-    def authorize(self, game: str, seat: Optional[str], token: Optional[str], write: bool = False) -> GameStore:
+    def authorize(self, game: str, seat: Optional[str], token: Optional[str], write: bool = False) -> BaseStore:
         """seat として読む・書くことを許すか。書くには --play と、その席の鍵が要る。"""
         st = self.store(game)
         if write and not self.play:
@@ -147,10 +145,10 @@ class Viewer:
         return {"stops": play.set_stops(st, seat, body.get("stops"))}
 
     @staticmethod
-    def stamp(st: GameStore) -> tuple:
-        return tuple(p.stat().st_mtime_ns if p.exists() else 0 for p in (st.state_path, st.log_path))
+    def stamp(st: BaseStore) -> tuple:
+        return st.stamp()
 
-    def state_at(self, st: GameStore, at: Optional[int]):
+    def state_at(self, st: BaseStore, at: Optional[int]):
         cur = st.cursor()
         if at is None or at >= cur:
             return st.load(), cur
@@ -381,7 +379,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                     beat = time.time()
                 self.viewer.wait_change(0.5)
-        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+        except (OSError, LookupError):  # 切断（BrokenPipe など）・対局が消えた
             pass
 
 
@@ -399,13 +397,13 @@ def _card_names(value, out: set) -> None:
             _card_names(v, out)
 
 
-def export_site(root, dest, games=None, offline: bool = False) -> list:
+def export_site(root, dest, games=None, offline: bool = False, db=None) -> list:
     """観戦ビューアを静的サイトとして書き出す（GitHub Pages などに置く用）。judge の席だけ。
 
     dest/index.html・static/・data/games.json・data/<対局>/{timeline,log}.json・data/cards.json を作る。
     カードの画像・文（オラクル）・マナ・シンボルは含めず、見る人のブラウザが Scryfall から取る
     （cards.json は画像の URL だけ）。書き出した対局の一覧を返す。"""
-    viewer = Viewer(root, offline)
+    viewer = Viewer(root, offline, db=db)
     dest = pathlib.Path(dest)
     available = {g["id"]: g for g in viewer.games()}
     ids = games or list(available)
@@ -441,12 +439,12 @@ def export_site(root, dest, games=None, offline: bool = False) -> list:
 
 
 def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False,
-          play: bool = False) -> None:
-    Handler.viewer = Viewer(root, offline, play)
+          play: bool = False, db=None) -> None:
+    Handler.viewer = Viewer(root, offline, play, db=db)
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
-    print("mtgtable %s: http://%s:%d/  (root: %s, Ctrl+C で終了)"
-          % ("play" if play else "viewer", host, port, root))
+    print("mtgtable %s: http://%s:%d/  (%s, Ctrl+C で終了)"
+          % ("play" if play else "viewer", host, port, "db: %s" % db if db else "root: %s" % root))
     if play:
         print("  席の URL は python -m mtgtable invite <対局> --seat p1 --port %d で作る" % port)
     try:
