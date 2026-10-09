@@ -174,7 +174,6 @@ def _card_view(state: GameState, viewer, cid: str, full: bool, names: bool = Tru
 
 
 _LAND = re.compile(r"\bLand\b")
-_TYPE_LINES: dict = {}  # 名前 → カードのキャッシュのタイプ行。キャッシュに無いカードは覚えない（後で取得されうる）
 
 
 def has_land_type(face_type_line: str) -> bool:
@@ -182,27 +181,10 @@ def has_land_type(face_type_line: str) -> bool:
     return bool(_LAND.search(face_type_line.split("—")[0]))
 
 
-def type_line_of(c) -> str:
-    """カードの印刷されたタイプ行。カードに無ければ（オラクルを取れないまま始めた対局・定義だけのカードなど）、
-    カードのキャッシュから引く（両面は面を // でつなぐ）。分からなければ ""。"""
-    if c.type_line:
-        return c.type_line
-    if not c.name:
-        return ""
-    if c.name not in _TYPE_LINES:
-        from . import carddb
-        rec = carddb.lookup(c.name, offline=True)
-        if not rec:
-            return ""
-        faces = rec.get("faces") or [rec]
-        _TYPE_LINES[c.name] = " // ".join(f.get("type_line") or "" for f in faces) or rec.get("type_line") or ""
-    return _TYPE_LINES[c.name]
-
-
 def is_land(c) -> bool:
     """上を向いている面が土地か（表示の並べ替え用。ルールの判断はしない）。
     変身する両面カードの表（Ojer Axonil など）はクリーチャー、裏返した Temple of Power は土地。"""
-    faces = type_line_of(c).split("//")
+    faces = c.type_line.split("//")
     face = faces[c.face] if 0 <= c.face < len(faces) else faces[0]
     return has_land_type(face)
 
