@@ -41,9 +41,20 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
 
   function renderTop(root) {
     const mine = games();
-    root.replaceChildren(
-      el("h2", null, "mtgtable"),
-      el("p", null, "紙の Magic: The Gathering を、ブラウザの卓で AI か招待した人と遊ぶ場所です。カードの処理は AI の審判が行います。"));
+    const link = (cls, text, href) => {
+      const a = el("a", cls, text);
+      a.href = href;
+      return a;
+    };
+    const cta = el("div", "cta");
+    cta.append(mine.length ? link("primary", "対局へ", "#/games") : link("primary", "デッキを登録する", "#/decks"),
+      link(null, "対局を作る", "#/new"), link(null, "公開の対局を見る", "#/public"));
+    const hero = el("div", "hero");
+    hero.append(
+      el("h2", null, "ブラウザの卓で、紙の MTG を"),
+      el("p", null, "紙の Magic: The Gathering を、ブラウザの卓で AI か招待した人と遊ぶ場所です。カードの処理は AI の審判が行います。"),
+      cta);
+    root.replaceChildren(hero);
     const steps = el("ol", "steps");
     const item = (text, href, link) => {
       const li = el("li", null, text);
@@ -72,7 +83,7 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
     for (const sel of [".replay", "main.layout"]) document.querySelector(sel).hidden = !board;
     // 盤面にしか効かないヘッダーの部品（対局・席・画像・動き・接続・Log など）は、盤面のときだけ
     for (const id of ["game", "seat", "images", "motion"]) $(id).closest("label").hidden = !board;
-    for (const id of ["conn", "logToggle", "turn", "playing", "fl-play"]) $(id).classList.toggle("offpage", !board);
+    for (const id of ["conn", "logToggle", "turn", "thinking", "playing", "fl-play"]) $(id).classList.toggle("offpage", !board);
     const root = $("page");
     root.hidden = board;
     root.classList.remove("legal");

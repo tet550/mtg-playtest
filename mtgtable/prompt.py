@@ -234,7 +234,7 @@ def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode:
     return "\n".join(out) + "\n"
 
 
-STOP_JA = {"spell": "呪文・能力を積んだとき", "attack": "攻撃したとき"}
+STOP_JA = {"spell": "呪文・能力を積んだとき", "attack": "攻撃したとき", "target": "自分のパーマネントを対象にとったとき"}
 
 
 def _stops_text(store: GameStore, pid: str) -> str:

@@ -2,7 +2,7 @@
 // 土地を出す・唱える・攻撃する・1 枚引く…は、ブラウザの中の下書き（依頼の行）に足すだけで、送るまで盤面は変わらない。
 // 「審判に依頼」で下書きを1つの依頼として審判に送り（「その後」は下書きの最後の行で決まる）、審判がルールに沿って卓に書く。
 // 引く・見るなど隠れた情報の行は、手札・束に「？」の予定を出すだけ（中身は審判の処理の後に、席の view として届く）。
-import { $, el } from "./dom.js";
+import { $, dots, el } from "./dom.js";
 
 // ---------------------------------------------------------------- 純粋な部品（node のテストでも使う）
 
@@ -23,8 +23,8 @@ export const STOP_SHORT = {
 };
 const STOP_GROUPS = [{ label: "開始", n: 2 }, { label: "第1", n: 1 }, { label: "戦闘", n: 4 }, { label: "第2", n: 1 }, { label: "最終", n: 1 }];
 export const STOP_PRESETS = [
-  ["おすすめ", ["own:main1", "own:main2", "opp:declare_blockers", "opp:end", "opp:spell", "opp:attack"]],
-  ["全部", [...STOP_STEPS.flatMap((s) => ["own:" + s, "opp:" + s]).filter((c) => c !== "own:declare_blockers"), "opp:spell", "opp:attack"]],
+  ["おすすめ", ["own:main1", "own:main2", "opp:declare_blockers", "opp:end", "opp:spell", "opp:attack", "opp:target"]],
+  ["全部", [...STOP_STEPS.flatMap((s) => ["own:" + s, "opp:" + s]).filter((c) => c !== "own:declare_blockers"), "opp:spell", "opp:attack", "opp:target"]],
   ["なし", []],
 ];
 
@@ -377,7 +377,7 @@ export function planMarks(lines) {
 // ---------------------------------------------------------------- 画面の部品
 
 
-// 小さなメニュー。items: [{label, fn, hint?}] と "-"（区切り）
+// 小さなメニュー。items: [{label, fn, hint?, nodes?}] と "-"（区切り）。nodes があれば label の代わりにそれを並べる（マナ・シンボルの画像など）
 function openMenu(ev, title, items) {
   closeMenu();
   const box = $("menu");
@@ -386,7 +386,8 @@ function openMenu(ev, title, items) {
   for (const it of items) {
     if (it === "-") { box.append(el("div", "msep")); continue; }
     if (!it) continue;
-    const b = el("button", "mitem", it.label);
+    const b = el("button", "mitem", it.nodes ? null : it.label);
+    if (it.nodes) { b.append(...it.nodes); b.setAttribute("aria-label", it.label); }
     if (it.hint) b.title = it.hint;
     b.onclick = () => { closeMenu(); it.fn(); };
     box.append(b);
@@ -475,7 +476,7 @@ export function toast(text, error) {
 
 // ---------------------------------------------------------------- 操作
 
-export function createPlay(ui, { source, reload, showCard, toggleOpen, render }) {
+export function createPlay(ui, { source, reload, showCard, toggleOpen, render, manaNodes }) {
   let compose = null;  // 組み立て中の行（唱える・起動・対象を選ぶ）
   let pick = null;     // 次のクリックで選ぶもの（ブロック先の攻撃クリーチャーなど）
   let blocker = null;  // ブロックを決める所で選んだ自分のクリーチャー（次に押した攻撃クリーチャーをブロックする）
@@ -834,7 +835,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
         // Note に書いたマナ能力: 出すマナを選んでタップする（条件は文に残し、満たすかは審判が見る）
         if (!c.tapped) {
           for (const { mana, cond } of manaChoices(c.notes)) {
-            items.push({ label: `タップして ${mana} を出す${cond ? `（${cond}）` : ""}`,
+            const label = `タップして ${mana} を出す${cond ? `（${cond}）` : ""}`;
+            items.push({ label, nodes: manaNodes(label),
               fn: () => other(`${ref(id)} をタップする（${mana} を出す${cond ? `。${cond}` : ""}）`, [id]) });
           }
         }
@@ -1327,7 +1329,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     const draw = () => {
       const toggle = (code) => { draft.has(code) ? draft.delete(code) : draft.add(code); draw(); };
       const events = el("div", "sgevents");
-      for (const [code, label] of [["opp:spell", "相手が呪文・能力を積んだとき"], ["opp:attack", "相手が攻撃したとき"]]) {
+      for (const [code, label] of [["opp:spell", "相手が呪文・能力を積んだとき"], ["opp:attack", "相手が攻撃したとき"],
+        ["opp:target", "自分のパーマネントが対象にとられたとき"]]) {
         const b = el("button", "sgevent" + (draft.has(code) ? " on" : ""), label);
         b.type = "button";
         b.setAttribute("aria-pressed", String(draft.has(code)));
@@ -1387,7 +1390,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     box.title = locked() ? "審判の処理が済んでから変える" : "止める場所を変える（相手には見えない）";
     box.disabled = locked();
     box.onclick = editStops;
-    const ev = [stops.has("opp:spell") && "呪文", stops.has("opp:attack") && "攻撃"].filter(Boolean);
+    const ev = [stops.has("opp:spell") && "呪文", stops.has("opp:attack") && "攻撃", stops.has("opp:target") && "対象"].filter(Boolean);
     box.append(el("div", "sslabel", `止める場所 ${stops.size ? `${stops.size} か所` : "なし"}${ev.length ? `・相手の${ev.join("/")}` : ""}`),
       stopGrid(stops, { compact: true }));
     return box;
@@ -1456,11 +1459,13 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render })
     if (sent && !mySent && ui.cursor > sentFrom) sent = null;
     const body = $("playbody");
     const wait = t.waiting_on;
-    const status = el("div", "pstatus" + (wait === seat ? " mine" : ""));
+    const waiting = ui.live && (busy || (!!wait && wait !== seat && !(ui.ai && ui.ai.status === "suspended")));
+    const status = el("div", "pstatus" + (wait === seat ? " mine" : "") + (waiting ? " waiting" : ""));
     status.textContent = !ui.live ? (ui.playing ? "再生中…（最後まで進むと操作できる。Live で今すぐ最新へ）" : "過去の盤面を表示中（Live で操作）")
       : busy ? "送信中…"
         : wait === seat ? "あなたの番" + (myAsk(v, seat) ? "（審判の質問）" : t.priority === seat ? "（優先権）" : "")
           : wait === "judge" ? "審判を待っています（処理が済むまで操作できない）" : wait ? `${wait} を待っています` : "決着";
+    if (waiting) status.append(dots());
     $("playTitle").textContent = `${seat} として操作`;
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };

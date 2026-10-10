@@ -25,10 +25,18 @@
   <label><input id="images" type="checkbox" checked> 画像</label>
   <label title="タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）"><input id="motion" type="checkbox" checked> 動き</label>
   <span id="turn" class="turn"></span>
+  <span id="thinking" class="thinking" hidden></span>
   <span id="playing" class="chip strong playing" hidden></span>
   <span id="conn" class="conn" title="更新の受信状態"></span>
   <button id="recovery" title="別の端末で同じ対局を見るための URL を作る" hidden>復元 URL</button>
   <button id="logToggle" title="Log を開く・閉じる（L キー）">Log</button>
+  <div class="more">
+    <button id="moreBtn" title="その他" aria-haspopup="menu" aria-expanded="false">⋯</button>
+    <div id="moreMenu" class="moremenu" role="menu" hidden>
+      <button type="button" role="menuitem" data-open="credits">権利の表記</button>
+      <span id="legallinks" hidden><a role="menuitem" href="#/terms">利用規約</a><a role="menuitem" href="#/privacy">プライバシー</a></span>
+    </div>
+  </div>
 </header>
 
 <div class="replay">
@@ -79,12 +87,14 @@
 <div id="menu" class="menu" hidden></div>
 <dialog id="ask" class="ask"></dialog>
 <div id="toast" class="toast" hidden></div>
-<footer id="sitefooter" class="sitefooter">
+<!-- 権利の表記: ヘッダーの「⋯」から開く -->
+<dialog id="credits" class="credits">
+  <h3>権利の表記</h3>
   <p>mtgtable は Wizards of the Coast の Fan Content Policy に基づく非公式のファンコンテンツです。Wizards of the Coast による承認・支援は受けていません。
   使用している素材の一部は Wizards of the Coast LLC の財産です。©Wizards of the Coast LLC. Magic: The Gathering は Wizards of the Coast LLC の商標です。</p>
-  <p>カードの情報と画像: <a href="https://scryfall.com/" rel="noopener noreferrer" target="_blank">Scryfall</a>（Scryfall とも無関係です）<span id="legallinks" hidden>
-  ・<a href="#/terms">利用規約</a>・<a href="#/privacy">プライバシー</a></span></p>
-</footer>
+  <p>カードの情報と画像: <a href="https://scryfall.com/" rel="noopener noreferrer" target="_blank">Scryfall</a>（Scryfall とも無関係です）</p>
+  <form method="dialog" class="crow"><button class="on">閉じる</button></form>
+</dialog>
 <script type="module" src="static/app.js"></script>
 </body>
 </html>

@@ -4,26 +4,69 @@
     {
       "name": "viewer",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "mtgtable", "serve", "--port", "8765"],
+      "runtimeArgs": [
+        "-m",
+        "mtgtable",
+        "serve",
+        "--port",
+        "8765"
+      ],
       "port": 8765
     },
     {
       "name": "play",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "mtgtable", "serve", "--port", "8766", "--play"],
+      "runtimeArgs": [
+        "-m",
+        "mtgtable",
+        "serve",
+        "--port",
+        "8766",
+        "--play"
+      ],
       "port": 8766
     },
     {
       "name": "export-g1",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8767", "--directory", "playtest/_export-g1"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8767",
+        "--directory",
+        "playtest/_export-g1"
+      ],
       "port": 8767
     },
     {
       "name": "docs",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "8768", "--directory", "docs"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8768",
+        "--directory",
+        "docs"
+      ],
       "port": 8768
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "mtgtable",
+        "--db",
+        "data/site-local.sqlite",
+        "serve",
+        "--site",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8769",
+        "--no-ai"
+      ],
+      "port": 8769
     }
   ]
 }

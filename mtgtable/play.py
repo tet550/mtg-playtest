@@ -85,11 +85,12 @@ REQUEST_KINDS = ("intent", "answer", "mulligan")  # Player → 審判。審判�
 PRIVATE_KINDS = info.PRIVATE_KINDS
 
 # 止める場所（非公開）: "own:upkeep"（自分のターンのアップキープ）/ "opp:end"（相手のターンの終了ステップ）/
-# "opp:spell"（相手が呪文・能力を積んだとき）/ "opp:attack"（相手が攻撃したとき）。卓の外の席のファイルに置き、
+# "opp:spell"（相手が呪文・能力を積んだとき）/ "opp:attack"（相手が攻撃したとき）/
+# "opp:target"（相手の呪文・能力が自分のパーマネントを対象にとったとき）。卓の外の席のファイルに置き、
 # 本人と審判のプロンプトにだけ出す。AI の Player は、対応したい場面（打ち消しを構えるなど）をここで審判に明示する
 STOP_STEPS = ("upkeep", "draw", "main1", "beginning_of_combat", "declare_blockers", "combat_damage",
               "end_of_combat", "main2", "end")
-STOP_EVENTS = ("spell", "attack")
+STOP_EVENTS = ("spell", "attack", "target")
 
 
 def _step_name(t) -> str:
@@ -100,7 +101,7 @@ def needs_player(state: GameState, seat: str, stops: list) -> bool:
     """席 seat（AI・人間とも）が優先権を持つ今、本人に聞く必要があるか（無ければ自動でパスしてよい）。
 
     聞くのは: 自分のターンでスタックが空（自分のプレイ）、自分の呪文・能力が一番上、攻撃されてブロックを決める所、
-    止める場所（own/opp:<ステップ>、opp:spell、opp:attack）に当たる所。それ以外の応答の機会は自動でパスする
+    止める場所（own/opp:<ステップ>、opp:spell、opp:attack、opp:target）に当たる所。それ以外の応答の機会は自動でパスする
     （Player は対応したい場面を止める場所で明示する約束。審判は推測で止めない）。"""
     t = state.turn
     top = state.stack.items[0] if state.stack.items else None
@@ -117,7 +118,18 @@ def needs_player(state: GameState, seat: str, stops: list) -> bool:
         return True
     if not mine and state.combat.attacks and "opp:attack" in stops:
         return True
+    if "opp:target" in stops and targets_mine(state, seat):
+        return True
     return ("own:" if mine else "opp:") + _step_name(t) in stops
+
+
+def targets_mine(state: GameState, seat: str) -> bool:
+    """相手がコントロールするスタックの呪文・能力が、seat のコントロールする戦場のパーマネントを対象にしているか
+    （積むときの targets の Link で判断する。対象を取らない全体除去は opp:spell で止める）。"""
+    theirs = {i.id for i in state.stack.items if i.controller != seat}
+    return any(l.kind == "target" and l.source in theirs and any(
+        t in state.cards and state.cards[t].zone == "battlefield" and state.cards[t].controller == seat
+        for t in l.targets) for l in state.links.values())
 
 
 _MANA_SYMBOL = re.compile(r"\{(?:\d+|[WUBRGCSX](?:/[WUBRGCP])?)\}")

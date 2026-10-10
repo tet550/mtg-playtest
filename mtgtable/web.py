@@ -84,6 +84,9 @@ def view_diff(a, b, path=()) -> list:
     return out
 
 
+VIEW_FORMAT = 2  # 見せる形（player_view）を変えたら上げる。保存した時系列を作り直させる
+
+
 def _saved_timeline(st: BaseStore, seat: Optional[str]):
     """終わった対局の時系列を置くファイル（終わっていなければ None）。変化の印（stamp）を名前に入れるので、
     巻き戻しなどで変われば別のファイルになる。"""
@@ -92,7 +95,7 @@ def _saved_timeline(st: BaseStore, seat: Optional[str]):
             return None
     except (OSError, LookupError, KeyError):
         return None
-    tag = hashlib.sha1(repr(st.stamp()).encode()).hexdigest()[:12]
+    tag = hashlib.sha1(repr((st.stamp(), VIEW_FORMAT)).encode()).hexdigest()[:12]
     return st.root / "cache" / ("timeline-%s-%s.json" % (seat or "judge", tag))
 
 

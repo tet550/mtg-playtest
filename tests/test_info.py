@@ -224,6 +224,25 @@ class SicknessAndLandsTest(unittest.TestCase):
         ok(e, None, {"op": "set", "card": bear, "face": 1})
         self.assertTrue(self._bf(e)[bear]["land"])
 
+    def test_kind_places_permanents_by_card_type(self):
+        e = self._game()
+        bear = find(e, "p1", "hand", "Grizzly Bears")
+        forest = find(e, "p1", "hand", "Forest")
+        growth = find(e, "p1", "hand", "Giant Growth")
+        e.state.cards[growth].type_line = "Artifact Creature — Golem"
+        ok(e, "p1", {"op": "move", "cards": [bear, forest, growth], "to": "battlefield"},
+           {"op": "create", "name": "Lander", "definition": {"type_line": "Token Artifact — Lander"}, "as": "lander"})
+        bf = self._bf(e)
+        lander = next(i for i, c in bf.items() if c.get("name") == "Lander")
+        self.assertEqual(bf[bear]["kind"], "creature")
+        self.assertEqual(bf[growth]["kind"], "creature")  # アーティファクト・クリーチャーはクリーチャーの側
+        self.assertEqual(bf[lander]["kind"], "artifact")
+        self.assertNotIn("kind", bf[forest])
+        for t, kind in (("Legendary Planeswalker — Jace", "planeswalker"), ("Battle — Siege", "battle"),
+                        ("Enchantment — Aura", "enchantment")):
+            e.state.cards[bear].type_line = t
+            self.assertEqual(self._bf(e)[bear]["kind"], kind)
+
     def test_land_play_turns_a_modal_double_faced_card_to_its_land_face(self):
         e = self._game()
         bear = find(e, "p1", "hand", "Grizzly Bears")

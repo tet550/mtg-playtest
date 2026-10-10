@@ -1,7 +1,7 @@
 :root {
   --bg: #f5f4ef; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #d9d7cf;
   --card: #fbfaf6; --card-line: #bdb9ad; --accent: #2f5d8a; --warn: #a1452e; --ok: #3c7a3f;
-  --badge: #ece9df; --tapped: #e6e3d8; --hl: #fff2b8;
+  --badge: #ece9df; --tapped: #e6e3d8; --hl: #fff2b8; --on-accent: #fff;
   /* 画面全体の重なり順（下から）。盤面（.board）は isolation で1枚の層にまとめ、中の小窓（戦闘・スタック・カード）の
      z-index は盤面の中だけで効く。<dialog>（showModal）はブラウザの最上層なので、これらすべての上に出る */
   --z-motion: 20;   /* 動いているカードの写し: 盤面の小窓より上（スタックへ入る・出るのが見える） */
@@ -15,7 +15,7 @@
   :root {
     --bg: #18191b; --panel: #222326; --ink: #e8e6e1; --muted: #9a988f; --line: #3a3b3f;
     --card: #2a2b2f; --card-line: #4a4b50; --accent: #7fb0e0; --warn: #e08a72; --ok: #8cc58f;
-    --badge: #34353a; --tapped: #232427; --hl: #4a4220;
+    --badge: #34353a; --tapped: #232427; --hl: #4a4220; --on-accent: #0f2338;
   }
 }
 * { box-sizing: border-box; }
@@ -25,7 +25,7 @@ h3 { margin: 6px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; 
 .muted { color: var(--muted); }
 button, select, input { font: inherit; color: inherit; }
 button, select { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; }
-button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 /* 押せないボタン: 薄くして、強調（on）の塗りも外す */
 button:disabled { opacity: .45; cursor: not-allowed; }
 button.on:disabled { background: var(--panel); color: inherit; border-color: var(--line); }
@@ -102,6 +102,8 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 .field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .bfrow { min-height: 40px; align-items: flex-start; }
 .lands { gap: 10px; }
+/* 土地以外の列: 種類の変わり目を空ける */
+.bfrow > .kgap { margin-left: 18px; }
 .pile { cursor: default; width: 84px; }
 .pile { cursor: pointer; }
 .pile.empty { cursor: default; }
@@ -711,49 +713,182 @@ button.sgcell:hover { border-color: var(--accent); }
 .chip.mana.clickable { cursor: pointer; }
 .chip.mana.clickable:hover { outline: 1px solid #6aa9ff; }
 
-/* ---- 公開のサーバーの画面（トップ・デッキ） */
-.sitenav { display: flex; gap: 4px; flex: none; }
-.sitenav a { color: inherit; text-decoration: none; padding: 3px 10px; border-radius: 6px; border: 1px solid transparent; }
-.sitenav a:hover { border-color: var(--line); }
-.sitenav a.on { background: var(--accent); color: #fff; }
-.page { max-width: 880px; margin: 0 auto; padding: 16px; }
-.page h2 { margin: 8px 0 12px; font-size: 18px; }
-.page p, .page li { font-size: 14px; }
-.page .steps li { margin: 6px 0; }
-.page a { color: var(--accent); }
-table.decks { width: 100%; border-collapse: collapse; margin-bottom: 16px; background: var(--panel); }
-table.decks th, table.decks td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-table.decks .dname { font-weight: 600; overflow-wrap: anywhere; }
-table.decks .dops { white-space: nowrap; text-align: right; }
-.deckform { display: flex; flex-direction: column; gap: 10px; background: var(--panel); border: 1px solid var(--line);
-  border-radius: 10px; padding: 12px; }
-.deckform .field { display: flex; flex-direction: column; gap: 3px; }
-.deckform .flabel { font-weight: 600; }
-.deckform .fhelp { font-size: 12px; }
-.deckform input, .deckform select, .deckform textarea { font: inherit; color: inherit; background: var(--bg);
-  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 100%; }
-.deckform textarea.decktext { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
-.deckform .crow { display: flex; gap: 8px; flex-wrap: wrap; }
-.checkresult .ok { color: var(--ok); font-weight: 600; }
-.checkresult .bad { color: var(--warn); font-weight: 600; }
-.checkresult li.error { color: var(--warn); }
-.checkresult li.warning { color: var(--muted); }
-@media (max-width: 600px) {
-  .sitenav a { padding: 3px 6px; }
-  table.decks th:nth-child(4), table.decks td:nth-child(4) { display: none; }
-}
+/* ---- 公開のサーバーの画面（トップ・デッキ・対局を作る・履歴・公開の対局・規約） ---- */
+.sitenav { display: flex; gap: 2px; flex: none; flex-wrap: wrap; }
+.sitenav a { color: var(--muted); text-decoration: none; padding: 5px 11px; border-radius: 999px; font-weight: 500;
+  transition: background .15s, color .15s; }
+.sitenav a:hover { color: var(--ink); background: var(--badge); }
+.sitenav a.on { background: var(--accent); color: var(--on-accent); }
+.brand { display: inline-flex; align-items: center; gap: 7px; letter-spacing: .01em; }
+.brand::before { content: ""; width: 18px; height: 18px; flex: none;
+  background: url("favicon.svg") center / contain no-repeat; }
 .replay[hidden], .layout[hidden], .page[hidden], .sitenav[hidden], .bar label[hidden] { display: none; }
 .offpage { display: none !important; }  /* 盤面の画面でだけ出す部品（トップ・デッキ・履歴などでは隠す） */
-.urlbox { display: flex; gap: 6px; margin: 6px 0; }
-.urlbox input { flex: 1; min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
-  border-radius: 6px; padding: 4px 8px; }
-.page p.bad { color: var(--warn); }
-.deckform .field[hidden] { display: none; }
 
-/* ---- フッター（権利の表記。どの画面にも出す） */
-.sitefooter { max-width: 880px; margin: 24px auto 12px; padding: 8px 16px; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.sitefooter p { margin: 2px 0; }
-.sitefooter a { color: inherit; }
-.page.legal h3 { font-size: 14px; color: var(--ink); margin-top: 18px; }
+/* 盤面以外の画面は、ふつうに縦にスクロールする（盤面用の「画面の高さに収める」を外す） */
+html:has(body.sitepage) { height: auto; }
+body.sitepage { display: block; height: auto; min-height: 100%; overflow: auto; font-size: 14px; }
+body.sitepage .bar { position: sticky; top: 0; z-index: var(--z-play);
+  background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px); }
+/* サイトのメニューがあるときは、盤面でもほかの画面と同じ寸法にする（画面を移ってもメニューの位置と幅が変わらない） */
+/* 盤面は部品が多いので、間は詰めて、入りきらない幅では2行に折り返す */
+.bar:has(.sitenav:not([hidden])) { padding: 10px 20px; gap: 6px 10px; flex-wrap: wrap; }
+.bar:has(.sitenav:not([hidden])) .brand { font-size: 16px; margin-right: 14px; }
+@media (max-width: 1199px) {  /* 「対局」「席」「画像」「動き」の文字を隠して、入力だけ残す */
+  .bar:has(.sitenav:not([hidden])) label { font-size: 0; gap: 0; }
+  .bar:has(.sitenav:not([hidden])) label select { font-size: 13px; }
+}
+.sitenav { font-size: 14px; }
+body.sitepage #recovery { margin-left: auto; }
+body:not(.sitepage) .more { margin-left: auto; }
+
+.page { width: 100%; max-width: 960px; margin: 0 auto; padding: 32px 20px 8px; }
+.page h2 { margin: 0 0 6px; font-size: 24px; font-weight: 700; letter-spacing: .01em; }
+.page h2 + p, .page .lead { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+.page > h3 { margin: 32px 0 10px; font-size: 13px; color: var(--muted); font-weight: 700; letter-spacing: .06em; }
+.page p, .page li { font-size: 14px; line-height: 1.7; }
+.page a { color: var(--accent); text-underline-offset: 2px; }
+.page p.bad { color: var(--warn); }
+.page > p.muted { padding: 28px; text-align: center; border: 1px dashed var(--line); border-radius: 12px; background: var(--panel); }
+
+/* ボタン・入力（サイトの画面） */
+.page button { padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 500;
+  transition: background .15s, border-color .15s, box-shadow .15s; }
+.page button:hover:not(:disabled) { border-color: var(--accent); }
+.page button.on { color: var(--on-accent); }
+.page button.on:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, var(--ink)); }
+.page button:focus-visible, .page input:focus-visible, .page select:focus-visible, .page textarea:focus-visible,
+.sitenav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.page input, .page select, .page textarea { font: inherit; color: inherit; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: 100%; transition: border-color .15s; }
+.page input:hover, .page select:hover, .page textarea:hover { border-color: var(--card-line); }
+.page textarea { resize: vertical; line-height: 1.5; }
+
+/* トップ */
+.hero { padding: 28px 0 8px; }
+.hero h2 { font-size: 32px; margin-bottom: 10px; }
+.hero p { font-size: 16px; color: var(--muted); max-width: 40em; margin: 0 0 20px; }
+.hero .cta { display: flex; gap: 10px; flex-wrap: wrap; }
+.hero .cta a { display: inline-block; padding: 9px 18px; border-radius: 8px; text-decoration: none; font-weight: 600;
+  border: 1px solid var(--line); color: var(--ink); background: var(--panel); }
+.hero .cta a.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.page ol.steps { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); counter-reset: step; white-space: normal; color: var(--ink); }
+.page ol.steps li { counter-increment: step; position: relative; margin: 0; padding: 16px 16px 16px 54px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; font-size: 14px; line-height: 1.6; }
+.page ol.steps li::before { content: counter(step); position: absolute; left: 16px; top: 15px; width: 26px; height: 26px;
+  border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 13px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+.page ol.steps li a { display: inline-block; margin-top: 4px; font-weight: 600; }
+
+/* 一覧（デッキ・招待・履歴・公開の対局） */
+table.decks { width: 100%; border-collapse: separate; border-spacing: 0; margin-bottom: 16px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+table.decks th, table.decks td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.decks tr:last-child > td { border-bottom: 0; }
+table.decks th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--bg); letter-spacing: .04em; }
+table.decks tr:not(.sharerow):hover > td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+table.decks .dname { font-weight: 600; overflow-wrap: anywhere; }
+table.decks .dops { white-space: nowrap; text-align: right; }
+table.decks .dops button + button { margin-left: 6px; }
+table.decks td.ok { color: var(--ok); font-weight: 600; }
+table.decks .sharerow > td { background: var(--bg); }
+table.decks .sharerow .crow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+
+/* フォーム（デッキ・対局を作る・席に着く） */
+.deckform { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; margin-top: 8px; }
+.deckform > h3 { grid-column: 1 / -1; margin: 0; font-size: 17px; color: var(--ink); letter-spacing: 0; }
+.deckform > *:not(.field), .deckform .field:has(textarea) { grid-column: 1 / -1; }
+.page .field, .deckform .field { display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; min-height: auto; }
+.deckform .flabel { font-weight: 600; font-size: 13px; }
+.deckform .fhelp { font-size: 12px; line-height: 1.5; }
+.deckform textarea.decktext { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; min-height: 320px; }
+.deckform .crow { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+.deckform .crow button { padding: 8px 18px; }
+.deckform .field[hidden] { display: none; }
+.checkresult:empty { display: none; }
+.checkresult > div { padding: 10px 14px; border-radius: 8px; background: var(--bg); }
+.checkresult .ok { color: var(--ok); font-weight: 600; background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.checkresult .bad { color: var(--warn); font-weight: 600; background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.checkresult ul { margin: 8px 0 0; padding-left: 20px; }
+.checkresult ul:empty { display: none; }
+.checkresult li { font-size: 13px; line-height: 1.6; }
+.checkresult li.error { color: var(--warn); }
+.checkresult li.warning { color: var(--muted); }
+.page > form.crow { display: flex; gap: 8px; margin-bottom: 16px; max-width: 480px; }
+.page > form.crow input { flex: 1; min-width: 0; }
+
+.urlbox { display: flex; gap: 6px; margin: 8px 0; }
+.urlbox input { flex: 1; min-width: 0; font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+
+@media (max-width: 680px) {
+  .bar:has(.sitenav:not([hidden])) { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
+  .bar:has(.sitenav:not([hidden])) .brand { display: inline-flex; }
+  .bar:has(.sitenav:not([hidden])) .sitenav { order: 3; width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  /* 盤面の部品はメニューの下の行へ（1行目のロゴとメニューの位置を、ほかの画面とそろえる） */
+  .bar:has(.sitenav:not([hidden])) > label, .bar:has(.sitenav:not([hidden])) > .turn,
+  .bar:has(.sitenav:not([hidden])) > .playing { order: 4; }
+  body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .conn { margin-left: auto; }
+  body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .more { margin-left: 0; }
+  .sitenav a { padding: 4px 10px; white-space: nowrap; }
+  table.decks th { white-space: nowrap; }
+  .page { padding: 20px 16px 8px; }
+  .hero h2 { font-size: 26px; }
+  .deckform { grid-template-columns: 1fr; padding: 16px; }
+  table.decks th, table.decks td { padding: 8px 10px; }
+  table.decks th:nth-child(4), table.decks td:nth-child(4) { display: none; }
+  table.decks .dops { white-space: normal; }
+  table.decks .dops button { margin: 2px 0 2px 4px; }
+}
+
+/* ---- ヘッダーの「⋯」メニューと、権利の表記のダイアログ */
+.more { position: relative; flex: none; }
+#moreBtn { padding: 2px 9px; font-size: 15px; line-height: 1.2; }
+.moremenu { position: absolute; right: 0; top: calc(100% + 6px); z-index: var(--z-menu); min-width: 160px;
+  display: flex; flex-direction: column; padding: 4px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.moremenu[hidden], .moremenu span[hidden] { display: none; }
+.moremenu span { display: contents; }
+.moremenu button, .moremenu a { display: block; text-align: left; padding: 7px 10px; border: 0; border-radius: 6px;
+  background: none; color: var(--ink); text-decoration: none; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.moremenu button:hover, .moremenu a:hover { background: var(--badge); }
+.credits { max-width: min(520px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 14px;
+  background: var(--panel); color: var(--ink); padding: 20px 22px; }
+.credits::backdrop { background: rgba(0, 0, 0, .4); }
+.credits h3 { margin: 0 0 10px; font-size: 15px; color: var(--ink); letter-spacing: 0; }
+.credits p { margin: 0 0 10px; font-size: 13px; line-height: 1.7; color: var(--muted); }
+.credits a { color: var(--accent); }
+.credits .crow { display: flex; justify-content: flex-end; margin-top: 14px; }
+.credits button { padding: 6px 16px; border-radius: 8px; }
+body.sitepage { padding-bottom: 32px; }
+.page.legal { max-width: 760px; }
+.page.legal h3 { font-size: 15px; color: var(--ink); margin-top: 24px; letter-spacing: 0; }
 .page.legal li { margin: 4px 0; }
-.page .draft { border: 1px dashed var(--warn); color: var(--warn); padding: 6px 10px; border-radius: 6px; }
+.page .draft { border: 1px dashed var(--warn); color: var(--warn); padding: 8px 12px; border-radius: 8px; }
+
+/* ---------------------------------------------------------------- 待っている間の動き（審判・AI・相手の番） */
+.dots { display: inline-flex; gap: 3px; margin-left: 4px; vertical-align: middle; }
+.dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: dotbounce 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .15s; }
+.dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes dotbounce { 0%, 60%, 100% { transform: none; opacity: .35; } 30% { transform: translateY(-4px); opacity: 1; } }
+.thinking { display: inline-flex; align-items: center; gap: 6px; padding: 1px 9px 1px 7px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.thinking[hidden] { display: none; }
+.thinking::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor;
+  border-right-color: transparent; animation: thinkspin .8s linear infinite; }
+@keyframes thinkspin { to { transform: rotate(360deg); } }
+.chip.think { color: var(--accent); font-weight: 600; animation: thinkpulse 1.6s ease-in-out infinite; }
+@keyframes thinkpulse { 0%, 100% { background: var(--badge); } 50% { background: color-mix(in srgb, var(--accent) 22%, var(--badge)); } }
+.side:has(.chip.think) { animation: thinkglow 1.6s ease-in-out infinite; }
+.side.active:has(.chip.think) { animation-name: thinkglowactive; }
+@keyframes thinkglow { 0%, 100% { box-shadow: inset 0 0 0 0 transparent; } 50% { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); } }
+@keyframes thinkglowactive { 0%, 100% { box-shadow: inset 4px 0 0 var(--accent); } 50% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); } }
+.pstatus.waiting { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) {
+  .dots i, .thinking::before, .chip.think, .side:has(.chip.think) { animation: none; }
+  .dots i { opacity: .7; }
+}

@@ -1,4 +1,4 @@
-import { $, el } from "./dom.js";
+import { $, dots, el } from "./dom.js";
 import { createMotion } from "./motion.js";
 
 // DOM 描画。通信と再生操作は呼び出し元から渡す。
@@ -231,6 +231,25 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     });
   }
 
+  // 土地以外のパーマネントは種類ごとに分けて、左から クリーチャー・アーティファクト・エンチャント・
+  // プレインズウォーカー・バトルの順に置く（種類の変わり目は少し空ける）
+  const KIND_ORDER = ["creature", "artifact", "enchantment", "planeswalker", "battle", ""];
+  function kindGroups(cards, under) {
+    // 裏向きで種類が見えないものはクリーチャーとして置く
+    const kindOf = (c) => c.kind || (c.face_down ? "creature" : "");
+    const rank = (c) => { const i = KIND_ORDER.indexOf(kindOf(c)); return i < 0 ? KIND_ORDER.length : i; };
+    const sorted = groupCards(cards).map((c, i) => ({ c, i })).sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i);
+    let prev = null;
+    return sorted.map(({ c }) => {
+      const tile = withUnder(c, under);
+      const kind = kindOf(c);
+      if (prev !== null && kind !== prev) tile.classList.add("kgap");
+      tile.dataset.kind = kind || "other";
+      prev = kind;
+      return tile;
+    });
+  }
+
   // あるカードによって追放されたカード（exiled_by の Link）を、そのカードの下に差し込んだように出す。
   // 戦場のパーマネントに付いているオーラ・装備（attached の Link）も、付いている先のカードの下に出す
   // （コントローラーが違っても、付いている先の側に。attached は付いた側のカードの id の集合）
@@ -249,6 +268,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
         attached.add(l.source);
       }
     }
+    // 付いているオーラ・装備が追放したカード（幽霊による庇護など）は、付いている先の束の中で、
+    // そのオーラのさらに奥に差し込む（オーラは自分の束を持たないので、そのままだとどこにも出ない）
+    const expand = (list, seen) => list.flatMap((u) => {
+      const id = u.card.id;
+      if (!u.cls.includes("attached") || seen.has(id) || !under[id]) return [u];
+      return [...expand(under[id], new Set([...seen, id])), u];
+    });
+    for (const host of Object.keys(under)) if (!attached.has(host)) under[host] = expand(under[host], new Set([host]));
     return { under, attached };
   }
 
@@ -597,6 +624,11 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     if (v.turn.active === pid && v.turn.turn > 0) head.append(phaseStrip(v.turn));
     // 優先権の欄はいつも取っておく（持ち主が替わっても横の並びがずれないように）
     head.append(el("span", "chip prio" + (v.turn.priority === pid ? "" : " off"), "優先権"));
+    if (ui.thinker === pid) {
+      const think = el("span", "chip think", "考え中");
+      think.append(dots());
+      head.append(think);
+    }
     // 残り（状態・マナ・カウンターなど）は右の余白の中だけに並べ、入らない分は切る（左の並びを押さない）
     const extra = el("span", "pextra");
     head.append(extra);
@@ -642,7 +674,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     // 戦場: 土地以外と土地（土地は名前ごとに束ねる）
     const { under, attached } = cardsUnder(v);
     const bf = (v.zones.battlefield.cards || []).filter((c) => (c.controller || c.owner) === pid && !attached.has(c.id));
-    const others = el("div", "row bfrow"); others.append(...groupCards(bf.filter((c) => !c.land)).map((c) => withUnder(c, under)));
+    const others = el("div", "row bfrow"); others.append(...kindGroups(bf.filter((c) => !c.land), under));
     const lands = el("div", "row bfrow lands"); lands.append(...landGroups(bf.filter((c) => c.land), under));
     const field = el("div", "field");
     field.dataset.drop = "battlefield";
@@ -867,6 +899,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     ui.blocking = new Set(v.combat.blocks.map((b) => b.blocker));
     const t = v.turn;
     $("turn").textContent = t.turn === 0 ? "ゲーム前" : `T${t.turn}`;
+    // 最新で、自分以外（審判・AI・相手）の番を待っている間は、動く印を出す（止まっている AI は除く）
+    const thinker = ui.live && t.waiting_on && !(ui.play && t.waiting_on === ui.play.seat)
+      && !(ui.ai && ui.ai.status === "suspended") ? t.waiting_on : null;
+    ui.thinker = thinker;
+    const thinking = $("thinking");
+    thinking.hidden = !thinker;
+    if (thinker) thinking.replaceChildren(document.createTextNode(thinker === "judge" ? "審判が処理中" : `${thinker} が考え中`), dots());
+    document.body.classList.toggle("judging", thinker === "judge");
 
     // 視点の Player を下に。judge は先攻を上に
     const order = v.players.map((p) => p.id);
@@ -942,5 +982,5 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   }
 
 
-  return { render, renderLog, placeSpeech, showCard, toggleOpen };
+  return { render, renderLog, placeSpeech, showCard, toggleOpen, manaNodes };
 }

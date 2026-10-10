@@ -17,7 +17,7 @@ let timeline = null;
 let unsubscribe = () => {};
 const viewAt = (pos) => timeline.at(pos);
 const hooks = {};  // GUI の対局のときだけ play のクリックの受け口を入れる
-const { render, renderLog, placeSpeech, showCard, toggleOpen } = createRenderer(ui, {
+const { render, renderLog, placeSpeech, showCard, toggleOpen, manaNodes } = createRenderer(ui, {
   source, viewAt, clampFloats, hooks,
   onLogSeek(pos) {
     stopPlay();
@@ -36,7 +36,7 @@ function recall(key) {
   try { return localStorage.getItem("mtgtable." + key); } catch (_) { return null; }
 }
 
-const play = createPlay(ui, { source, reload: () => load(), showCard, toggleOpen, render });
+const play = createPlay(ui, { source, reload: () => load(), showCard, toggleOpen, render, manaNodes });
 
 // ---------------------------------------------------------------- 席の鍵（GUI の対局）
 
@@ -394,8 +394,22 @@ $("live").onclick = manual(() => { ui.live = true; show(); });
 $("play").onclick = () => (ui.timer !== null && ui.timer !== undefined ? stopPlay() : startPlay());
 $("unit").onchange = (e) => remember("unit", e.target.value);
 $("speed").onchange = (e) => remember("speed", e.target.value);
+// ヘッダーの「⋯」: 権利の表記（ダイアログ）・利用規約・プライバシー
+function setMore(open) {
+  $("moreMenu").hidden = !open;
+  $("moreBtn").setAttribute("aria-expanded", String(open));
+}
+$("moreBtn").onclick = (e) => { e.stopPropagation(); setMore($("moreMenu").hidden); };
+$("moreMenu").onclick = (e) => {
+  const item = e.target.closest("[role=menuitem]");
+  if (!item) return;
+  setMore(false);
+  if (item.dataset.open) $(item.dataset.open).showModal();
+};
+document.addEventListener("click", (e) => { if (!e.target.closest(".more")) setMore(false); });
 document.addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || $("ask").open) return;
+  if (e.key === "Escape") setMore(false);
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || $("ask").open || $("credits").open) return;
   if (e.key === "ArrowLeft") manual(() => step(-1))();
   if (e.key === "ArrowRight") manual(() => step(1))();
   if (e.key === " ") { e.preventDefault(); $("play").click(); }

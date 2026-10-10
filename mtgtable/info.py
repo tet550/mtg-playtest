@@ -153,8 +153,12 @@ def _card_view(state: GameState, viewer, cid: str, full: bool, names: bool = Tru
     if state.zones[c.zone].kind == "battlefield":
         if full and not c.face_down and is_land(c):
             v["land"] = True
-        elif is_new(state, c):
-            v["new"] = True
+        else:
+            kind = permanent_kind(c) if full else ""
+            if kind:
+                v["kind"] = kind
+            if is_new(state, c):
+                v["new"] = True
     counters = state.counters_on(cid)
     if counters:
         v["counters"] = counters
@@ -205,6 +209,19 @@ def is_land(c) -> bool:
     faces = type_line_of(c).split("//")
     face = faces[c.face] if 0 <= c.face < len(faces) else faces[0]
     return has_land_type(face)
+
+
+_KINDS = ("Creature", "Planeswalker", "Battle", "Artifact", "Enchantment")  # 複数あれば前のもの（アーティファクト・クリーチャーはクリーチャー）
+
+
+def permanent_kind(c) -> str:
+    """上を向いている面のカード・タイプで、戦場の置き場所を分ける（表示用）。
+    creature / planeswalker / battle / artifact / enchantment。裏向きはクリーチャー、分からなければ ""。"""
+    if c.face_down:
+        return "creature"
+    faces = type_line_of(c).split("//")
+    face = (faces[c.face] if 0 <= c.face < len(faces) else faces[0]).split("—")[0]
+    return next((k.lower() for k in _KINDS if re.search(r"\b%s\b" % k, face)), "")
 
 
 def is_new(state: GameState, c) -> bool:

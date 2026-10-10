@@ -261,7 +261,7 @@ Player の「止める場所」、依頼の中の指示のとき。人間・AI �
 （judge.md「どこで止めるか」）。それ以外の応答の機会は、人間の席も AI の席と同じく自動でパスする（`play.autopass`）。
 
 - 止める場所は非公開: 卓の記録に載せず、`private/<席>.json` に置く（`play.get_stops` / `set_stops`）。本人と審判のプロンプトにだけ出る。
-  `own:<ステップ>` / `opp:<ステップ>` と、`opp:spell`（相手が呪文・能力を積んだとき）/ `opp:attack`（相手が攻撃したとき）。
+  `own:<ステップ>` / `opp:<ステップ>` と、`opp:spell`（相手が呪文・能力を積んだとき）/ `opp:attack`（相手が攻撃したとき）/ `opp:target`（相手の呪文・能力が自分のパーマネントを対象にとったとき。対象を取らない除去は `opp:spell` で）。
   GUI は「止める場所…」（`GET/POST /api/games/<g>/stops`。席の鍵が要る）、AI は返答の `stops`
 - 止めた理由を label・message に書かない（手札の中身が伝わる）
 

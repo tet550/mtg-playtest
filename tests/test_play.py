@@ -153,6 +153,20 @@ class PlayTest(unittest.TestCase):
                 os.environ["MTG_CARDS_DIR"] = old
             cards.cleanup()
 
+    def test_target_stop_hits_when_the_opponent_targets_my_permanent(self):
+        self.apply("p1", [{"op": "declare", "kind": "keep"}])
+        self.apply("p2", [{"op": "declare", "kind": "keep"}])
+        self.apply("p1", {"proc": "turn_start", "to": "main1"})
+        s = self.st.load()
+        mine = s.zones["p2.hand"].cards[0]
+        self.apply("p2", [{"op": "move", "card": mine, "to": "battlefield"}])
+        stops = ["opp:target"]
+        self.apply("p1", [{"op": "stack_push", "kind": "ability", "text": "3 点のダメージ", "targets": ["p2"]}])
+        self.assertFalse(play.needs_player(self.st.load(), "p2", stops))  # プレイヤーが対象: パーマネントではない
+        self.apply("p1", [{"op": "stack_push", "kind": "ability", "text": "破壊する", "targets": [mine]}])
+        self.assertTrue(play.needs_player(self.st.load(), "p2", stops))  # 自分のパーマネントが対象
+        self.assertFalse(play.needs_player(self.st.load(), "p2", []))
+
     def test_end_turn_continues_after_the_opponent_passes_at_the_stop(self):
         self.apply("p1", [{"op": "declare", "kind": "keep"}])
         self.apply("p2", [{"op": "declare", "kind": "keep"}])

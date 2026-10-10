@@ -217,7 +217,7 @@ python -m mtgtable --db data/mtg.sqlite invite g1 --seat p1 --base https://mtg.e
   ヘッダー（CSP など。外向きの名前では HSTS も）、止まった接続を切る、思いがけない失敗は 500 にして理由をログにだけ残す
 - 運用: 1要求1行のアクセス・ログ（クエリは鍵が入りうるので出さない）、`/healthz`（DB の大きさ・空き。空きが
   `MTGTABLE_MIN_FREE_MB` を切ると 503）、`db-backup`（動かしたまま DB を写す。`--keep` で古いものを消す）
-- フッターに権利の表記（Fan Content Policy・Scryfall）。利用規約・プライバシーの画面（下書き。運営者と連絡先は
+- 権利の表記（Fan Content Policy・Scryfall）はヘッダーの「⋯」からダイアログで開く。同じメニューから利用規約・プライバシーの画面（下書き。運営者と連絡先は
   `MTGTABLE_OPERATOR` / `MTGTABLE_CONTACT`）
 
 ### 人間どうしで対戦する
