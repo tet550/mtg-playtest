@@ -179,7 +179,7 @@ def _needs_ai(st) -> bool:
 
 def _settled(reason: str) -> bool:
     """llm.run の止まった理由が、正常（人間の番・決着）か。"""
-    return reason == "決着" or reason.startswith("waiting on ")
+    return reason == llm.GAME_OVER or reason.startswith("waiting on ")
 
 
 class Worker:

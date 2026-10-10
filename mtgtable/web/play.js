@@ -148,6 +148,8 @@ export function cleanLine(l) {
   if (l.count) o.count = l.count;
   if (l.kind === "step" && l.to) o.to = l.to;
   if (l.kind === "then" && l.then) o.then = l.then;
+  if (TAPS.includes(l.tap)) o.tap = l.tap;
+  if (l.no_block) o.no_block = true;
   return o;
 }
 
@@ -258,11 +260,22 @@ export function manaChoices(notes) {
   return out;
 }
 
-// 起動の行で、発生源をタップする（コストの {T}）と書いたもの
-export const TAP_RE = /をタップして/;
-// メニューの「タップ」「アンタップ」で足す行（<X> (#c1) をタップする／アンタップする）
+// 行のカードをタップするか（tap: 起動のコストの {T}・メニューの「タップ」、untap: メニューの「アンタップ」、none: 攻撃でタップしない）。
+// 盤面の予定はこの値で決め、文は読まない（文は画面の言語で変わる）。値の無い古い行（この値を足す前の下書き・送った依頼）だけ、文から読む
+export const TAPS = ["tap", "untap", "none"];
+const TAP_RE = /をタップして/;
 const UNTAP_RE = /をアンタップする/;
 const TAP_LINE_RE = /をタップする/;
+export function tapOf(l) {
+  if (TAPS.includes(l.tap)) return l.tap;
+  const text = l.text || "";
+  if (l.kind === "activate") return TAP_RE.test(text) ? "tap" : null;
+  if (l.kind === "attack") return /タップしない/.test(text) ? "none" : "tap";
+  if (l.kind === "other") return UNTAP_RE.test(text) ? "untap" : TAP_LINE_RE.test(text) ? "tap" : null;
+  return null;
+}
+// 「ブロックしない」の行か（no_block。値の無い古い行は文で）
+export const noBlock = (l) => !!l.no_block || (l.kind === "other" && l.text === "ブロックしない");
 
 // 下書き・送った依頼の行を、見るためだけに盤面へ仮に反映した view の写し（卓は動かさない。審判の処理で本物に替わる）。
 // 反映するのは盤面の動きが決まっている行だけ: 土地を出す（手札 → 戦場）・唱える（手札 → スタック）・起動（スタックに能力。
@@ -308,7 +321,7 @@ export function preview(v, lines, seat) {
       out.stack.unshift({ id: item, kind: "spell", card: id, controller: seat, text: "", planned: true });
       aim();
     } else if (l.kind === "activate" && id) {
-      if (TAP_RE.test(l.text) && bf(id)) bf(id).tapped = true;
+      if (tapOf(l) === "tap" && bf(id)) bf(id).tapped = true;
       out.stack.unshift({ id: item, kind: "activated", source: id, controller: seat, text: l.text, planned: true });
       aim();
     } else if (l.kind === "resolve") {
@@ -326,11 +339,11 @@ export function preview(v, lines, seat) {
           { ...c, controller: s.controller || seat, tapped: false, planned: true });
       }
     } else if (l.kind === "attack" && id && bf(id)) {
-      if (!/タップしない/.test(l.text)) bf(id).tapped = true;
+      if (tapOf(l) !== "none") bf(id).tapped = true;
       out.combat.attacks.push({ attacker: id, target: (l.targets || [])[0], planned: true, line: i });
-    } else if (l.kind === "other" && id && bf(id) && UNTAP_RE.test(l.text)) {
+    } else if (l.kind === "other" && id && bf(id) && tapOf(l) === "untap") {
       bf(id).tapped = false;
-    } else if (l.kind === "other" && id && bf(id) && TAP_LINE_RE.test(l.text)) {
+    } else if (l.kind === "other" && id && bf(id) && tapOf(l) === "tap") {
       bf(id).tapped = true;
     } else if (l.kind === "other" && manaOf(l.targets)) {
       // マナを使う行（targets にプールのマナの id）: count があればその数、無ければ全部を減らす
@@ -513,8 +526,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   }
   const hasDraft = () => { const d = loadDraft(); return d.lines.length > 0 || !!d.comment; };
 
-  function line(kind, text, { cards = [], targets = [], count = 0, to = null } = {}) {
-    return cleanLine({ kind, text, cards: cards.filter(isCard), targets, count, to });
+  function line(kind, text, { cards = [], targets = [], count = 0, to = null, tap = null, no_block = false } = {}) {
+    return cleanLine({ kind, text, cards: cards.filter(isCard), targets, count, to, tap, no_block });
   }
 
   function addLine(l) {
@@ -531,7 +544,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     saveDraft();
     refresh();
   }
-  const other = (text, cards = [], targets = []) => addLine(line("other", text, { cards, targets }));
+  const other = (text, cards = [], targets = [], opts = {}) => addLine(line("other", text, { cards, targets, ...opts }));
 
   function removeLine(i) { loadDraft().lines.splice(i, 1); saveDraft(); refresh(); }
   function undoLine() { loadDraft().lines.pop(); saveDraft(); refresh(); }
@@ -721,7 +734,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const aim = c.targets.length ? ` 対象: ${c.targets.map(ref).join(", ")}` : "";
     const verb = c.kind === "cast" ? "を唱える" : c.tap ? "をタップして能力を起動する" : "の能力を起動する";
     compose = null;
-    addLine(line(c.kind, `${ref(src)} ${verb}${aim}${extra}`, { cards: [src], targets: c.targets }));
+    addLine(line(c.kind, `${ref(src)} ${verb}${aim}${extra}`, { cards: [src], targets: c.targets, tap: c.kind === "activate" && c.tap ? "tap" : null }));
     if (resolve === true) addLine(line("resolve", `${c.kind === "cast" ? `${ref(src)} を` : `${ref(src)} の能力を`}解決する`, { cards: [src] }));
   }
 
@@ -758,7 +771,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   async function tapForMana(id, note) {
     const r = await ask({ title: `${nm(id)} をタップしてマナを出す（${note}）`, fields: [{ name: "mana", label: "出すマナ", value: "" }] });
     if (!r) return;
-    other(`${ref(id)} をタップする（${r.mana ? `${r.mana} を出す` : "マナを出す"}。Note: ${note}）`, [id]);
+    other(`${ref(id)} をタップする（${r.mana ? `${r.mana} を出す` : "マナを出す"}。Note: ${note}）`, [id], [], { tap: "tap" });
   }
 
   async function amount(title, fn, value = 1) {
@@ -771,7 +784,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   function attackItems(c) {
     const t = ui.view.turn;
     if (t.active !== me() || c.land) return [];
-    const attack = (tap) => () => addLine(line("attack", attackText(c.id, opp(), tap), { cards: [c.id], targets: [opp()] }));
+    const attack = (tap) => () => addLine(line("attack", attackText(c.id, opp(), tap), { cards: [c.id], targets: [opp()], tap: tap ? "tap" : "none" }));
     return [
       { label: "攻撃する", fn: attack(true) },
       { label: "攻撃する（タップしない・警戒）", fn: attack(false) },
@@ -790,7 +803,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       const to = await ask({ title: `${nm(a.attacker)} の攻撃先`, choices: targets.map((id) =>
         ({ label: `${id === a.target ? "✓ " : ""}${attackLabel(ui.view, id)}`, value: id })) });
       if (!to || to === a.target || loadDraft().lines[i] !== l) return;
-      loadDraft().lines[i] = line("attack", attackText(a.attacker, to, !/タップしない/.test(l.text)), { cards: [a.attacker], targets: [to] });
+      const tap = tapOf(l) !== "none";
+      loadDraft().lines[i] = line("attack", attackText(a.attacker, to, tap), { cards: [a.attacker], targets: [to], tap: tap ? "tap" : "none" });
       saveDraft();
       refresh();
     };
@@ -833,14 +847,14 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
         ...moveItems(id, zone).filter((x) => x && !/墓地/.test(x.label)));
     } else if (zone === "battlefield") {
       if (mine) {
-        items.push(c.tapped ? { label: "アンタップ", fn: () => other(`${ref(id)} をアンタップする`, [id]) }
-          : { label: "タップ", fn: () => other(`${ref(id)} をタップする`, [id]) });
+        items.push(c.tapped ? { label: "アンタップ", fn: () => other(`${ref(id)} をアンタップする`, [id], [], { tap: "untap" }) }
+          : { label: "タップ", fn: () => other(`${ref(id)} をタップする`, [id], [], { tap: "tap" }) });
         // Note に書いたマナ能力: 出すマナを選んでタップする（条件は文に残し、満たすかは審判が見る）
         if (!c.tapped) {
           for (const { mana, note } of manaChoices(c.notes)) {
             if (mana) {
               const label = `タップして ${mana} を出す`;
-              items.push({ label, nodes: manaNodes(label), fn: () => other(`${ref(id)} をタップする（${mana} を出す）`, [id]) });
+              items.push({ label, nodes: manaNodes(label), fn: () => other(`${ref(id)} をタップする（${mana} を出す）`, [id], [], { tap: "tap" }) });
             } else {
               const label = `タップしてマナを出す…（${note}）`;
               items.push({ label, nodes: manaNodes(label), fn: () => tapForMana(id, note) });
@@ -850,8 +864,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
         items.push({ label: "能力を起動…", fn: () => start({ kind: "activate", source: id, targets: [], text: "" }) });
         items.push(...attackItems(c), ...blockItems(c));
       } else {
-        items.push(c.tapped ? { label: "アンタップ", fn: () => other(`${ref(id)} をアンタップする`, [id]) }
-          : { label: "タップ（効果で）", fn: () => other(`${ref(id)} をタップする（効果で）`, [id]) },
+        items.push(c.tapped ? { label: "アンタップ", fn: () => other(`${ref(id)} をアンタップする`, [id], [], { tap: "untap" }) }
+          : { label: "タップ（効果で）", fn: () => other(`${ref(id)} をタップする（効果で）`, [id], [], { tap: "tap" }) },
         { label: "ダメージを与える…", fn: () => amount(`${nm(id)} へのダメージ`, (n) => other(`${ref(id)} に ${n} 点のダメージ`, [id])) },
         { label: "コントロールを得る", fn: () => other(`${ref(id)} のコントロールを得る`, [id]) });
       }
@@ -949,9 +963,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       box.append(list);
     }
     const row = el("div", "crow");
-    const none = loadDraft().lines.some((l) => l.kind === "other" && l.text === "ブロックしない");
+    const none = loadDraft().lines.some(noBlock);
     box.append(el("div", "chelp muted", "決めたら、下の「審判に依頼」で送る"));
-    row.append(button("ブロックしない", () => { blocker = null; other("ブロックしない"); },
+    row.append(button("ブロックしない", () => { blocker = null; other("ブロックしない", [], [], { no_block: true }); },
       { disabled: lines.length > 0 || none, title: "ブロックしないことを下書きに足す" }));
     if (blocker) row.append(button("選び直す", () => { blocker = null; refresh(); }));
     box.append(row);
@@ -982,8 +996,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       const next = zone === "battlefield" && (card.controller || card.owner) === me() ? [
         { label: "能力を起動…", fn: () => start({ kind: "activate", source: card.id, targets: [], text: "", tap: false }),
           hint: "出す予定のパーマネントの能力を、その後に起動する予定にする" },
-        card.tapped ? { label: "アンタップ", fn: () => other(`${ref(card.id)} をアンタップする`, [card.id]) }
-          : { label: "タップ", fn: () => other(`${ref(card.id)} をタップする`, [card.id]) },
+        card.tapped ? { label: "アンタップ", fn: () => other(`${ref(card.id)} をアンタップする`, [card.id], [], { tap: "untap" }) }
+          : { label: "タップ", fn: () => other(`${ref(card.id)} をタップする`, [card.id], [], { tap: "tap" }) },
         "-"] : [];
       openMenu(ev, title + "（予定）", [...next,
         ...(items.length ? items : [{ label: "送った依頼の予定（審判の処理を待つ）", fn: () => {} }]),

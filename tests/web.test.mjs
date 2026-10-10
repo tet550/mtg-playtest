@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Timeline } from "../mtgtable/web/timeline.js";
 import { createSource, latestLoader } from "../mtgtable/web/source.js";
-import { attackTargets, blockTime, cleanLine, describeOp, hasKept, manaChoices, mulligans, nextStep, planMarks, planned, preview, requestAction, resumeLines, stepName, toRequest, zoneOf } from "../mtgtable/web/play.js";
+import { attackTargets, blockTime, cleanLine, describeOp, hasKept, manaChoices, mulligans, nextStep, noBlock, planMarks, planned, preview, requestAction, resumeLines, stepName, tapOf, toRequest, zoneOf } from "../mtgtable/web/play.js";
 
 test("timeline supports seeking, deletion, root replacement and keyframes without mutating input", () => {
   const data = { cursor: 4, frames: [
@@ -391,4 +391,29 @@ test("tapping for mana from the menu taps the land in the preview", () => {
     zones: { battlefield: { cards: [{ id: "#c1", name: "Forest", controller: "p1", land: true }] } } };
   const out = preview(v, [cleanLine({ kind: "other", text: "<Forest> (#c1) をタップする（{G} を出す）", cards: ["#c1"] })], "p1");
   assert.equal(out.zones.battlefield.cards[0].tapped, true);
+});
+
+test("the preview reads tap and no_block from the line, not from its text", () => {
+  // 文は画面の言語で変わる（英語の文でも同じに動く）。値の無い古い行だけ、日本語の文から読む
+  const v = { turn: {}, players: [], links: [], stack: [], combat: { attacks: [], blocks: [] },
+    zones: { battlefield: { cards: [{ id: "#c1", name: "Forest", controller: "p1", land: true },
+      { id: "#c2", name: "Bear", controller: "p1" }, { id: "#c3", name: "Elf", controller: "p1", tapped: true }] } } };
+  const out = preview(v, [
+    cleanLine({ kind: "activate", cards: ["#c1"], text: "Tap <Forest> (#c1) to activate", tap: "tap" }),
+    cleanLine({ kind: "attack", cards: ["#c2"], targets: ["p2"], text: "<Bear> (#c2) attacks p2", tap: "none" }),
+    cleanLine({ kind: "other", cards: ["#c3"], text: "Untap <Elf> (#c3)", tap: "untap" }),
+  ], "p1");
+  assert.deepEqual(out.zones.battlefield.cards.map((c) => [c.id, !!c.tapped]), [["#c1", true], ["#c2", false], ["#c3", false]]);
+  assert.equal(preview(v, [{ kind: "attack", cards: ["#c2"], targets: ["p2"], text: "<Bear> (#c2) attacks p2" }], "p1")
+    .zones.battlefield.cards[1].tapped, true);  // 攻撃は、tap: "none" でなければタップ
+  assert.deepEqual(cleanLine({ kind: "other", text: "x", tap: "sideways", no_block: false }), { kind: "other", text: "x" });
+  assert.deepEqual(cleanLine({ kind: "other", text: "No blocks", no_block: true }), { kind: "other", text: "No blocks", no_block: true });
+  // 古い行（値が無い）
+  assert.equal(tapOf({ kind: "activate", text: "<Forest> (#c1) をタップして能力を起動する" }), "tap");
+  assert.equal(tapOf({ kind: "attack", text: "<Bear> で p2 を攻撃する（タップしない）" }), "none");
+  assert.equal(tapOf({ kind: "other", text: "<Elf> をアンタップする" }), "untap");
+  assert.equal(tapOf({ kind: "other", text: "<Elf> に Note を付ける" }), null);
+  assert.equal(noBlock({ kind: "other", text: "No blocks", no_block: true }), true);
+  assert.equal(noBlock({ kind: "other", text: "ブロックしない" }), true);
+  assert.equal(noBlock({ kind: "other", text: "No blocks" }), false);
 });

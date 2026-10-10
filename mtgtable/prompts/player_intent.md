@@ -37,7 +37,8 @@ JSON には `request`（依頼）・`declare`（決定の宣言）・`answer`（
 - `comment`: 補足（任意）
 - 攻撃は1体ごとに `attack` の行で、攻撃先を `targets` に書く（相手の Player の id、相手のプレインズウォーカー、
   あなたが攻撃できるバトル（包囲戦はあなたがコントロールするもの）のカードの id）
-- ブロックしないときは `{"request": {"plan": [{"kind": "other", "text": "ブロックしない"}], "then": "pass"}}`
+- ブロックしないときは `{"request": {"plan": [{"kind": "other", "text": "ブロックしない", "no_block": true}], "then": "pass"}}`
+  （`no_block` で「ブロックしない」を伝える。卓は文ではなくこの値を見る）
 
 ### declare（決定の宣言）
 

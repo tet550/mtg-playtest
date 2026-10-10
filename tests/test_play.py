@@ -240,6 +240,26 @@ class PlayTest(unittest.TestCase):
         self.assertEqual(play.waiting_on(s), play.JUDGE)  # 審判が残り（メイン2 で唱える・ターン終了）を続ける
         self.assertIsNone(play.resume(s, "p1"))
 
+    def test_no_block_is_read_from_the_line_not_its_text(self):
+        # 文は画面の言語で変わる。英語の文でも no_block の印があれば「対応しなかった」として計画を続ける
+        seq = self._plan_stopped_at_blocks()
+        self._p2_request([{"kind": "other", "text": "No blocks", "no_block": True}])
+        self.st.apply({"actor": None, "acts": [
+            {"actor": "p2", "act": [{"op": "declare", "kind": "no_block"}, {"op": "pass"}]},
+            {"act": [{"op": "declare", "player": "p2", "kind": "ruled", "text": "No blocks"}]}]})
+        s = self.st.load()
+        self.assertFalse(play.interrupted(s, play.plan_in_progress(s)))
+        self.assertEqual(play.continue_pending(s).seq, seq)
+
+    def test_seat_request_keeps_the_line_marks(self):
+        plan = play._check_plan(self.st.load(), "p1", [
+            {"kind": "activate", "text": "Tap to activate", "tap": "tap"},
+            {"kind": "attack", "text": "Attack", "tap": "none"},
+            {"kind": "other", "text": "No blocks", "no_block": True},
+            {"kind": "other", "text": "x", "tap": "sideways", "no_block": "yes"}])  # 知らない値は落とす
+        self.assertEqual([(r.get("tap"), r.get("no_block")) for r in plan],
+                         [("tap", None), ("none", None), (None, True), (None, None)])
+
     def test_an_interruption_gives_the_rest_of_the_plan_back_to_its_player(self):
         seq = self._plan_stopped_at_blocks()
         self._p2_request([{"kind": "block", "text": "ブロックする"}])  # 相手が割り込んだ（ブロック）

@@ -50,6 +50,8 @@ from typing import Optional
 from . import play, prompt
 from .store import GameStore
 
+# run が返す止まった理由のうち、決着（worker はこの値と比べる。表示の文を比べない）
+GAME_OVER = "決着"
 PROVIDERS = ("openai", "anthropic")
 DEFAULT_PROVIDER = "openai"
 DEFAULT_MODELS = {"openai": "gpt-5", "anthropic": "claude-opus-5-5"}
@@ -382,7 +384,7 @@ def run(store: GameStore, ai: Optional[list] = None, watch: bool = False, max_fa
         if out is None:
             wait = play.waiting_on(store.load())
             if wait is None:
-                return "決着"
+                return GAME_OVER
             if not watch:
                 return "waiting on %s（人間の番）" % wait
             changes.wait()

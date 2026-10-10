@@ -386,9 +386,10 @@ def then_pending(state: GameState, intent) -> bool:
 
 
 def _no_action(d) -> bool:
-    """相手の依頼が、盤面に割り込まないもの（行動の行が無い・「ブロックしない」だけ）か。"""
+    """相手の依頼が、盤面に割り込まないもの（行動の行が無い・「ブロックしない」だけ）か。
+    no_block の印の無い行・plan の無い依頼（印を足す前の記録）だけ、文から読む。"""
     if d.plan:
-        return all("ブロックしない" in str(x.get("text", "")) for x in d.plan)
+        return all(x.get("no_block") is True or "ブロックしない" in str(x.get("text", "")) for x in d.plan)
     return "ブロックしない" in d.text or not re.search(r"(?m)^行動:", d.text)
 
 
@@ -621,6 +622,9 @@ class Refused(ValueError):
 
 PLAN_KINDS = ("play_land", "cast", "activate", "attack", "block", "resolve", "target",
               "draw", "look", "reveal", "mill", "shuffle", "search", "step", "other")  # step: to のステップまで進める
+# 行の印（文は画面の言語で変わるので、卓と画面は文ではなくこれを見る）。tap: 行のカードをタップする（起動のコストの {T}・
+# メニューの「タップ」）・アンタップする・攻撃でタップしない。no_block: ブロックしない
+PLAN_TAPS = ("tap", "untap", "none")
 STEP_THEN = ("upkeep", "draw", "main1", "beginning_of_combat", "declare_attackers", "declare_blockers",
              "combat_damage", "end_of_combat", "main2", "end")
 THEN_JA = {"continue": "続ける（まだ自分の番）", "pass": "パス（相手に渡す）",
@@ -697,6 +701,10 @@ def _check_plan(state: GameState, seat: str, plan) -> list:
             row["count"] = n
         if kind == "step" and line.get("to") in STEP_THEN:
             row["to"] = line["to"]
+        if line.get("tap") in PLAN_TAPS:
+            row["tap"] = line["tap"]
+        if line.get("no_block") is True:
+            row["no_block"] = True
         out.append(row)
     return out
 
