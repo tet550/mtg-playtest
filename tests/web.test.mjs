@@ -375,15 +375,14 @@ test("legal pages show the operator and contact, or say they are unset", async (
   assert.equal(routeOf("#/privacy").page, "privacy");
 });
 
-test("mana notes become the choices of mana to tap for, with their conditions", () => {
-  const pick = (text) => manaChoices([{ text }]).map((c) => c.mana + (c.cond ? ` | ${c.cond}` : ""));
+test("basic mana notes become the choices of mana to tap for; others stay as the note", () => {
+  const pick = (text) => manaChoices([{ text }]).map((c) => c.mana || `note: ${c.note}`);
   assert.deepEqual(pick("mana: {G} or {U}"), ["{G}", "{U}"]);
-  assert.deepEqual(pick("mana: {C}, or any color (pay 1 life)"),
-    ["{C}", "{W} | pay 1 life", "{U} | pay 1 life", "{B} | pay 1 life", "{R} | pay 1 life", "{G} | pay 1 life"]);
-  assert.deepEqual(pick("mana: {G}, or {B} (if you control a Swamp or Forest)"), ["{G}", "{B} | if you control a Swamp or Forest"]);
-  assert.deepEqual(pick("mana: {C}; {R} or {G} only if it entered this turn or you control a basic land"),
-    ["{C}", "{R} | only if it entered this turn or you control a basic land", "{G} | only if it entered this turn or you control a basic land"]);
+  assert.deepEqual(pick("mana: {W}"), ["{W}"]);
   assert.deepEqual(pick("mana: {C}{C}"), ["{C}{C}"]);
+  assert.deepEqual(pick("mana: {W}, {U}, or {B}"), ["{W}", "{U}", "{B}"]);
+  assert.deepEqual(pick("mana: {C}, or {T} + 1 life: any color"), ["note: {C}, or {T} + 1 life: any color"]);
+  assert.deepEqual(pick("mana: {C}（基本土地があれば {R} or {G}）"), ["note: {C}（基本土地があれば {R} or {G}）"]);
   assert.deepEqual(pick("+1/+1 until end of turn"), []);
 });
 

@@ -241,30 +241,18 @@ export function attackTargets(v, seat, opponent) {
 }
 
 // カードの Note「mana: …」（土地を出したときに書く、出せるマナ）から、タップして出すマナの候補を読む。
-// 例: "mana: {G} or {U}" → {G}・{U}、"mana: {C}, or any color (pay 1 life)" → {C} と5色（条件「(pay 1 life)」付き）。
-// 「,」「;」（括弧の外）で区切った節ごとに、続けて書いた記号（{C}{C} など）を1つの候補とし、記号以外の文をその節の条件とする
-const COLORS = ["{W}", "{U}", "{B}", "{R}", "{G}"];
+// 読むのは記号を「or」「,」でつないだだけの基本の書き方だけ: "mana: {G} or {U}" → {G}・{U}、"mana: {C}{C}" → {C}{C}。
+// それ以外（条件・任意の色・ライフなど）は Note の文のまま { note } として返し、メニューでは1つにまとめる（出すマナは人が書く）
+const BASIC_MANA_RE = /^(?:\{[WUBRGC0-9]\})+(?:\s*(?:,\s*)?(?:\bor\b)?\s*(?:\{[WUBRGC0-9]\})+)*$/i;
 export function manaChoices(notes) {
   const out = [];
   for (const n of notes || []) {
     const m = /^\s*mana\s*:\s*(.*)$/is.exec(n.text || "");
     if (!m) continue;
-    const parts = [];
-    let depth = 0, cur = "";
-    for (const ch of m[1]) {
-      if (ch === "(") depth++;
-      if (ch === ")") depth = Math.max(0, depth - 1);
-      if ((ch === "," || ch === ";") && !depth) { parts.push(cur); cur = ""; } else cur += ch;
-    }
-    parts.push(cur);
-    for (const part of parts) {
-      const syms = part.match(/(?:\{[^{}]+\})+/g) || [];
-      const any = /\bany colou?r\b/i.test(part);
-      const cond = part.replace(/(?:\s*\bor\b)?\s*(?:\{[^{}]+\})+/gi, " ").replace(/(?:\bor\s+)?\bany colou?r\b/gi, " ")
-        .replace(/\s+/g, " ").trim().replace(/^(?:or|and)\b\s*/i, "").replace(/^\(([^()]*)\)$/, "$1");
-      for (const mana of [...syms, ...(any ? COLORS : [])]) {
-        if (!out.some((o) => o.mana === mana && o.cond === cond)) out.push({ mana, cond });
-      }
+    const body = m[1].trim();
+    if (!BASIC_MANA_RE.test(body)) { out.push({ note: body }); continue; }
+    for (const mana of body.match(/(?:\{[^{}]+\})+/g)) {
+      if (!out.some((o) => o.mana === mana)) out.push({ mana });
     }
   }
   return out;
@@ -766,6 +754,13 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     other(`${ref(target)} に Note「${r.text}」を付ける${r.eot ? "（ターン終了まで）" : ""}`, [target]);
   }
 
+  // 基本の書き方でない mana の Note の土地: 出すマナ（と払うライフなど）を書いてもらい、Note の文と合わせて審判に任せる
+  async function tapForMana(id, note) {
+    const r = await ask({ title: `${nm(id)} をタップしてマナを出す（${note}）`, fields: [{ name: "mana", label: "出すマナ", value: "" }] });
+    if (!r) return;
+    other(`${ref(id)} をタップする（${r.mana ? `${r.mana} を出す` : "マナを出す"}。Note: ${note}）`, [id]);
+  }
+
   async function amount(title, fn, value = 1) {
     const r = await ask({ title, fields: [{ name: "n", label: "数", value, type: "number" }] });
     if (r && r.n > 0) fn(Math.min(99, Math.floor(r.n)));
@@ -842,10 +837,14 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
           : { label: "タップ", fn: () => other(`${ref(id)} をタップする`, [id]) });
         // Note に書いたマナ能力: 出すマナを選んでタップする（条件は文に残し、満たすかは審判が見る）
         if (!c.tapped) {
-          for (const { mana, cond } of manaChoices(c.notes)) {
-            const label = `タップして ${mana} を出す${cond ? `（${cond}）` : ""}`;
-            items.push({ label, nodes: manaNodes(label),
-              fn: () => other(`${ref(id)} をタップする（${mana} を出す${cond ? `。${cond}` : ""}）`, [id]) });
+          for (const { mana, note } of manaChoices(c.notes)) {
+            if (mana) {
+              const label = `タップして ${mana} を出す`;
+              items.push({ label, nodes: manaNodes(label), fn: () => other(`${ref(id)} をタップする（${mana} を出す）`, [id]) });
+            } else {
+              const label = `タップしてマナを出す…（${note}）`;
+              items.push({ label, nodes: manaNodes(label), fn: () => tapForMana(id, note) });
+            }
           }
         }
         items.push({ label: "能力を起動…", fn: () => start({ kind: "activate", source: id, targets: [], text: "" }) });
