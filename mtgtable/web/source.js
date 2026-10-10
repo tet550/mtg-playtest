@@ -126,7 +126,7 @@ export function createSource(isStatic) {
       if (!oracleCache.has(name)) {
         const request = isStatic ? scryfallOracle(name)
           : getJSON(`/api/oracle?name=${encodeURIComponent(name)}`).then((r) => r.text);
-        oracleCache.set(name, request.catch(() => "").then((text) => text || "（オラクルを取得できなかった）"));
+        oracleCache.set(name, request.catch(() => ""));  // 取れなければ ""（知らせの文は画面の言語で、描く側が出す）
       }
       return oracleCache.get(name);
     },
