@@ -5,8 +5,10 @@ import { createDecks } from "./decks.js";
 import { createLobby } from "./lobby.js";
 import { createHistory } from "./history.js";
 import { renderPrivacy, renderTerms } from "./legal.js";
+import { t } from "./i18n.js";
 
-export const PAGES = { top: "トップ", decks: "デッキ", new: "対局を作る", games: "対局", history: "履歴", public: "公開の対局" };
+// ヘッダーのメニューの画面（名前は辞書の nav.<画面>）
+export const PAGES = ["top", "decks", "new", "games", "history", "public"];
 // ヘッダーに出さない画面（招待の URL: #/join/<招待>/<鍵>、再生・観戦: #/view/<対局>[/<共有の鍵>]）
 const HIDDEN = ["join", "view", "terms", "privacy"];
 export const BOARD_PAGES = ["games", "view"];  // 盤面を出す画面
@@ -14,7 +16,7 @@ export const BOARD_PAGES = ["games", "view"];  // 盤面を出す画面
 // #/decks → {page: "decks", args: []}、#/join/abc/xyz → {page: "join", args: ["abc", "xyz"]}
 export function routeOf(hash) {
   const m = /^#\/(\w+)((?:\/[^/]*)*)$/.exec(hash || "");
-  if (!m || !(m[1] in PAGES || HIDDEN.includes(m[1]))) return null;
+  if (!m || !(PAGES.includes(m[1]) || HIDDEN.includes(m[1]))) return null;
   return { page: m[1], args: m[2].split("/").slice(1).map(decodeURIComponent) };
 }
 
@@ -31,8 +33,8 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
 
   function nav() {
     const box = $("sitenav");
-    box.replaceChildren(...Object.entries(PAGES).map(([key, label]) => {
-      const a = el("a", key === current ? "on" : null, label);
+    box.replaceChildren(...PAGES.map((key) => {
+      const a = el("a", key === current ? "on" : null, t(`nav.${key}`));
       a.href = `#/${key}`;
       return a;
     }));
@@ -47,12 +49,12 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
       return a;
     };
     const cta = el("div", "cta");
-    cta.append(mine.length ? link("primary", "対局へ", "#/games") : link("primary", "デッキを登録する", "#/decks"),
-      link(null, "対局を作る", "#/new"), link(null, "公開の対局を見る", "#/public"));
+    cta.append(mine.length ? link("primary", t("top.cta.games"), "#/games") : link("primary", t("top.cta.decks"), "#/decks"),
+      link(null, t("top.cta.new"), "#/new"), link(null, t("top.cta.public"), "#/public"));
     const hero = el("div", "hero");
     hero.append(
-      el("h2", null, "ブラウザの卓で、紙の MTG を"),
-      el("p", null, "紙の Magic: The Gathering を、ブラウザの卓で AI か招待した人と遊ぶ場所です。カードの処理は AI の審判が行います。"),
+      el("h2", null, t("top.title")),
+      el("p", null, t("top.lead")),
       cta);
     root.replaceChildren(hero);
     const steps = el("ol", "steps");
@@ -65,13 +67,12 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
       }
       steps.append(li);
     };
-    item("デッキを登録する（デッキリストを貼り付けると、カード名と枚数を確かめます）。", "#/decks", "デッキへ");
-    item("対局を作る（AI と対戦するか、人を招待する）。", "#/new", "対局を作るへ");
-    item(mine.length ? `対局する（あなたの対局: ${mine.length} 件）。` : "招待された URL を開くと、その席で対局できます。",
-      mine.length ? "#/games" : null, "対局へ");
-    item("終わった対局は「履歴」から再生でき、共有 URL で人に見せられます。公開の対局は「公開の対局」で誰でも再生できます。",
-      "#/public", "公開の対局へ");
-    item("別の端末でも続けるには、ヘッダーの「復元 URL」をその端末で開きます。");
+    item(t("top.step.deck"), "#/decks", t("top.step.deck.link"));
+    item(t("top.step.new"), "#/new", t("top.step.new.link"));
+    item(mine.length ? t("top.step.play.mine", { count: mine.length }) : t("top.step.play.invited"),
+      mine.length ? "#/games" : null, t("top.step.play.link"));
+    item(t("top.step.history"), "#/public", t("top.step.history.link"));
+    item(t("top.step.recovery"));
     root.append(steps);
   }
 
@@ -99,5 +100,12 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
     if (!board) window.scrollTo(0, 0);
   }
 
-  return { show };
+  // 言語を変えたとき: メニューと、訳してある画面（今はトップだけ）を描き直す。入力の途中の画面（デッキなど）は描き直さない
+  function relabel() {
+    if (!current) return;
+    nav();
+    if (current === "top") renderTop($("page"));
+  }
+
+  return { show, relabel };
 }

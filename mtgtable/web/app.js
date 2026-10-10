@@ -5,6 +5,9 @@ import { Timeline } from "./timeline.js";
 import { createRenderer } from "./render.js";
 import { createPlay, toast } from "./play.js";
 import { createSite, routeOf } from "./site.js";
+import { applyDom, onLang, setLang, t } from "./i18n.js";
+
+applyDom();  // 今の言語の文言を HTML の印に入れる（描く前に）
 
 // play: 席の鍵を持って対局しているときの {seat}（無ければ観戦）。marks: 組み立て中の Act で選んだもの
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], names: {},
@@ -53,7 +56,7 @@ const params = new URLSearchParams(location.search);
 let mySeats = {};  // 公開のサーバーで、所有者の鍵（Cookie）で持っている席 {対局: 席}
 let gameList = [];
 let viewing = null;  // 再生・観戦（#/view/<対局>[/<共有の鍵>]）: {game, share, finished, views}
-const VIEW_LABEL = (v) => (v === "judge" ? "全体（judge）" : v);
+const VIEW_LABEL = (v) => (v === "judge" ? t("seat.all") : v);
 let site = null;  // 公開のサーバーの画面の切り替え（トップ・デッキ・対局）
 function keyOf(game) {
   let k = null;
@@ -79,10 +82,22 @@ function applySeatMode() {
   $("seat").value = ui.seat;
   $("seat").disabled = !!k;
   $("playing").hidden = !k;
-  $("playing").textContent = k ? `${k.seat} で対局中` : "";
   $("fl-play").hidden = !k;
   document.body.classList.toggle("playing", !!k);
-  document.title = k ? `mtgtable 対局 ${ui.game}` : "mtgtable 観戦";
+  seatLabels();
+}
+
+// 席の表示（対局中の印・ページの題）。言語を変えたときも呼ぶ
+function seatLabels() {
+  $("playing").textContent = ui.play ? t("header.playing", { seat: ui.play.seat }) : "";
+  document.title = ui.play ? t("title.play", { game: ui.game }) : t("title.watch");
+}
+
+// 対局の選択肢の名前（一覧の対局と、再生・観戦で足した対局）
+function gameLabel(id) {
+  const g = gameList.find((x) => x.id === id);
+  if (g) return t("game.option", { id: g.id, turn: g.turn, version: g.version });
+  return t(viewing && viewing.finished ? "game.option.replay" : "game.option.watch", { id });
 }
 
 // ---------------------------------------------------------------- 読み込み
@@ -93,7 +108,7 @@ async function loadGames() {
   mySeats = Object.fromEntries(games.filter((g) => g.my_seat).map((g) => [g.id, g.my_seat]));
   const sel = $("game");
   sel.replaceChildren(...games.map((g) => {
-    const o = el("option", null, `${g.id}（T${g.turn}・v${g.version}）`);
+    const o = el("option", null, gameLabel(g.id));
     o.value = g.id;
     return o;
   }));
@@ -164,7 +179,7 @@ async function siteSetup() {
     try {
       await source.recover(token);
     } catch (e) {
-      showError(new Error("復元 URL が違うか、作り直されています（" + e.message + "）"));
+      showError(new Error(t("error.recover", { message: e.message })));
     }
   }
   // 招待の URL（?game=G&seat=p1#key=...）で来たら、その席をこの所有者のものにする（取った後は鍵が無くても入れる）
@@ -173,7 +188,7 @@ async function siteSetup() {
     try {
       await source.claim(game, invited.seat, invited.token);
     } catch (e) {
-      showError(new Error(e.status === 403 ? "この席は、もう他の人が取っています（招待の URL が使われた後です）" : e.message));
+      showError(new Error(e.status === 403 ? t("error.seatTaken") : e.message));
     }
   }
   $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value !== "judge"));
@@ -182,9 +197,8 @@ async function siteSetup() {
   $("legallinks").hidden = false;
   $("recovery").onclick = async () => {
     try {
-      const { token: t } = await source.recovery();
-      window.prompt("この URL を別の端末で開くと、同じ対局が見られます（作り直すと前の URL は使えなくなります。人に渡さない）",
-        `${location.origin}/#recover=${t}`);
+      const { token } = await source.recovery();
+      window.prompt(t("recovery.prompt"), `${location.origin}/#recover=${token}`);
     } catch (e) { showError(e); }
   };
 }
@@ -196,7 +210,7 @@ async function openView(game, share) {
   source.setViewing({ game, share });
   const sel = $("game");
   if (![...sel.options].some((o) => o.value === game)) {
-    const o = el("option", null, `${game}（${a.finished ? "再生" : "観戦"}）`);
+    const o = el("option", null, gameLabel(game));
     o.value = game;
     sel.append(o);
   }
@@ -231,9 +245,9 @@ async function openGame(id) {
 function showError(e) {
   // 鍵で守っている対局を、鍵の無いページ・席で開いたとき（localhost と 127.0.0.1 は別のサイトなので、鍵も別に覚える）
   $("detail").textContent = /needs its key/.test(e.message)
-    ? `この対局は席の鍵が必要です。invite が出した URL（${location.hostname === "localhost" ? "127.0.0.1 の方" : "#key= 付き"}）を`
-      + `このブラウザで開いてください。作り直すには: python -m mtgtable invite playtest/${ui.game} --seat p1`
-    : "エラー: " + e.message;
+    ? t("error.needsKey", { game: ui.game,
+      where: t(location.hostname === "localhost" ? "error.needsKey.localhost" : "error.needsKey.fragment") })
+    : t("error.prefix", { message: e.message });
   $("fl-detail").hidden = false;
 }
 
@@ -272,7 +286,7 @@ function stopPlay() {
   clearTimeout(ui.timer);
   ui.timer = null;
   ui.playing = false;
-  $("play").textContent = "▶ 再生";
+  $("play").textContent = t("replay.play");
   $("play").classList.remove("on");
 }
 
@@ -282,7 +296,7 @@ function startPlay(from = null) {
   else if (ui.pos >= ui.cursor) ui.pos = 0;  // 最後まで見ていたら最初から
   ui.live = false;
   ui.playing = true;
-  $("play").textContent = "⏸ 停止";
+  $("play").textContent = t("replay.stop");
   $("play").classList.add("on");
   const step = () => {
     if (ui.pos >= ui.cursor) {  // 最後まで来たら止めて Live に戻る
@@ -401,11 +415,23 @@ function setMore(open) {
 }
 $("moreBtn").onclick = (e) => { e.stopPropagation(); setMore($("moreMenu").hidden); };
 $("moreMenu").onclick = (e) => {
-  const item = e.target.closest("[role=menuitem]");
+  const item = e.target.closest("[role^=menuitem]");
   if (!item) return;
   setMore(false);
   if (item.dataset.open) $(item.dataset.open).showModal();
+  if (item.dataset.lang) setLang(item.dataset.lang);
 };
+
+// 言語を変えたら、HTML の印（applyDom が済ませた）以外の、描いた文言を描き直す。盤面・操作パネルの中身は後の段階で訳す
+onLang(() => {
+  seatLabels();
+  $("play").textContent = t(ui.playing ? "replay.stop" : "replay.play");
+  for (const o of $("game").options) o.textContent = gameLabel(o.value);
+  for (const o of $("seat").options) o.textContent = viewing ? VIEW_LABEL(o.value) : o.value === "judge" ? t("seat.judge") : o.value;
+  if (site) site.relabel();
+  if (ui.view) render();
+  if (document.body.classList.contains("log-open")) renderLog();
+});
 document.addEventListener("click", (e) => { if (!e.target.closest(".more")) setMore(false); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") setMore(false);

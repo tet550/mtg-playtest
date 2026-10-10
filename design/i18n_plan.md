@@ -88,14 +88,20 @@ Note の中の `<英語名>` の日本語名への置き換え、構造化した
 - `worker.py` の `"決着"` は `llm.GAME_OVER` と比べる（値は CLI の表示のため日本語のまま）
 - テスト: `tests/test_play.py`（英語の文＋`no_block` で計画が続く・印が依頼に残る）、`tests/web.test.mjs`（英語の文＋印で盤面の予定が動く・古い行）
 
-### 段階 2: 仕組みと、ヘッダー・共通部分
+### 段階 2: 仕組みと、ヘッダー・共通部分（済み）
 
-- `web/i18n.js` を足す: `t(key, params)`・`lang()`・`setLang()`・言語の決め方（localStorage → `navigator.language` → `en`）。
-  辞書は `web/i18n/ja.js`・`web/i18n/en.js`（ビルド無しの ES modules のまま。キーが片方に無ければもう一方 → キーそのもの）
-- `index.html` の静的な文言は `data-i18n`（`title` は `data-i18n-title`）で印を付け、起動時と切り替え時に差し替える。`<html lang>` も替える
-- ヘッダーに言語の切り替え（`日本語 / English`）。切り替えたら再描画（盤面・ページの `show` をやり直す。リロードはしない）
-- 対象: `index.html`・`site.js`・`app.js`・`dom.js`・トースト
-- テスト: `web.test.mjs` に辞書のキーが両方の言語でそろっているかの検査（片方だけのキーを失敗にする）
+- `web/i18n.js`: `t(key, params)`・`lang()`・`setLang()`・`onLang()`・`applyDom()`・`detect()`。言語は localStorage の
+  `mtgtable.lang` → `navigator.languages`（`ja*` なら日本語）→ 英語。`t` は今の言語 → もう一方 → キーそのもの
+- 辞書は `web/i18n-ja.js`・`web/i18n-en.js`（サーバーは `web/` の直下のファイルだけ配り、`export` も直下の .js だけ写すので、
+  サブ・フォルダにしない）
+- `index.html` の静的な文言に `data-i18n`（文）・`data-i18n-title`・`data-i18n-aria-label` を付けた。`<select>` を含む `<label>` は
+  文だけを `<span>` で包む（`textContent` で入力を消さない）。HTML には日本語を残すので、スクリプトの前でも読める
+- 言語の切り替えはヘッダーの「⋯」メニューの一番上（`日本語 / English`）。ヘッダーは1行に収めるよう細かく調整してあり、
+  部品を足すと崩れるため。切り替えたら `onLang` で、スクリプトが書いた文言（対局中の印・題・再生ボタン・対局と席の選択肢）と
+  サイトのメニュー・トップを描き直す。入力の途中の画面（デッキなど）は描き直さない（段階 6 で訳すときに考える）
+- 権利の表記の英語は Fan Content Policy の決まった文言
+- `<meta>`（description・og）は訳さない（クローラーはスクリプトを動かさないため、どちらか1つ。今は日本語のまま）
+- テスト（`web.test.mjs`）: 両方の辞書のキーと `{…}` の穴がそろっていること、`detect`、`t` の埋め込みとフォールバック
 
 ### 段階 3: 盤面（観戦）
 

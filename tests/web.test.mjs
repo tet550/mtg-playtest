@@ -417,3 +417,29 @@ test("the preview reads tap and no_block from the line, not from its text", () =
   assert.equal(noBlock({ kind: "other", text: "ブロックしない" }), true);
   assert.equal(noBlock({ kind: "other", text: "No blocks" }), false);
 });
+
+test("both languages have the same text keys and placeholders", async () => {
+  const { DICTS } = await import("../mtgtable/web/i18n.js");
+  const { ja, en } = DICTS;
+  assert.deepEqual(Object.keys(en).sort(), Object.keys(ja).sort());  // 片方だけのキーを作らない
+  const holes = (s) => (typeof s === "string" ? [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort() : []);
+  for (const k of Object.keys(ja)) assert.deepEqual(holes(en[k]), holes(ja[k]), k);
+});
+
+test("the language comes from the saved choice, then the browser, then English", async () => {
+  const { detect } = await import("../mtgtable/web/i18n.js");
+  assert.equal(detect("en", ["ja-JP"]), "en");
+  assert.equal(detect(null, ["ja-JP", "en-US"]), "ja");
+  assert.equal(detect("fr", ["fr-FR", "en-GB"]), "en");
+  assert.equal(detect(null, ["de-DE"]), "en");
+  assert.equal(detect(null, []), "en");
+});
+
+test("t fills placeholders and falls back to the other language, then the key", async () => {
+  const { t, DICTS, lang } = await import("../mtgtable/web/i18n.js");
+  const other = lang() === "ja" ? "en" : "ja";
+  assert.equal(t("header.playing", { seat: "p1" }), DICTS[lang()]["header.playing"].replace("{seat}", "p1"));
+  DICTS[other]["test.only"] = "only {x}";
+  try { assert.equal(t("test.only", { x: 1 }), "only 1"); } finally { delete DICTS[other]["test.only"]; }
+  assert.equal(t("no.such.key"), "no.such.key");
+});

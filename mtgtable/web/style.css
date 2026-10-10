@@ -859,6 +859,10 @@ table.decks .sharerow .crow { display: flex; flex-wrap: wrap; gap: 6px; align-it
 .moremenu button, .moremenu a { display: block; text-align: left; padding: 7px 10px; border: 0; border-radius: 6px;
   background: none; color: var(--ink); text-decoration: none; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .moremenu button:hover, .moremenu a:hover { background: var(--badge); }
+/* 言語の切り替え（日本語・English を横に並べ、今の言語を強く） */
+.moremenu .langrow { display: flex; gap: 2px; padding-bottom: 4px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.moremenu .langrow button { flex: 1; text-align: center; color: var(--muted); }
+.moremenu .langrow button.on { color: var(--ink); font-weight: 700; background: var(--badge); }
 .credits { max-width: min(520px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 14px;
   background: var(--panel); color: var(--ink); padding: 20px 22px; }
 .credits::backdrop { background: rgba(0, 0, 0, .4); }

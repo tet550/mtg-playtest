@@ -16,46 +16,48 @@
 <header class="bar">
   <strong class="brand">mtgtable</strong>
   <nav id="sitenav" class="sitenav" hidden></nav>
-  <label>対局 <select id="game"></select></label>
-  <label>席 <select id="seat">
-    <option value="judge">judge（全知）</option>
+  <label><span data-i18n="header.game">対局</span> <select id="game"></select></label>
+  <label><span data-i18n="header.seat">席</span> <select id="seat">
+    <option value="judge" data-i18n="seat.judge">judge（全知）</option>
     <option value="p1">p1</option>
     <option value="p2">p2</option>
   </select></label>
-  <label><input id="images" type="checkbox" checked> 画像</label>
-  <label title="タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）"><input id="motion" type="checkbox" checked> 動き</label>
+  <label><input id="images" type="checkbox" checked> <span data-i18n="header.images">画像</span></label>
+  <label data-i18n-title="header.motion.title" title="タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）"><input id="motion" type="checkbox" checked> <span data-i18n="header.motion">動き</span></label>
   <span id="turn" class="turn"></span>
   <span id="thinking" class="thinking" hidden></span>
   <span id="playing" class="chip strong playing" hidden></span>
-  <span id="conn" class="conn" title="更新の受信状態"></span>
-  <button id="recovery" title="別の端末で同じ対局を見るための URL を作る" hidden>復元 URL</button>
-  <button id="logToggle" title="Log を開く・閉じる（L キー）">Log</button>
+  <span id="conn" class="conn" data-i18n-title="header.conn.title" title="更新の受信状態"></span>
+  <button id="recovery" data-i18n="header.recovery" data-i18n-title="header.recovery.title" title="別の端末で同じ対局を見るための URL を作る" hidden>復元 URL</button>
+  <button id="logToggle" data-i18n-title="header.log.title" title="Log を開く・閉じる（L キー）">Log</button>
   <div class="more">
-    <button id="moreBtn" title="その他" aria-haspopup="menu" aria-expanded="false">⋯</button>
+    <button id="moreBtn" data-i18n-title="header.more.title" title="その他" aria-haspopup="menu" aria-expanded="false">⋯</button>
     <div id="moreMenu" class="moremenu" role="menu" hidden>
-      <button type="button" role="menuitem" data-open="credits">権利の表記</button>
-      <span id="legallinks" hidden><a role="menuitem" href="#/terms">利用規約</a><a role="menuitem" href="#/privacy">プライバシー</a></span>
+      <!-- 言語（日本語・English。名前は訳さない） -->
+      <div class="langrow" role="group" data-i18n-aria-label="more.lang" aria-label="言語"><button type="button" role="menuitemradio" data-lang="ja" lang="ja">日本語</button><button type="button" role="menuitemradio" data-lang="en" lang="en">English</button></div>
+      <button type="button" role="menuitem" data-open="credits" data-i18n="more.credits">権利の表記</button>
+      <span id="legallinks" hidden><a role="menuitem" href="#/terms" data-i18n="more.terms">利用規約</a><a role="menuitem" href="#/privacy" data-i18n="more.privacy">プライバシー</a></span>
     </div>
   </div>
 </header>
 
 <div class="replay">
-  <button id="first" title="最初">⏮</button>
-  <button id="prev" title="1 Act 戻る">◀</button>
+  <button id="first" data-i18n-title="replay.first" title="最初">⏮</button>
+  <button id="prev" data-i18n-title="replay.prev" title="1 Act 戻る">◀</button>
   <input id="pos" type="range" min="0" max="0" value="0">
-  <button id="next" title="1 Act 進む">▶</button>
-  <button id="play" title="自動再生（スペースキー）">▶ 再生</button>
-  <select id="unit" title="1回に進める単位">
-    <option value="act">Act ごと</option>
-    <option value="batch">Batch ごと</option>
+  <button id="next" data-i18n-title="replay.next" title="1 Act 進む">▶</button>
+  <button id="play" data-i18n="replay.play" data-i18n-title="replay.play.title" title="自動再生（スペースキー）">▶ 再生</button>
+  <select id="unit" data-i18n-title="replay.unit.title" title="1回に進める単位">
+    <option value="act" data-i18n="replay.unit.act">Act ごと</option>
+    <option value="batch" data-i18n="replay.unit.batch">Batch ごと</option>
   </select>
-  <select id="speed" title="進める間隔">
-    <option value="150">とても速い</option>
-    <option value="400">速い</option>
-    <option value="1000" selected>普通</option>
-    <option value="2500">遅い</option>
+  <select id="speed" data-i18n-title="replay.speed.title" title="進める間隔">
+    <option value="150" data-i18n="replay.speed.fastest">とても速い</option>
+    <option value="400" data-i18n="replay.speed.fast">速い</option>
+    <option value="1000" selected data-i18n="replay.speed.normal">普通</option>
+    <option value="2500" data-i18n="replay.speed.slow">遅い</option>
   </select>
-  <button id="live" class="on" title="最新を追う">Live</button>
+  <button id="live" class="on" data-i18n-title="replay.live.title" title="最新を追う">Live</button>
   <span id="posText" class="muted"></span>
 </div>
 
@@ -64,24 +66,24 @@
 <main class="layout">
   <section class="board">
     <div id="top" class="side"></div>
-    <div id="combatbox" class="combatbox" hidden><h3 class="bxhead"><span>戦闘</span><span class="bxcount muted"></span><button class="bxmin" title="一時的に畳む（下の盤面を見る）。中身が変わると自動で開く">–</button></h3><div id="combat" class="combat"></div></div>
+    <div id="combatbox" class="combatbox" hidden><h3 class="bxhead"><span data-i18n="box.combat">戦闘</span><span class="bxcount muted"></span><button class="bxmin" data-i18n-title="box.min.title" title="一時的に畳む（下の盤面を見る）。中身が変わると自動で開く">–</button></h3><div id="combat" class="combat"></div></div>
     <div id="bottom" class="side"></div>
     <!-- 盤面の上に浮かぶ小窓（見出しをドラッグで移動、– で畳む） -->
-    <div id="fl-stack" class="stackbox" hidden><h3 class="bxhead"><span>スタック</span><span class="bxcount muted"></span><button class="bxmin" title="一時的に畳む（下の盤面を見る）。中身が変わると自動で開く">–</button></h3><ol id="stack" class="stack"></ol></div>
+    <div id="fl-stack" class="stackbox" hidden><h3 class="bxhead"><span data-i18n="box.stack">スタック</span><span class="bxcount muted"></span><button class="bxmin" data-i18n-title="box.min.title" title="一時的に畳む（下の盤面を見る）。中身が変わると自動で開く">–</button></h3><ol id="stack" class="stack"></ol></div>
     <div id="fl-detail" class="float" hidden>
-      <div class="fhead"><span>カード</span><button class="fmin" title="畳む">–</button><button class="fclose" title="閉じる">×</button></div>
+      <div class="fhead"><span data-i18n="float.card">カード</span><button class="fmin" data-i18n-title="float.min.title" title="畳む">–</button><button class="fclose" data-i18n-title="float.close.title" title="閉じる">×</button></div>
       <div id="detail" class="detail fbody"></div>
     </div>
   </section>
-  <div id="logResizer" class="resizer" title="ドラッグで幅を変える"></div>
+  <div id="logResizer" class="resizer" data-i18n-title="log.resizer.title" title="ドラッグで幅を変える"></div>
   <aside id="logpane" class="logpane">
-    <div class="lphead"><span>Log</span><button id="logClose" title="閉じる">×</button></div>
+    <div class="lphead"><span>Log</span><button id="logClose" data-i18n-title="float.close.title" title="閉じる">×</button></div>
     <div id="log" class="log"></div>
   </aside>
 </main>
 <!-- GUI の対局の操作パネル（盤面の外に置き、画面に固定する。見出しをドラッグで移動） -->
 <div id="fl-play" class="float playpanel" hidden>
-  <div class="fhead"><span id="playTitle">操作</span><button class="fmin" title="畳む">–</button></div>
+  <div class="fhead"><span id="playTitle">操作</span><button class="fmin" data-i18n-title="float.min.title" title="畳む">–</button></div>
   <div id="playbody" class="fbody"></div>
 </div>
 <div id="menu" class="menu" hidden></div>
@@ -89,11 +91,10 @@
 <div id="toast" class="toast" hidden></div>
 <!-- 権利の表記: ヘッダーの「⋯」から開く -->
 <dialog id="credits" class="credits">
-  <h3>権利の表記</h3>
-  <p>mtgtable は Wizards of the Coast の Fan Content Policy に基づく非公式のファンコンテンツです。Wizards of the Coast による承認・支援は受けていません。
-  使用している素材の一部は Wizards of the Coast LLC の財産です。©Wizards of the Coast LLC. Magic: The Gathering は Wizards of the Coast LLC の商標です。</p>
-  <p>カードの情報と画像: <a href="https://scryfall.com/" rel="noopener noreferrer" target="_blank">Scryfall</a>（Scryfall とも無関係です）</p>
-  <form method="dialog" class="crow"><button class="on">閉じる</button></form>
+  <h3 data-i18n="credits.title">権利の表記</h3>
+  <p data-i18n="credits.fcp">mtgtable は Wizards of the Coast の Fan Content Policy に基づく非公式のファンコンテンツです。Wizards of the Coast による承認・支援は受けていません。使用している素材の一部は Wizards of the Coast LLC の財産です。©Wizards of the Coast LLC. Magic: The Gathering は Wizards of the Coast LLC の商標です。</p>
+  <p><span data-i18n="credits.source">カードの情報と画像:</span> <a href="https://scryfall.com/" rel="noopener noreferrer" target="_blank">Scryfall</a><span data-i18n="credits.unaffiliated">（Scryfall とも無関係です）</span></p>
+  <form method="dialog" class="crow"><button class="on" data-i18n="credits.close">閉じる</button></form>
 </dialog>
 <script type="module" src="static/app.js"></script>
 </body>
