@@ -1,6 +1,7 @@
 import { $, dots, el } from "./dom.js";
 import { createMotion } from "./motion.js";
 import { t as tr } from "./i18n.js";  // t はターン（v.turn）などの名前に使っているので tr
+import { createCardNames, displayName, localize } from "./cardnames.js";
 
 // DOM 描画。通信と再生操作は呼び出し元から渡す。
 // hooks（GUI の対局）: card / pile / player / stack はクリックを受け取り、true を返したら既定の動き（詳細・開閉）をしない。
@@ -8,6 +9,8 @@ import { t as tr } from "./i18n.js";  // t はターン（v.turn）などの名�
 export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hooks = {} }) {
   const { imageURL, symbolURL } = source;
   const motion = createMotion();
+  // カード名の日本語（日本語の画面で、見えているカードの名前だけ聞く）。分かったら描き直す
+  const cardNames = createCardNames(source, () => { render(); renderLog(); });
   // 文の中の {G} {2} {T} {W/U} などをマナ・シンボルの画像にした要素の並び（画像を使わないときは文字のまま）
   function manaNodes(text) {
     if (!ui.images) return [document.createTextNode(text)];
@@ -39,7 +42,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return names;
   }
 
-  const ref = (id) => (ui.names[id] ? `<${ui.names[id]}> ${id}` : id);
+  const ref = (id) => (ui.names[id] ? `<${displayName(ui.names[id])}> ${id}` : id);
 
   // 同じ見た目のパーマネント（Pizza のコピー ×100 など）は1枚にまとめて ×N で出す。見た目に出ない id（Note の id）は
   // 比べない。並びが離れていても（間に別のカードが出ても）まとめ、最初に出た位置に置く
@@ -65,7 +68,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     } else {
       const img = el("img", "art");
       img.loading = "lazy";
-      img.alt = c.name;
+      img.alt = displayName(c.name);
       img.src = imageURL(c.name);
       img.onerror = () => { box.classList.add("noimg"); img.remove(); };
       box.append(img);
@@ -143,7 +146,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       const m = /^(\w+)(->|<-)(.*)$/.exec(l);
       if (!m) { out.push(l); continue; }
       if (ui.images && m[1] === "exiled_by") continue;
-      const ids = m[3].split(",").map((id) => (ui.names[id] ? `<${ui.names[id]}>` : id));
+      const ids = m[3].split(",").map((id) => (ui.names[id] ? `<${displayName(ui.names[id])}>` : id));
       out.push(`${m[2] === "->" ? "→" : "←"} ${ids.join(", ")}（${m[1].replace(/_/g, " ")}）`);
     }
     return out;
@@ -153,7 +156,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const small = (extra || "").includes("small");
     const withArt = ui.images && !small;
     const d = el("div", "card" + (c.tapped ? " tapped" : "") + (c.land ? " land" : "") + (withArt ? " withart" : "") + (extra || ""));
-    d.title = (c.name ? `<${c.name}>` : tr("card.faceDown")) + ` ${c.id}`;
+    d.title = (c.name ? `<${displayName(c.name)}>` : tr("card.faceDown")) + ` ${c.id}`;
     d.dataset.ids = (c.ids || [c.id]).join(" ");  // カードの動き（motion.js）で前後の描画を対応づける
     const mark = ui.marks && ui.marks.get((c.ids || [c.id])[0]);
     if (mark) d.classList.add(mark);
@@ -167,7 +170,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       return d;
     }
     if (pt) d.append(pt);
-    d.append(el("div", "nm", (c.name ? `<${c.name}>` : (c.face_down ? tr("card.faceDown") : "?")) + (c.count ? ` ×${c.count}` : "")));
+    d.append(el("div", "nm", (c.name ? `<${displayName(c.name)}>` : (c.face_down ? tr("card.faceDown") : "?")) + (c.count ? ` ×${c.count}` : "")));
     const flags = [c.id];
     if (c.token) flags.push("token");
     if (c.new) flags.push("new");
@@ -189,28 +192,33 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const request = ++detailRequest;
     const view = ui.view;
     document.querySelectorAll(".card.sel").forEach((x) => x.classList.remove("sel"));
-    const lines = [c.name ? `<${c.name}>  ${c.id}` : c.id];
+    const lines = [c.name ? `<${displayName(c.name)}>  ${c.id}` : c.id];
     const state = [c.tapped && "tapped", c.token && "token", c.new && "new", c.face_down && "face down",
       c.controller && c.owner && c.controller !== c.owner && `owner ${c.owner}`].filter(Boolean);
     if (state.length) lines.push(state.join(" · "));
     for (const [k, n] of Object.entries(c.counters || {})) lines.push(`counter ${k} ×${n}`);
     for (const t of cardTexts(c)) lines.push("note: " + t);
     if (c.definition) lines.push("definition: " + JSON.stringify(c.definition));
-    if (c.name) {
-      lines.push("", (await source.oracle(c.name)) || tr("card.noOracle"));
-    }
+    const card = c.name ? await source.oracle(c.name) : null;
+    if (card) lines.push("", card.text || tr("card.noOracle"));
     if (request !== detailRequest || view !== ui.view) return;
     const detail = $("detail");
     $("fl-detail").hidden = false;
     detail.replaceChildren();
     if (ui.images && c.name && !c.face_down) {
       const img = el("img", "big");
-      img.alt = c.name;
+      img.alt = displayName(c.name);
       img.src = imageURL(c.name);
       img.onerror = () => img.remove();
       detail.append(img);
     }
     detail.append(manaEl("div", "otext", lines.join("\n")));
+    // 日本語版の文は印刷されたときの文。判定（審判）は英語のオラクルで行うので、英語も開けるようにする
+    if (card && card.lang === "ja" && card.oracle) {
+      const more = el("details", "oracle-en");
+      more.append(el("summary", null, tr("card.oracleEn")), manaEl("div", "otext", card.oracle));
+      detail.append(el("div", "muted onote", tr("card.printedNote")), more);
+    }
     detail.classList.remove("muted");
   }
 
@@ -225,7 +233,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     }
     return groups.map((g) => {
       const box = el("div", "lgroup" + (ui.images ? " overlap" : ""));
-      const cards = g.key === "tapped" ? [...g.cards].sort((a, b) => a.name.localeCompare(b.name)) : g.cards;
+      const cards = g.key === "tapped" ? [...g.cards].sort((a, b) => displayName(a.name).localeCompare(displayName(b.name))) : g.cards;
       box.append(...cards.map((c) => withUnder(c, under)));
       if (g.cards.length > 1) box.append(el("span", "chip strong gcount", `×${g.cards.length}`));
       return box;
@@ -310,12 +318,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const face = el("div", "face" + (top ? "" : " back") + (opts.known ? " known" : ""));
     if (top && ui.images) {
       const img = el("img");
-      img.alt = top.name;
+      img.alt = displayName(top.name);
       img.src = imageURL(top.name);
-      img.onerror = () => { img.remove(); face.append(el("div", "ftext", `<${top.name}>`)); };
+      img.onerror = () => { img.remove(); face.append(el("div", "ftext", `<${displayName(top.name)}>`)); };
       face.append(img);
     } else if (top) {
-      face.append(el("div", "ftext", `<${top.name}>`));
+      face.append(el("div", "ftext", `<${displayName(top.name)}>`));
     }
     if (count) stackBox.append(face);
     stackBox.append(el("span", "chip strong pcount", String(count)));
@@ -330,7 +338,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     if (opts.onclick && count) p.onclick = opts.onclick;
     // 一番上を知っている: カードの表を出し、小さな印だけ付ける（束の幅は狭いので、長い文字はカードを隠す）
     if (opts.known) stackBox.append(el("span", "chip pknown", tr("pile.known")));
-    if (top) p.title = tr(opts.known ? "pile.top.known" : "pile.top", { name: top.name });
+    if (top) p.title = tr(opts.known ? "pile.top.known" : "pile.top", { name: displayName(top.name) });
     return p;
   }
 
@@ -605,13 +613,13 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     }
     const word = DECLS.includes(d.kind) ? tr(`decl.${d.kind}`) : d.kind;
     // 審判への依頼は長いので、吹き出しには種類だけ（中身は操作パネルと Log に出る）
-    const text = d.text && d.kind !== "intent" && !d.text.startsWith("standing") ? tr("decl.with", { word, text: d.text }) : word;
+    const text = d.text && d.kind !== "intent" && !d.text.startsWith("standing") ? tr("decl.with", { word, text: localize(d.text) }) : word;
     const fresh = freshHere && !ruledAge;
     const b = el("span", "speech" + (fresh ? " fresh" : "") + (ruledAge !== null ? " fading" : ""));
     // 消えるまでの残りの時間（描き直しても、出た時刻から数える）
     if (ruledAge !== null) b.style.animationDelay = `${fresh ? "0ms, " : ""}${-ruledAge}ms`;
     b.append(el("span", "stx", text));
-    b.title = `${d.player} ${d.kind}${d.text ? "：" + d.text : ""}`;
+    b.title = `${d.player} ${d.kind}${d.text ? "：" + localize(d.text) : ""}`;
     return b;
   }
 
@@ -770,16 +778,16 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       head.append(el("span", "chip" + (i === 0 ? " strong" : ""), i === 0 ? tr("stack.top") : String(i + 1)),
         el("strong", null, ` ${KINDS.includes(s.kind) ? tr(`stack.${s.kind}`) : s.kind}`), document.createTextNode(tr("stack.controller", { who: s.controller })));
       body.append(head);
-      if (c && c.name) body.append(el("div", "sname", (s.kind === "spell" ? "" : tr("stack.source")) + `<${c.name}>`));
+      if (c && c.name) body.append(el("div", "sname", (s.kind === "spell" ? "" : tr("stack.source")) + `<${displayName(c.name)}>`));
       if (s.text) {
-        const t = manaEl("div", "stext", s.text);
-        t.title = s.text;
+        const t = manaEl("div", "stext", localize(s.text));
+        t.title = localize(s.text);
         body.append(t);
       }
       const targets = v.links.filter((l) => l.source === s.id && l.kind === "target").flatMap((l) => l.targets);
       if (targets.length) {
         const tg = el("div", "stargets");
-        tg.append(el("span", "muted", tr("stack.targets")), ...targets.map((t) => el("span", "chip", ui.names[t] ? `<${ui.names[t]}>` : t)));
+        tg.append(el("span", "muted", tr("stack.targets")), ...targets.map((t) => el("span", "chip", ui.names[t] ? `<${displayName(ui.names[t])}>` : t)));
         body.append(tg);
       }
       li.append(pic, body);
@@ -810,7 +818,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       const arrow = side === ui.sides.top ? "↑" : side === ui.sides.bottom ? "↓" : "→";
       const to = el("div", "cbto");
       to.append(el("span", "arw", arrow), document.createTextNode(cards.has(a.target) || ui.names[a.target]
-        ? ` <${ui.names[a.target] || a.target}>` : ` ${a.target}`));
+        ? ` <${ui.names[a.target] ? displayName(ui.names[a.target]) : a.target}>` : ` ${a.target}`));
       to.title = tr("combat.target.title", { target: ref(a.target) });
       // 下書きの攻撃は、攻撃先を押して変えられる（相手のプレインズウォーカー・自分のバトルがあるとき）
       const change = hooks.retarget && hooks.retarget(a);
@@ -899,6 +907,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const before = animate && ui.shown ? motion.capture() : null;
     const shown = ui.shown;
     ui.names = collectNames(v);
+    cardNames.want(Object.values(ui.names));
     ui.attacking = new Set(v.combat.attacks.map((a) => a.attacker));
     ui.blocking = new Set(v.combat.blocks.map((b) => b.blocker));
     const t = v.turn;
@@ -959,9 +968,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       const d = el("div", "batch");
       const first = g.items[0];
       const actors = [...new Set(g.items.map((e) => e.actor))].join(",");
-      d.append(manaEl("div", "bl", `B${g.batch} ${actors}　${first.batch_label || ""}`));
+      d.append(manaEl("div", "bl", `B${g.batch} ${actors}　${localize(first.batch_label || "")}`));
       for (const e of g.items) {
-        let text = e.label || e.summary;
+        let text = localize(e.label || e.summary);
         if (e.proc) text = `[${e.proc}] ${text}`;
         if (e.proxy_by) text = `[proxy by ${e.proxy_by}] ${text}`;
         if (e.continued) text = "… " + text;

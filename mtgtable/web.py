@@ -49,6 +49,8 @@ _TYPES = {".svg": "image/svg+xml", ".html": "text/html; charset=utf-8", ".js": "
 IMAGE_MAX_AGE = 7 * 24 * 3600  # ブラウザにもキャッシュさせる
 KEYFRAME_EVERY = 25  # 時系列は、この件数ごとに丸ごとの view、間は前の view からの差分
 MAX_BODY = 256 * 1024  # 書き込みの要求の大きさの上限
+MAX_NAMES = 200  # /api/names で1回に聞ける名前の数
+JA_BUDGET = 3.0  # /api/names で、まだ引いていない日本語版を Scryfall から引く時間の上限（秒）
 OWNER_COOKIE = "mtg_owner"  # 公開のサーバーの所有者の鍵
 OWNER_MAX_AGE = 5 * 365 * 24 * 3600
 
@@ -115,6 +117,7 @@ class Viewer:
         self.worker = None  # serve が AI のワーカーを動かすとき（審判と AI の席をサーバーの中で回す）
         self.history = History(db, self.source, self.owners) if site else None
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
+        self._ja_lock = threading.Lock()  # 日本語版を Scryfall から引くのは1度に1つ（同時に聞かれても重ねて引かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
         self._lock = threading.Lock()
@@ -329,7 +332,17 @@ class Viewer:
         return out
 
 
-    def image(self, name: str, face: int):
+    def image(self, name: str, face: int, lang: str = "en"):
+        """カードの画像。lang="ja" なら日本語版の画像（無ければ英語の画像）。"""
+        if lang == "ja" and (name, face, "ja") not in self._no_image:
+            try:
+                p = carddb.image_ja(name, face, offline=self.offline)
+            except (LookupError, OSError):
+                p = None
+            if p is not None:
+                return p
+            if not self.offline:
+                self._no_image.add((name, face, "ja"))
         key = (name, face)
         if not name or key in self._no_image:
             return None
@@ -341,6 +354,31 @@ class Viewer:
             self._no_image.add(key)
         return p
 
+    def ja_names(self, names: list, budget: float = JA_BUDGET) -> dict:
+        """英語名 → 日本語名（日本語版の無いカードは出さない）。まだ引いていないカードは budget 秒まで Scryfall から引き、
+        間に合わなかった・断られた（429 など）名前は pending（画面が少し後に聞き直す）。Scryfall を待って止まらないよう、
+        引くのは1度に1つの要求だけで、やり直しはしない。英語のキャッシュに無い名前は引かない（carddb.lookup_ja）。"""
+        out, pending = {}, []
+        until = time.time() + budget
+        for name in dict.fromkeys(n for n in names if isinstance(n, str) and n):
+            ja = carddb.ja_name(name, offline=True)
+            if ja or self.offline or not carddb.lookup(name, offline=True) or carddb.lookup_ja(name, offline=True):
+                if ja:
+                    out[name] = ja
+                continue  # 分かった・日本語版が無い・引けないカード
+            if time.time() > until or not self._ja_lock.acquire(timeout=max(0.0, until - time.time())):
+                pending.append(name)
+                continue
+            try:
+                ja = carddb.ja_name(name, offline=False, retries=0)
+            except (LookupError, OSError):
+                pending.append(name)  # 断られた・通信の失敗（キャッシュしない。後で聞き直される）
+                continue
+            finally:
+                self._ja_lock.release()
+            if ja:
+                out[name] = ja
+        return {"names": out, "pending": pending}
 
     def symbol(self, code: str):
         key = ("symbol", code)
@@ -358,6 +396,19 @@ class Viewer:
 def oracle_text(name: str) -> Optional[str]:
     rec = carddb.lookup(name, offline=True)
     return carddb.format_card(rec) if rec else None
+
+
+def oracle_json(name: str, lang: str = "en", offline: bool = True) -> dict:
+    """カードの詳細。lang="ja" で日本語版があれば text は日本語版（印刷された文）、oracle は英語のオラクル。"""
+    text = oracle_text(name)
+    if lang == "ja":
+        try:
+            ja = carddb.format_card_ja(name, offline=offline)
+        except (LookupError, OSError):
+            ja = None
+        if ja:
+            return {"name": name, "text": ja, "lang": "ja", "oracle": text}
+    return {"name": name, "text": text, "lang": "en"}
 
 
 class TooMany(Exception):
@@ -697,7 +748,7 @@ class Handler(BaseHTTPRequestHandler):
                                    **({"operator": SITE_INFO["operator"], "contact": SITE_INFO["contact"]}
                                       if self.viewer.site else {})})
             if parts[:2] == ["api", "image"]:
-                p = self.viewer.image(q.get("name", ""), int(q.get("face", 0)))
+                p = self.viewer.image(q.get("name", ""), int(q.get("face", 0)), q.get("lang", "en"))
                 if p is None:
                     return self._json({"error": "no image"}, 404)
                 return self._send(200, p.read_bytes(), "image/jpeg",
@@ -708,7 +759,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "no symbol"}, 404)
                 return self._send(200, p.read_bytes(), "image/svg+xml", "public, max-age=%d" % IMAGE_MAX_AGE)
             if parts[:2] == ["api", "oracle"]:
-                return self._json({"name": q.get("name"), "text": oracle_text(q.get("name", ""))})
+                return self._json(oracle_json(q.get("name", ""), q.get("lang", "en"), offline=self.viewer.offline))
+            if parts[:2] == ["api", "names"]:  # カード名の日本語（?lang=ja&n=<英語名>&n=…。画面が知っているカードだけ）
+                names = parse_qs(url.query).get("n", [])[:MAX_NAMES]
+                return self._json(self.viewer.ja_names(names) if q.get("lang") == "ja" else {"names": {}, "pending": []})
             if parts[:2] == ["api", "games"] and len(parts) == 4:
                 game, what = parts[2], parts[3]
                 seat = None if q.get("seat", "judge") == "judge" else q["seat"]
@@ -834,6 +888,9 @@ def export_site(root, dest, games=None, offline: bool = False, db=None) -> list:
     for name in sorted(names):
         try:
             cards[name] = {"image": carddb.image_url(name, offline=offline)}
+            ja = carddb.ja_name(name, offline=offline)  # 日本語の画面のための名前・画像（無ければ英語）
+            if ja:
+                cards[name]["ja"] = {"name": ja, "image": carddb.image_url_ja(name, offline=offline)}
         except (LookupError, OSError):
             cards[name] = {"image": ""}
     (dest / "data" / "games.json").write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")

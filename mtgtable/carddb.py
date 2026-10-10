@@ -138,19 +138,23 @@ def resolve_names(names, need_legalities: bool = False) -> dict:
     return {"found": found, "missing": [n for n in todo if n not in found]}
 
 
-def fetch(name: str, retries: int = 5) -> dict:
-    req = urllib.request.Request(API + urllib.parse.quote(name),
-                                 headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+class NotFound(LookupError):
+    """Scryfall に無い（404）。"""
+
+
+def _get_json(url: str, what: str, retries: int = 5) -> dict:
+    """Scryfall の API を GET する（間隔を空け、429 は待ってやり直す）。404 は NotFound。"""
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
     for attempt in range(retries + 1):
         wait = MIN_INTERVAL - (time.time() - _last[0])
         if wait > 0:
             time.sleep(wait)
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
-                return _slim(json.loads(r.read().decode("utf-8")))
+                return json.loads(r.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                raise LookupError("Scryfall has no card named %r" % name)
+                raise NotFound("Scryfall has no %s" % what)
             if e.code == 429 and attempt < retries:
                 # レート制限。Retry-After があれば従い、無ければ指数的に待つ
                 try:
@@ -159,10 +163,14 @@ def fetch(name: str, retries: int = 5) -> dict:
                     delay = 0
                 time.sleep(max(delay, 1.0 * 2 ** attempt))
                 continue
-            raise LookupError("Scryfall request for %r failed (HTTP %s)" % (name, e.code))
+            raise LookupError("Scryfall request for %s failed (HTTP %s)" % (what, e.code))
         finally:
             _last[0] = time.time()
-    raise LookupError("Scryfall request for %r failed" % name)
+    raise LookupError("Scryfall request for %s failed" % what)
+
+
+def fetch(name: str, retries: int = 5) -> dict:
+    return _slim(_get_json(API + urllib.parse.quote(name), "card named %r" % name, retries))
 
 
 def lookup(name: str, offline: bool = False, refresh: bool = False):
@@ -237,6 +245,165 @@ def image(name: str, face: int = 0, offline: bool = False):
         return None
     url = image_url(name, face)
     if not url:
+        return None
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        body = r.read()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_bytes(body)
+    tmp.replace(p)
+    return p
+
+
+# ---------------------------------------------------------------- 日本語版（画面の表示だけ）
+#
+# 画面を日本語で見る人に、カードの日本語名・日本語版の文・日本語版の画像を出す。卓・デッキ・AI は英語名とオラクルのまま
+# （design/i18n_plan.md 段階 4）。Scryfall の日本語版の印刷（lang:ja）から取り、`cards/ja/` に英語名で置く。
+# 日本語版の無いカードは {"none": true} を置き、何度も引かない。日本語版の文は印刷されたときの文（エラッタ後の
+# オラクルと違うことがある）。
+
+SEARCH_API = "https://api.scryfall.com/cards/search?"
+JA_FIELDS = (("printed_name", "name"), ("printed_type_line", "type_line"), ("printed_text", "text"))
+_JA_IMAGE_OK = ("highres_scan", "lowres")  # placeholder・missing は日本語の画像ではない
+
+
+def ja_path(name: str) -> pathlib.Path:
+    return cache_dir() / "ja" / _path(name).name
+
+
+# 子ども向けなどの印刷は、漢字の後にふりがなを括弧で付けている（「縫（ぬ）い目（め）」）。表示では外す
+_RUBY = re.compile(r"(?<=[\u3400-\u9fff\u3005\u30f6])（[\u3041-\u309f\u30fc]+）")
+
+
+def _ruby_off(text: str) -> str:
+    return _RUBY.sub("", text)
+
+
+def _ja_image(c: dict) -> str:
+    return (c.get("image_uris") or {}).get("normal", "") if c.get("image_status") in _JA_IMAGE_OK else ""
+
+
+def _merge_ja(prints: list) -> dict:
+    """日本語版の印刷（新しい順）から、項目ごとに最初に入っているものを取る（印刷によって名前・文の欠けがある）。"""
+    rec, faces = {}, []
+    for c in prints:
+        for src, dst in JA_FIELDS:
+            if c.get(src) and dst not in rec:
+                rec[dst] = _ruby_off(c[src])
+        if _ja_image(c) and "image" not in rec:
+            rec["image"] = _ja_image(c)
+        for i, f in enumerate(c.get("card_faces") or []):
+            while len(faces) <= i:
+                faces.append({})
+            for src, dst in JA_FIELDS:
+                if f.get(src) and dst not in faces[i]:
+                    faces[i][dst] = _ruby_off(f[src])
+            if _ja_image(f) and "image" not in faces[i]:
+                faces[i]["image"] = _ja_image(f)
+    if faces and any(f.get("name") for f in faces):
+        rec["faces"] = faces
+        rec.setdefault("name", " // ".join(f.get("name", "") for f in faces))
+    return rec if rec.get("name") else {"none": True}
+
+
+def fetch_ja(name: str, retries: int = 5) -> dict:
+    """英語名 name のカードの日本語版（無ければ {"none": True}）。retries=0 なら 429 で待たずに LookupError。"""
+    q = urllib.parse.urlencode({"q": '!"%s" lang:ja' % name.replace('"', ""), "unique": "prints",
+                                "order": "released", "dir": "desc"})
+    try:
+        data = _get_json(SEARCH_API + q, "Japanese printing of %r" % name, retries)
+    except NotFound:
+        return {"none": True}
+    return _merge_ja(data.get("data") or [])
+
+
+def lookup_ja(name: str, offline: bool = False, retries: int = 5):
+    """日本語版の記録（{"name", "type_line", "text", "image", "faces"} か {"none": True}）。英語のキャッシュに無いカードは
+    引かない（画面が知っているカードだけ。好きな名前で Scryfall に問い合わせさせない）。キャッシュに無く offline なら None。"""
+    rec = lookup(name, offline=True)
+    if not rec:
+        return None
+    p = ja_path(rec["name"])
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    if offline:
+        return None
+    ja = fetch_ja(rec["name"], retries)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(ja, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(p)
+    return ja
+
+
+def _face_of(rec: dict, name: str):
+    """name が両面・分割カードの片方の面の名前なら、その面の番号（"Treasure" が "Dinosaur // Treasure" に当たるなど）。"""
+    for i, f in enumerate(rec.get("faces") or []):
+        if _norm(f.get("name", "")) == _norm(name) and _norm(rec.get("name", "")) != _norm(name):
+            return i
+    return None
+
+
+def ja_name(name: str, offline: bool = True, retries: int = 5):
+    """カード名の日本語（日本語版が無い・まだ引いていない（offline）なら None）。"""
+    rec = lookup(name, offline=True)
+    ja = lookup_ja(name, offline=offline, retries=retries)
+    if not rec or not ja or ja.get("none"):
+        return None
+    face = _face_of(rec, name)
+    if face is not None:
+        faces = ja.get("faces") or []
+        return faces[face].get("name") if face < len(faces) else None
+    return ja.get("name")
+
+
+def format_card_ja(name: str, offline: bool = True):
+    """カードの詳細の日本語版（format_card と同じ形。マナ・コスト・P/T などは英語の記録から）。無ければ None。"""
+    rec = lookup(name, offline=True)
+    ja = lookup_ja(name, offline=offline)
+    if not rec or not ja or ja.get("none"):
+        return None
+    def one(r, j):
+        out = dict(r)
+        out["name"] = j.get("name") or r.get("name")
+        out["type_line"] = j.get("type_line") or r.get("type_line")
+        out["oracle_text"] = j.get("text") or r.get("oracle_text")
+        return format_card(out)
+    if rec.get("faces"):
+        jf = ja.get("faces") or []
+        faces = [one(f, jf[i] if i < len(jf) else {}) for i, f in enumerate(rec["faces"])]
+        face = _face_of(rec, name)
+        return faces[face] if face is not None else "\n----\n".join(faces)
+    return one(rec, ja)
+
+
+def image_url_ja(name: str, face: int = 0, offline: bool = True) -> str:
+    """日本語版の画像の Scryfall の URL（無ければ ""）。"""
+    rec = lookup(name, offline=True)
+    ja = lookup_ja(name, offline=offline)
+    if not rec or not ja or ja.get("none"):
+        return ""
+    if face == 0:
+        face = _face_of(rec, name) or 0
+    faces = ja.get("faces") or []
+    url = (faces[face].get("image") if face < len(faces) else "") or (ja.get("image", "") if face == 0 else "")
+    host = urllib.parse.urlparse(url).hostname or ""
+    return url if url and host.endswith(IMAGE_HOSTS) else ""
+
+
+def image_ja(name: str, face: int = 0, offline: bool = False):
+    """日本語版の画像のキャッシュのパス（日本語版の画像が無ければ None。英語の画像は image で）。"""
+    rec = lookup(name, offline=True)
+    if not rec:
+        return None
+    if face == 0:
+        face = _face_of(rec, name) or 0
+    p = cache_dir() / "images" / "ja" / (_path(rec["name"]).stem + ("-%d" % face if face else "") + ".jpg")
+    if p.exists():
+        return p
+    url = image_url_ja(name, face, offline=offline)
+    if offline or not url:
         return None
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=20) as r:

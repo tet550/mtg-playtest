@@ -100,6 +100,8 @@ export default {
   "card.counter": "{kind} カウンター",
   "card.pt": "P/T {pt}（元 {base}）",
   "card.damage": "ダメージ {n}",
+  "card.oracleEn": "英語のオラクル（判定に使う文）",
+  "card.printedNote": "日本語版の文は印刷されたときの文で、エラッタ後のオラクルと違うことがある（判定は英語のオラクル）",
   "card.noOracle": "（オラクルを取得できなかった）",
   "pile.library": "ライブラリー",
   "pile.graveyard.short": "墓地",  // 束の上の名前（カードの幅しかない）

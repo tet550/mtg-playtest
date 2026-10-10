@@ -110,6 +110,25 @@ class ViewerServerTest(unittest.TestCase):
             self.assertIn("max-age", r.headers["Cache-Control"])
         self.assertEqual(self.get("/api/image?name=Forest")[0], 404)  # offline でキャッシュに無い
 
+    def test_japanese_names_and_text_only_for_the_screen(self):
+        bears = {"name": "Grizzly Bears", "mana_cost": "{1}{G}", "type_line": "Creature — Bear",
+                 "oracle_text": "", "power": "2", "toughness": "2"}
+        carddb._save("Grizzly Bears", bears)
+        ja = carddb.ja_path("Grizzly Bears")
+        ja.parent.mkdir(parents=True, exist_ok=True)
+        ja.write_text(json.dumps({"name": "灰色熊", "type_line": "クリーチャー — 熊"}), encoding="utf-8")
+        try:
+            status, body = self.get("/api/names?lang=ja&n=Grizzly%20Bears&n=Unknown%20Card")
+            self.assertEqual((status, json.loads(body)), (200, {"names": {"Grizzly Bears": "灰色熊"}, "pending": []}))
+            self.assertEqual(json.loads(self.get("/api/names?n=Grizzly%20Bears")[1])["names"], {})  # 日本語以外は空
+            card = json.loads(self.get("/api/oracle?name=Grizzly%20Bears&lang=ja")[1])
+            self.assertEqual((card["lang"], card["text"].splitlines()[0]), ("ja", "<灰色熊>  {1}{G}"))
+            self.assertIn("<Grizzly Bears>", card["oracle"])  # 判定に使う英語のオラクルも返す
+            self.assertEqual(json.loads(self.get("/api/oracle?name=Grizzly%20Bears")[1])["lang"], "en")
+        finally:
+            ja.unlink()
+            carddb._path("Grizzly Bears").unlink()
+
     def test_mana_symbol_from_cache(self):
         with urllib.request.urlopen(self.base + "/api/symbol?s=G") as r:
             self.assertEqual((r.status, r.headers["Content-Type"]), (200, "image/svg+xml"))

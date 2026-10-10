@@ -20,6 +20,7 @@ Python の `info.player_view` に置き、ブラウザは受け取った view �
 | `web/play.js` | GUI の対局の操作（メニュー・Act の組み立て・送信・操作パネル）。後半を参照 |
 | `web/dom.js` | DOM 要素の生成と ID 検索 |
 | `web/i18n.js`・`i18n-ja.js`・`i18n-en.js` | 画面の文言の言語（日本語・英語）。`t()` と HTML の `data-i18n`。計画は [i18n_plan.md](i18n_plan.md) |
+| `web/cardnames.js` | カード名の表示の言語（日本語の画面で、見えているカードの日本語名を聞き、表示の時だけ置き換える） |
 
 データは `source → app → Timeline → render` と流れる。
 描画からの Log 移動はコールバックで app に戻す。循環 import は作らない。

@@ -1,4 +1,18 @@
 // 通信と配信形式の違いはこのモジュールに閉じ込める。
+import { lang } from "./i18n.js";
+
+// 静的書き出し（サーバー無し）の日本語版のカードの文: ブラウザから Scryfall の日本語版の印刷を引く（文のある最新の1枚）
+async function scryfallJapanese(name) {
+  const q = encodeURIComponent(`!"${name.replace(/"/g, "")}" lang:ja`);
+  const r = await fetch(`https://api.scryfall.com/cards/search?q=${q}&unique=prints&order=released&dir=desc`,
+    { headers: { Accept: "application/json" } });
+  if (!r.ok) return "";
+  const card = ((await r.json()).data || []).find((c) => c.printed_text || (c.card_faces || []).some((f) => f.printed_text));
+  if (!card) return "";
+  const faces = card.card_faces && card.card_faces.some((f) => f.printed_name) ? card.card_faces : [card];
+  return faces.map((f) => [`<${f.printed_name || f.name}> ${f.mana_cost || ""}`.trim(), f.printed_type_line || f.type_line || "",
+    f.printed_text || ""].filter(Boolean).join("\n")).join("\n----\n");
+}
 async function scryfallOracle(name) {
   const r = await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`,
     { headers: { Accept: "application/json" } });
@@ -119,16 +133,38 @@ export function createSource(isStatic) {
         onConnection(false);
       };
     },
-    imageURL: (name) => isStatic ? cards[name]?.image || "data:," : `/api/image?name=${encodeURIComponent(name)}`,
+    // 日本語の画面では日本語版の画像（無ければ英語）
+    imageURL: (name) => isStatic ? (lang() === "ja" && cards[name]?.ja?.image) || cards[name]?.image || "data:,"
+      : `/api/image?name=${encodeURIComponent(name)}${lang() === "ja" ? "&lang=ja" : ""}`,
+    // カード名の日本語 {names: {英語名: 日本語名}, pending: [まだ引けていない名前]}。画面が知っているカードの名前だけを聞く
+    // （URL が長くなりすぎないよう、呼ぶ側が 40 件ほどに分ける）
+    names(list) {
+      if (isStatic) {
+        return Promise.resolve({ names: Object.fromEntries(list.filter((n) => cards[n]?.ja?.name).map((n) => [n, cards[n].ja.name])), pending: [] });
+      }
+      return getJSON(`/api/names?lang=ja&${list.map((n) => `n=${encodeURIComponent(n)}`).join("&")}`);
+    },
     symbolURL: (code) => isStatic ? `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(code)}.svg`
       : `/api/symbol?s=${encodeURIComponent(code)}`,
+    // カードの詳細 {text, lang, oracle}。日本語の画面で日本語版があれば text は日本語版の文（印刷された文）、
+    // oracle は英語のオラクル。取れなければ text は ""（知らせの文は画面の言語で、描く側が出す）
     oracle(name) {
-      if (!oracleCache.has(name)) {
-        const request = isStatic ? scryfallOracle(name)
-          : getJSON(`/api/oracle?name=${encodeURIComponent(name)}`).then((r) => r.text);
-        oracleCache.set(name, request.catch(() => ""));  // 取れなければ ""（知らせの文は画面の言語で、描く側が出す）
+      const l = lang();
+      const key = `${l}:${name}`;
+      if (!oracleCache.has(key)) {
+        let request;
+        if (!isStatic) {
+          request = getJSON(`/api/oracle?name=${encodeURIComponent(name)}${l === "ja" ? "&lang=ja" : ""}`)
+            .then((r) => ({ text: r.text || "", lang: r.lang || "en", oracle: r.oracle || "" }));
+        } else if (l === "ja") {
+          request = Promise.all([scryfallJapanese(name).catch(() => ""), scryfallOracle(name).catch(() => "")])
+            .then(([ja, en]) => (ja ? { text: ja, lang: "ja", oracle: en } : { text: en, lang: "en", oracle: "" }));
+        } else {
+          request = scryfallOracle(name).then((text) => ({ text, lang: "en", oracle: "" }));
+        }
+        oracleCache.set(key, request.catch(() => ({ text: "", lang: "en", oracle: "" })));
       }
-      return oracleCache.get(name);
+      return oracleCache.get(key);
     },
   };
 }

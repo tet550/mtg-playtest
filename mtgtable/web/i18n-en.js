@@ -100,6 +100,8 @@ export default {
   "card.counter": "{kind} counter",
   "card.pt": "P/T {pt} (printed {base})",
   "card.damage": "Damage {n}",
+  "card.oracleEn": "English Oracle text (used for rulings)",
+  "card.printedNote": "The Japanese text is as printed and may differ from the current Oracle text (rulings use the English Oracle)",
   "card.noOracle": "(Could not get the Oracle text)",
   "pile.library": "Library",
   "pile.graveyard.short": "Yard",  // label on the pile (only as wide as a card)

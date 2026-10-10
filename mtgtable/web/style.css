@@ -75,6 +75,11 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 .chip.strong { background: rgba(0, 0, 0, .72); color: #fff; font-weight: 700; }
 .detail img.big { display: block; width: 100%; max-width: 244px; border-radius: 10px; margin: 0 auto 8px; }
 .detail .otext { white-space: pre-wrap; }
+/* 日本語版のカードの詳細: 印刷された文の注意と、開ける英語のオラクル */
+.detail .onote { margin-top: 8px; font-size: 11px; }
+.detail .oracle-en { margin-top: 6px; }
+.detail .oracle-en summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.detail .oracle-en .otext { margin-top: 4px; }
 .card.back { width: 54px; height: 70px; background: repeating-linear-gradient(45deg, var(--badge), var(--badge) 6px, var(--card) 6px, var(--card) 12px); }
 .small { width: auto; padding: 2px 6px; }
 .center { display: grid; grid-template-columns: 2fr 1fr; gap: 10px; background: var(--panel);
