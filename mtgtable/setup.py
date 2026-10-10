@@ -9,7 +9,7 @@ import random
 import re
 from dataclasses import dataclass, field
 
-from . import info
+from . import info, paths
 from .model import Card, GameState, PREGAME, zone_name
 
 _LINE = re.compile(r"^\s*(\d+)\s*x?\s+(.+?)\s*$")
@@ -57,8 +57,25 @@ def parse_decklist(text: str, name: str = "deck") -> Decklist:
     return deck
 
 
+def bundled_decks() -> list:
+    """同梱のデッキの名前（decklists/*.txt。パッケージとして入れた時は assets/ の中）。"""
+    return sorted(p.stem for p in paths.decklists_dir().glob("*.txt"))
+
+
+def deck_path(spec) -> pathlib.Path:
+    """デッキリストのファイル。ファイルが無く、区切りも拡張子も無い名前（"piza"）なら同梱のデッキ。
+    どちらでもなければ FileNotFoundError（同梱のデッキの名前を添える）。"""
+    p = pathlib.Path(spec)
+    if p.is_file():
+        return p
+    if len(p.parts) == 1 and not p.suffix and (paths.decklists_dir() / (p.name + ".txt")).is_file():
+        return paths.decklists_dir() / (p.name + ".txt")
+    raise FileNotFoundError("deck not found: %s（同梱のデッキは名前だけで選べる: %s）" % (spec, ", ".join(bundled_decks())))
+
+
 def load_decklist(path) -> Decklist:
-    p = pathlib.Path(path)
+    """デッキリストを読む。path はファイルか、同梱のデッキの名前（deck_path）。"""
+    p = deck_path(path)
     return parse_decklist(p.read_text(encoding="utf-8"), name=p.stem)
 
 

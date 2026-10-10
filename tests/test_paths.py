@@ -1,4 +1,5 @@
-"""置き場所（paths.py）: リポジトリから動く時は今までの場所、MTGTABLE_HOME・MTG_CARDS_DIR の優先、パッケージとして入れた時。"""
+"""置き場所（paths.py）: リポジトリから動く時は今までの場所、MTGTABLE_HOME・MTG_CARDS_DIR の優先、パッケージとして入れた時。
+同梱のデッキを名前で選ぶ（setup.deck_path）。"""
 import os
 import pathlib
 import sys
@@ -8,7 +9,7 @@ from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from mtgtable import carddb, lobby, paths, prompt  # noqa: E402
+from mtgtable import carddb, lobby, paths, prompt, setup  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 
@@ -76,6 +77,31 @@ class PathsTest(unittest.TestCase):
             self.assertTrue((prompt.REFERENCES / name).is_file(), name)
         self.assertTrue(lobby.repo_decks())
         self.assertTrue(prompt.STRATEGY.is_dir())
+
+
+class DeckPathTest(unittest.TestCase):
+    def test_bundled_deck_by_name(self):
+        self.assertEqual(setup.deck_path("piza"), REPO / "decklists" / "piza.txt")
+        self.assertEqual(setup.load_decklist("piza").name, "piza")
+        self.assertIn("piza", setup.bundled_decks())
+
+    def test_a_file_wins_over_a_bundled_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            own = pathlib.Path(tmp) / "piza"
+            own.write_text("60 Forest\n", encoding="utf-8")
+            self.assertEqual(setup.deck_path(str(own)), own)
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                self.assertEqual(setup.deck_path("piza"), pathlib.Path("piza"))  # 今いるフォルダのファイル
+            finally:
+                os.chdir(cwd)
+
+    def test_unknown_deck_lists_the_bundled_names(self):
+        for spec in ("no-such-deck", "no/such.txt", "piza.txt"):
+            with self.assertRaises(FileNotFoundError) as e:
+                setup.deck_path(spec)
+            self.assertIn("piza", str(e.exception))
 
 
 if __name__ == "__main__":

@@ -22,12 +22,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import paths
+from . import __version__, paths
 
 API = "https://api.scryfall.com/cards/named?exact="
 COLLECTION_API = "https://api.scryfall.com/cards/collection"
 COLLECTION_MAX = 75  # Scryfall の /cards/collection が1回に受ける名前の数
-USER_AGENT = "mtgtable/0.1 (personal playtest tool)"
+USER_AGENT = "mtgtable/%s (personal playtest tool)" % __version__
 MIN_INTERVAL = 0.5  # Scryfall のレート制限に余裕を持たせる（429 が出たら待って再試行）
 _last = [0.0]
 _UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\s]+')

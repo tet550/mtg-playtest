@@ -39,6 +39,23 @@ Web の責務分割と設計判断は [design/web_design.md](design/web_design.m
 
 ## 使い方
 
+### パッケージとして入れる（リポジトリの外で使う）
+
+リポジトリから動かす代わりに、wheel を作って入れられる（[design/app_plan.md](design/app_plan.md) 段階 2。PyPI には未公開）。
+
+```bash
+uv build
+```
+
+```bash
+uvx --from dist/mtgtable-0.1.0-py3-none-any.whl mtgtable new g1 --deck p1=piza --deck p2=jund-sacrifice
+```
+
+- 提供元に anthropic を使うなら `uvx --from "mtgtable[anthropic] @ dist/mtgtable-0.1.0-py3-none-any.whl" mtgtable …`
+  （pip なら `pip install "dist/mtgtable-0.1.0-py3-none-any.whl[anthropic]"`）
+- 同梱のデッキ（`decklists/*.txt`）は名前だけで選べる（`--deck p1=piza`）。ファイルのパスも今までどおり使える
+- キャッシュ・キー・`serve` の対局フォルダは OS のデータ用フォルダに置かれる（[オラクルのキャッシュ](#オラクルのキャッシュ)）
+
 ### Windows / PowerShell の Python 起動
 
 最初に `Get-Command python, py -ErrorAction SilentlyContinue` で実行環境を確認する。

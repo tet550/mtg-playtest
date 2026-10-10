@@ -10,7 +10,7 @@ import os
 import pathlib
 import sys
 
-from . import carddb, info, paths, play
+from . import __version__, carddb, info, paths, play
 from .engine import public_result
 from .model import INFO_POLICIES
 from .operations import OperationError, describe_operations, summarize_op
@@ -96,10 +96,18 @@ def _view(state, actor, as_json, oracle=False, names=True, **zones):
 
 # ---------------------------------------------------------------- commands
 
+def _deck(spec):
+    """デッキリスト（ファイルか同梱のデッキの名前）。見つからなければ、同梱のデッキの名前を添えて終わる。"""
+    try:
+        return load_decklist(spec)
+    except FileNotFoundError as e:
+        raise SystemExit(str(e))
+
+
 def cmd_new(a):
     decks = {}
     for pid, path in _pairs(a.deck, "--deck").items():
-        decks[pid] = load_decklist(path)
+        decks[pid] = _deck(path)
     if not decks:
         raise SystemExit("give at least one --deck p1=PATH")
     for deck in decks.values():
@@ -310,7 +318,7 @@ def _known_card_names(state, viewer, ids):
 
 def cmd_oracle(a):
     if a.deck:
-        d = load_decklist(a.deck)
+        d = _deck(a.deck)
         data = carddb.build_deck_cache(d, fetch=not a.offline, refresh=a.refresh)
         print(carddb.format_deck(data, sideboard=not a.no_sideboard, brief=a.brief))
         sys.exit(1 if data["missing"] else 0)
@@ -560,7 +568,7 @@ def cmd_auto(a):
 
 
 def cmd_deck(a):
-    d = load_decklist(a.file)
+    d = _deck(a.file)
     print("%s: main %d, sideboard %d" % (d.name, d.main_count, sum(n for n, _ in d.sideboard)))
     data = carddb.build_deck_cache(d, fetch=a.fetch, refresh=a.refresh)
     print("oracle cache: %s (%d cards%s)" % (carddb.deck_cache_path(d), len(data["cards"]),
@@ -577,6 +585,7 @@ def cmd_deck(a):
 
 def build_parser():
     ap = argparse.ArgumentParser(prog="mtgtable", description="AI が紙の MTG をプレイするためのデジタル卓")
+    ap.add_argument("--version", action="version", version="mtgtable %s" % __version__)
     ap.add_argument("--db", default=os.environ.get("MTGTABLE_DB") or None,
                     help="対局を SQLite の DB に置く（既定は環境変数 MTGTABLE_DB。無ければ対局フォルダ）。"
                          "GAME はパスの最後の名前を対局の id にする")
@@ -584,7 +593,7 @@ def build_parser():
 
     p = sub.add_parser("new", help="対局を作る")
     p.add_argument("game")
-    p.add_argument("--deck", action="append", help="p1=decklists/piza.txt（1つなら一人回し）")
+    p.add_argument("--deck", action="append", help="p1=decklists/piza.txt か、同梱のデッキの名前 p1=piza（1つなら一人回し）")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--life", type=int, default=20)
     p.add_argument("--first", help="先攻の Player（既定は seed で無作為に決める）")

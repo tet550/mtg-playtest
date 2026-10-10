@@ -70,26 +70,36 @@ mtgtable を「インストールして起動すると、ブラウザで卓が�
   `new` でカードのキャッシュが `~/Library/Application Support/mtgtable/cards/` に入る。同梱のデッキが選べる。
   審判と席のプロンプト（リファレンス・プレイ方針）が組める
 
-## 段階 2: パッケージにする
+## 段階 2: パッケージにする（済み）
 
-- `pyproject.toml`
-  - `name`: PyPI の空きを確認して決める（`mtgtable` が埋まっていれば別名。コマンド名は `mtgtable` のまま）
+- `pyproject.toml`（ビルドは hatchling）
+  - `name = "mtgtable"`（PyPI で空いていた。2026-10-10 時点。**公開はまだしていない**）
   - `requires-python = ">=3.10"`、依存は無し。`[project.optional-dependencies] anthropic = ["anthropic"]`
-    （uv で配るなら、既定で入れてしまう方が迷わない。どちらにするか段階 2 で決める）
-  - `[project.scripts] mtgtable = "mtgtable.cli:main"`
-  - パッケージのデータに `web/`・`prompts/`・`assets/` を含める
-- **ビルドで `assets/` に写す**: `decklists/`（`*.txt`・`strategy/`・`README.md`）→ `mtgtable/assets/decklists/`、
-  `.claude/skills/mtg-playtest/references/` → `mtgtable/assets/references/`（ビルドの道具の force-include など。
-  リポジトリには `assets/` を置かない）
-- 入れた人はデッキのファイルを持っていないので、`--deck p1=piza` のように同梱のデッキを名前で選べるようにする
-- `cards/`・`playtest/`・`data/`・`secrets/` を配布物に含めないことを確かめる（第三者の著作物と秘密）
-- `__init__.py` に版番号。`USER_AGENT`（Scryfall）にも版番号を入れる
+    （既定は標準ライブラリだけのまま。既定の提供元 openai は urllib で呼ぶので、anthropic を使う人だけが足す）
+  - `[project.scripts] mtgtable = "mtgtable.cli:main"`。版は `mtgtable/__init__.py` の `__version__`（`--version` でも出る）
+- **ビルドで `assets/` に写す**（hatch の force-include）: `decklists/` → `mtgtable/assets/decklists/`、
+  `.claude/skills/mtg-playtest/references/` → `mtgtable/assets/references/`。リポジトリには `assets/` を置かない
+- sdist の include は先頭に `/` を付けてリポジトリ直下に限る（無いと gitignore 式に全階層で当たり、
+  `deploy/mtgtable.service` や `secrets/README.md` まで入った）
+- 同梱のデッキを名前で選べるようにした（`--deck p1=piza`。`setup.deck_path`。ファイルがあればファイルが優先、
+  見つからなければ同梱のデッキの名前を添えて終わる）
+- `USER_AGENT`（Scryfall）に版番号を入れた
 
-### 確認
+### 確認（済み）
 
-- `uv build` で wheel を作り、空の仮想環境に入れて `mtgtable --help` と `mtgtable new …` が動く
-- `uvx --from ./dist/<wheel> mtgtable` で、リポジトリの外から起動できる
-- wheel の中に `cards/` や `secrets/` が無い
+- `uv build` で sdist と wheel ができる。wheel に `assets/`（デッキ 13・リファレンス 3）・`web/`・`prompts/` が入り、
+  `cards/`・`secrets/`・`playtest/`・`__pycache__` は入らない。sdist は `mtgtable/`・`decklists/`・リファレンス・`tests/`・文書だけ
+- 空の仮想環境に wheel を入れ、HOME を空にしてリポジトリの外で: `--version`・`new g1 --deck p1=piza --deck p2=jund-sacrifice`
+  （キャッシュは `~/Library/Application Support/mtgtable/cards/`）・知らないデッキ名の案内・審判のプロンプト（`cli.md` 入り）・
+  `serve`（`/`・`/static/*`・`/api/games`）
+- `uvx --from <wheel> mtgtable --version`、`"mtgtable[anthropic] @ <wheel>"` で SDK（1.13.0）が入り読み込める
+- テスト: Python 3.11 でファイル版・SQLite 版とも全件通過。Python 3.10（uv の管理する Python）＋ anthropic SDK で
+  239 件すべて通過（いつもスキップされる anthropic のテストも含む）
+
+### 残り（段階 3 以降か、公開の判断と一緒に）
+
+- PyPI への公開（`uv publish`）。公開すれば `uvx mtgtable` の1行になる
+- GitHub Actions でテスト（3.10〜最新、ファイル版・SQLite 版）とビルドを回す
 
 ## 段階 3: 起動コマンド（`mtgtable app`）
 

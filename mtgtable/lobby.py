@@ -21,10 +21,9 @@ from typing import Optional
 from . import carddb, paths, play
 from .decks import Decks, decklist
 from .owners import Owners, _hash
-from .setup import check_deck, load_decklist, new_game
+from .setup import bundled_decks, check_deck, load_decklist, new_game
 from .sqlstore import SqliteGames, _now, connect
 
-REPO_DECKS = paths.decklists_dir()
 INVITE_TTL = 72  # 招待の URL の期限（時間）
 IDLE_NOTICE = 5 * 60  # 相手の番がこれだけ続いたら、画面に知らせる（秒）
 IDLE_LIMIT = 30 * 60  # これだけ続いたら、時間切れで勝ちを申し立てられる（秒）
@@ -55,7 +54,7 @@ def snapshot(deck: dict) -> dict:
 
 
 def repo_decks() -> list:
-    return sorted(p.stem for p in REPO_DECKS.glob("*.txt"))
+    return bundled_decks()
 
 
 def start_game(store, entries: dict, seed: Optional[int] = None, offline: bool = False):
@@ -65,7 +64,7 @@ def start_game(store, entries: dict, seed: Optional[int] = None, offline: bool =
         if isinstance(e, str):
             if e not in repo_decks():
                 raise LookupError("unknown deck %r" % e)
-            decks[pid] = load_decklist(REPO_DECKS / ("%s.txt" % e))
+            decks[pid] = load_decklist(paths.decklists_dir() / ("%s.txt" % e))  # 名前で渡すと今いるフォルダのファイルが優先される
             sources[pid] = {"repo": e}  # プレイ方針は decklists/strategy/ のファイル（prompt.seat_system）
         else:
             decks[pid] = decklist(e["text"], e["cards"], e["name"])
