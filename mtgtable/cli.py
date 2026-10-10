@@ -10,7 +10,7 @@ import os
 import pathlib
 import sys
 
-from . import carddb, info, play
+from . import carddb, info, paths, play
 from .engine import public_result
 from .model import INFO_POLICIES
 from .operations import OperationError, describe_operations, summarize_op
@@ -689,13 +689,13 @@ def build_parser():
 
     p = sub.add_parser("export", help="観戦ビューアを静的サイトに書き出す（GitHub Pages 用。judge の席だけ）")
     p.add_argument("dest", help="書き出し先のフォルダ")
-    p.add_argument("--root", default="playtest", help="対局フォルダを置く場所")
+    p.add_argument("--root", default=str(paths.games_dir()), help="対局フォルダを置く場所（既定 %(default)s）")
     p.add_argument("--game", action="append", help="書き出す対局（複数可。省略で全部）")
     p.add_argument("--offline", action="store_true", help="キャッシュに無いカード情報を取りに行かない")
     p.set_defaults(fn=cmd_export)
 
     p = sub.add_parser("serve", help="観戦ビューア（ブラウザで対局を見る。読み取り専用）")
-    p.add_argument("--root", default="playtest", help="対局フォルダを置く場所")
+    p.add_argument("--root", default=str(paths.games_dir()), help="対局フォルダを置く場所（既定 %(default)s）")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--offline", action="store_true", help="キャッシュに無いカード画像を取りに行かない")

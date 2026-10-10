@@ -15,17 +15,16 @@ from __future__ import annotations
 
 import datetime
 import json
-import pathlib
 import secrets
 from typing import Optional
 
-from . import carddb, play
+from . import carddb, paths, play
 from .decks import Decks, decklist
 from .owners import Owners, _hash
 from .setup import check_deck, load_decklist, new_game
 from .sqlstore import SqliteGames, _now, connect
 
-REPO_DECKS = pathlib.Path(__file__).resolve().parents[1] / "decklists"
+REPO_DECKS = paths.decklists_dir()
 INVITE_TTL = 72  # 招待の URL の期限（時間）
 IDLE_NOTICE = 5 * 60  # 相手の番がこれだけ続いたら、画面に知らせる（秒）
 IDLE_LIMIT = 30 * 60  # これだけ続いたら、時間切れで勝ちを申し立てられる（秒）

@@ -8,20 +8,21 @@ Rules Engine ではなく参照情報。Scryfall から英語名で取得し、�
 - 画像: `cards/images/<名前>-<hash>[-<面>].jpg`（Scryfall の normal。観戦ビューアが表示に使う）
 - マナ・シンボル: `cards/symbols/<記号>.svg`（{G} → G.svg、{W/U} → WU.svg）
 
-置き場所はリポジトリ直下の `cards/`（環境変数 MTG_CARDS_DIR で変更可）。カードテキストは
-第三者の著作物なのでリポジトリには含めない（.gitignore 済み）。
+置き場所は paths.cards_dir()（リポジトリから動いている時はリポジトリ直下の `cards/`。環境変数 MTG_CARDS_DIR で変更可）。
+カードテキストは第三者の著作物なのでリポジトリにも配布物にも含めない（.gitignore 済み）。
 """
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import pathlib
 import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+from . import paths
 
 API = "https://api.scryfall.com/cards/named?exact="
 COLLECTION_API = "https://api.scryfall.com/cards/collection"
@@ -35,12 +36,11 @@ FIELDS = ("name", "mana_cost", "cmc", "type_line", "oracle_text", "power", "toug
           "loyalty", "defense", "colors", "color_identity", "keywords", "layout", "oracle_id")
 
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DECK_SCHEMA = "mtgtable/deck-oracle@1"
 
 
 def cache_dir() -> pathlib.Path:
-    return pathlib.Path(os.environ.get("MTG_CARDS_DIR") or REPO_ROOT / "cards")
+    return paths.cards_dir()
 
 
 def _path(name: str) -> pathlib.Path:

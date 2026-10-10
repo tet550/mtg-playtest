@@ -21,6 +21,7 @@ Python 3.10 以上、標準ライブラリのみ。
 | `mtgtable/sqlstore.py` | 同じ保存の SQLite 版（`--db`。サーバー用） | 29節 |
 | `mtgtable/setup.py` | デッキリスト読み込みと初期状態 | — |
 | `mtgtable/carddb.py` | Rule Reference（Scryfall のオラクルをローカルにキャッシュ） | 28節 |
+| `mtgtable/paths.py` | 置き場所（同梱のデッキ・リファレンスと、キャッシュ・キー・対局フォルダ）。[design/app_plan.md](design/app_plan.md) | — |
 | `mtgtable/render.py` | PlayerView のテキスト表示 | 24節（表示とモデルの分離） |
 | `mtgtable/cli.py` | コマンドライン | 26節 |
 | `mtgtable/web.py`・`mtgtable/web/` | 観戦ビューア（`serve`）と GUI の対局（`serve --play`。人間が席を持って操作） | 24〜26節 |
@@ -354,6 +355,10 @@ MTG の基本ルールの要点は [references/rules.md](.claude/skills/mtg-play
 ## オラクルのキャッシュ
 
 カード情報は Scryfall から取得し、リポジトリ直下の `cards/` にキャッシュする（`.gitignore` 済み）。
+
+書く場所（`cards/`・`secrets/`・`serve` の既定の `playtest/`）は、リポジトリから動かしている間はリポジトリ直下のまま。
+環境変数 `MTGTABLE_HOME` でまとめて変えられる（`cards/` だけなら `MTG_CARDS_DIR`）。パッケージとして入れた時は
+OS のデータ用フォルダ（macOS `~/Library/Application Support/mtgtable` など）になる（`mtgtable/paths.py`）。
 1枚ごとの `cards/<名前>-<hash>.json` と、デッキ1つ分を束ねた `cards/decks/<デッキ名>-<hash>.json`
 （hash はデッキリストの中身から作る）。`new` が両デッキのキャッシュを用意し、無いカードだけ取りに行く。
 

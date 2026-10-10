@@ -7,6 +7,7 @@
 
 キー:
 - openai: 環境変数 OPENAI_API_KEY か、secrets/openai_api_key（1行。git 管理外）
+  （secrets/ は paths.secrets_dir()。リポジトリから動いている時はリポジトリ直下）
 - anthropic: 環境変数 ANTHROPIC_API_KEY か、secrets/anthropic_api_key。どちらも無ければ SDK が自分で探す
   （ANTHROPIC_AUTH_TOKEN・`ant auth login` のプロファイルなど）
 設定ファイル secrets/llm.json（無ければ前の名前の secrets/openai.json。省略可。git 管理外）:
@@ -47,7 +48,7 @@ import urllib.parse
 import urllib.request
 from typing import Optional
 
-from . import play, prompt
+from . import paths, play, prompt
 from .store import GameStore
 
 # run が返す止まった理由のうち、決着（worker はこの値と比べる。表示の文を比べない）
@@ -56,7 +57,7 @@ PROVIDERS = ("openai", "anthropic")
 DEFAULT_PROVIDER = "openai"
 DEFAULT_MODELS = {"openai": "gpt-5", "anthropic": "claude-opus-5-5"}
 DEFAULT_MODEL = DEFAULT_MODELS[DEFAULT_PROVIDER]
-SECRETS = pathlib.Path(__file__).resolve().parents[1] / "secrets"
+SECRETS = paths.secrets_dir()
 KEY_FILE = SECRETS / "openai_api_key"
 ANTHROPIC_KEY_FILE = SECRETS / "anthropic_api_key"
 LLM_CONFIG_FILE = SECRETS / "llm.json"

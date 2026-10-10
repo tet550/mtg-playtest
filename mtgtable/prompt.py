@@ -28,7 +28,7 @@ import pathlib
 import re
 from typing import Optional
 
-from . import carddb, info, play
+from . import carddb, info, paths, play
 from .operations import summarize_op
 from .render import render_view
 from .store import GameStore, StaleCursor, _dump
@@ -37,9 +37,8 @@ RECENT = 40  # 審判に見せる最近の記録の上限
 RECENT_MIN = 8  # 前回の処理の後が少なくても、これだけは見せる（直前の流れ）
 
 HERE = pathlib.Path(__file__).with_name("prompts")
-REPO = pathlib.Path(__file__).resolve().parents[1]
-REFERENCES = REPO / ".claude" / "skills" / "mtg-playtest" / "references"
-STRATEGY = REPO / "decklists" / "strategy"
+REFERENCES = paths.references_dir()
+STRATEGY = paths.decklists_dir() / "strategy"
 JUDGE = play.JUDGE
 MODES = ("intent", "judge", "direct")
 
