@@ -36,7 +36,8 @@ export function t(key, params = {}) {
 }
 
 // HTML の印（data-i18n: 文、data-i18n-title: title、data-i18n-aria-label: aria-label）に今の言語の文言を入れる
-export function applyDom(root = document) {
+export function applyDom(root = typeof document === "undefined" ? null : document) {
+  if (!root) return;  // DOM の無い所（node のテスト）
   document.documentElement.lang = current;
   for (const e of root.querySelectorAll("[data-i18n]")) e.textContent = t(e.dataset.i18n);
   for (const e of root.querySelectorAll("[data-i18n-title]")) e.title = t(e.dataset.i18nTitle);

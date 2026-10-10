@@ -675,7 +675,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const libTop = v.viewer ? (lib.known_positions || []).find((c) => c.index === 0) : null;
     piles.append(pile(tr("pile.library"), lib.count, libTop,
       { known: !!libTop, note: (lib.known_positions || []).length ? tr("pile.knownPositions", { n: lib.known_positions.length }) : "",
-        planned: ((ui.planned && ui.planned.piles[libKey]) || []).join("・"),
+        planned: ((ui.planned && ui.planned.piles[libKey]) || []).join(tr("play.plannedSep")),
         open: ui.open.has(libKey), onclick: pileClick(libKey), zone: libKey, drop: "library" }));
     const gy = v.zones[`${pid}.graveyard`];
     const gyKey = `${pid}.graveyard`;

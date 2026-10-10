@@ -3,29 +3,25 @@
 // 「審判に依頼」で下書きを1つの依頼として審判に送り（「その後」は下書きの最後の行で決まる）、審判がルールに沿って卓に書く。
 // 引く・見るなど隠れた情報の行は、手札・束に「？」の予定を出すだけ（中身は審判の処理の後に、席の view として届く）。
 import { $, dots, el } from "./dom.js";
+import { t as tr } from "./i18n.js";  // t はターンなどの変数名に使っているので tr
+import { displayName, localize } from "./cardnames.js";
 
 // ---------------------------------------------------------------- 純粋な部品（node のテストでも使う）
 
 export const STEPS = ["untap", "upkeep", "draw", "main1", "beginning_of_combat", "declare_attackers",
   "declare_blockers", "combat_damage", "end_of_combat", "main2", "end", "cleanup"];
-export const STEP_JA = {
-  untap: "アンタップ", upkeep: "アップキープ", draw: "ドロー", main1: "メイン1", beginning_of_combat: "戦闘開始",
-  declare_attackers: "攻撃クリーチャー指定", declare_blockers: "ブロック・クリーチャー指定", combat_damage: "戦闘ダメージ",
-  end_of_combat: "戦闘終了", main2: "メイン2", end: "終了", cleanup: "クリンナップ",
-};
+// ステップの名前（画面の言語で）
+export const stepLabel = (s) => (STEPS.includes(s) ? tr(`play.step.${s}`) : s);
 
 // 止める場所の列（play.py の STOP_STEPS と同じ順）。見出しはフェイズごとにまとめる
 export const STOP_STEPS = ["upkeep", "draw", "main1", "beginning_of_combat", "declare_blockers", "combat_damage",
   "end_of_combat", "main2", "end"];
-export const STOP_SHORT = {
-  upkeep: "アップ", draw: "ドロー", main1: "メイン", beginning_of_combat: "開始", declare_blockers: "ブロック",
-  combat_damage: "ダメージ", end_of_combat: "終了", main2: "メイン", end: "終了",
-};
-const STOP_GROUPS = [{ label: "開始", n: 2 }, { label: "第1", n: 1 }, { label: "戦闘", n: 4 }, { label: "第2", n: 1 }, { label: "最終", n: 1 }];
-export const STOP_PRESETS = [
-  ["おすすめ", ["own:main1", "own:main2", "opp:declare_blockers", "opp:end", "opp:spell", "opp:attack", "opp:target"]],
-  ["全部", [...STOP_STEPS.flatMap((s) => ["own:" + s, "opp:" + s]).filter((c) => c !== "own:declare_blockers"), "opp:spell", "opp:attack", "opp:target"]],
-  ["なし", []],
+// 列の短い名前は辞書の play.stopShort.<ステップ>、フェイズの見出しは play.group.<フェイズ>
+const STOP_GROUPS = [{ group: "beginning", n: 2 }, { group: "main1", n: 1 }, { group: "combat", n: 4 }, { group: "main2", n: 1 }, { group: "ending", n: 1 }];
+export const STOP_PRESETS = [  // 名前は辞書の play.preset.<名前>
+  ["recommended", ["own:main1", "own:main2", "opp:declare_blockers", "opp:end", "opp:spell", "opp:attack", "opp:target"]],
+  ["all", [...STOP_STEPS.flatMap((s) => ["own:" + s, "opp:" + s]).filter((c) => c !== "own:declare_blockers"), "opp:spell", "opp:attack", "opp:target"]],
+  ["none", []],
 ];
 
 // view の turn から、step の名前（op step の to と同じ。メインは main1 / main2）
@@ -49,15 +45,11 @@ const ICON = {
 // 進めるボタンの並び: フェイズごとの枠（見出しは止める場所の表と同じ）を、ターンの順に1行に置く。
 // アンタップ・ステップは優先権が無く止まれないので、ボタンは無い（開始フェイズはアップキープから）
 const STEP_GROUPS = [
-  { label: "開始", steps: ["upkeep", "draw"] }, { label: "第1", steps: ["main1"] },
-  { label: "戦闘", steps: ["beginning_of_combat", "declare_attackers", "declare_blockers", "combat_damage", "end_of_combat"] },
-  { label: "第2", steps: ["main2"] }, { label: "最終", steps: ["end"] },
+  { group: "beginning", steps: ["upkeep", "draw"] }, { group: "main1", steps: ["main1"] },
+  { group: "combat", steps: ["beginning_of_combat", "declare_attackers", "declare_blockers", "combat_damage", "end_of_combat"] },
+  { group: "main2", steps: ["main2"] }, { group: "ending", steps: ["end"] },
 ];
-// 「次へ」のボタンに出す行き先（枠の見出しが無いので、どのフェイズか分かる名前）
-const NEXT_SHORT = {
-  upkeep: "アップキープ", draw: "ドロー", main1: "メイン1", beginning_of_combat: "戦闘開始", declare_attackers: "攻撃",
-  declare_blockers: "ブロック", combat_damage: "ダメージ", end_of_combat: "戦闘終了", main2: "メイン2", end: "終了ステップ",
-};
+// 「次へ」のボタンに出す行き先（枠の見出しが無いので、どのフェイズか分かる名前）は辞書の play.nextShort.<ステップ>
 
 export function stepName(t) { return t.step === "main" ? t.phase : t.step; }
 
@@ -104,38 +96,34 @@ export function findCard(v, id) {
   return null;
 }
 
-// op を短い日本語の文に（下書きの一覧とラベル用）
+// op を短い文に（下書きの一覧とラベル用。画面の言語で）
 export function describeOp(op, nm = (id) => id) {
   const ref = (r) => (Array.isArray(r) ? r.map(ref).join(", ")
     : r && typeof r === "object" ? JSON.stringify(r) : nm(r));
-  const to = { graveyard: "墓地", hand: "手札", library: "ライブラリー", battlefield: "戦場", exile: "追放" };
+  const zone = (z) => (["graveyard", "hand", "library", "battlefield", "exile"].includes(z) ? tr(`play.zone.${z}`) : z);
   switch (op.op) {
-    case "move": return `${ref(op.card)} を${to[op.to] || op.to}へ${op.position === "bottom" ? "（一番下）" : ""}`;
-    case "damage": return `${ref(op.target)} に ${op.amount} 点のダメージ`;
-    case "life_loss": return `${op.player ? ref(op.player) + " が" : ""}ライフを ${op.amount} 失う`;
-    case "life_gain": return `${op.player ? ref(op.player) + " が" : ""}ライフを ${op.amount} 得る`;
-    case "tap": return `${ref(op.card)} をタップ`;
-    case "untap": return `${ref(op.card)} をアンタップ`;
-    case "attack": return `${ref(op.attacker)} で ${ref(op.target)} を攻撃`;
-    case "block": return `${ref(op.blocker)} で ${ref(op.attacker)} をブロック`;
-    case "counter_add": return `${ref(op.target)} に ${op.kind} カウンター ×${op.amount || 1}`;
-    case "counter_remove": return `${ref(op.target)} から ${op.kind} カウンター ×${op.amount || 1}`;
-    case "note_add": return `${ref(op.target)} に Note「${op.text}」`;
-    case "step": return `${STEP_JA[op.to] || op.to} へ`;
-    case "stack_remove": return op.card_to === "graveyard" && op.item ? `${ref(op.item)} を打ち消す` : "解決を終える";
-    case "draw": return `${op.count || 1} 枚引く`;
-    case "declare": return `宣言: ${op.kind}${op.text ? " " + op.text : ""}`;
-    case "create": return `トークン ${op.name || ""} を作る`;
+    case "move": return tr("play.op.move", { card: ref(op.card), zone: zone(op.to), bottom: op.position === "bottom" ? tr("play.op.bottom") : "" });
+    case "damage": return tr("play.op.damage", { target: ref(op.target), n: op.amount });
+    case "life_loss": return op.player ? tr("play.op.lifeLoss", { player: ref(op.player), n: op.amount }) : tr("play.op.lifeLoss.any", { n: op.amount });
+    case "life_gain": return op.player ? tr("play.op.lifeGain", { player: ref(op.player), n: op.amount }) : tr("play.op.lifeGain.any", { n: op.amount });
+    case "tap": return tr("play.op.tap", { card: ref(op.card) });
+    case "untap": return tr("play.op.untap", { card: ref(op.card) });
+    case "attack": return tr("play.op.attack", { attacker: ref(op.attacker), target: ref(op.target) });
+    case "block": return tr("play.op.block", { blocker: ref(op.blocker), attacker: ref(op.attacker) });
+    case "counter_add": return tr("play.op.counterAdd", { target: ref(op.target), kind: op.kind, n: op.amount || 1 });
+    case "counter_remove": return tr("play.op.counterRemove", { target: ref(op.target), kind: op.kind, n: op.amount || 1 });
+    case "note_add": return tr("play.op.noteAdd", { target: ref(op.target), text: op.text });
+    case "step": return tr("play.op.step", { step: stepLabel(op.to) });
+    case "stack_remove": return op.card_to === "graveyard" && op.item ? tr("play.op.counterItem", { item: ref(op.item) }) : tr("play.op.resolved");
+    case "draw": return tr("play.op.draw", { n: op.count || 1 });
+    case "declare": return tr("play.op.declare", { kind: op.kind, text: op.text ? " " + op.text : "" });
+    case "create": return tr("play.op.create", { name: op.name || "" });
     default: return `${op.op} ${JSON.stringify(Object.fromEntries(Object.entries(op).filter(([k]) => k !== "op")))}`;
   }
 }
 
 // ---------------------------------------------------------------- 下書き（純粋な部品）
 
-// 依頼の「その後」（play.py の THEN_JA と同じ）。ステップ名なら、そのステップまで進める
-export const THEN_JA = { continue: "続ける（まだ自分の番）", pass: "パス（相手に渡す）",
-  resolve: "解決まで（相手が対応しなければ、積んだものを解決して自分の番を続ける）", end_turn: "ターン終了",
-  turn_start: "自分のターンを始める" };
 // 「その後」に書けるステップ（play.py の STEP_THEN と同じ）
 export const STEP_THEN = ["upkeep", "draw", "main1", "beginning_of_combat", "declare_attackers", "declare_blockers",
   "combat_damage", "end_of_combat", "main2", "end"];
@@ -155,8 +143,8 @@ export function cleanLine(l) {
 
 // 「その後」の短い名前（送るボタン・下書きの欄に出す）
 export function thenLabel(then) {
-  return { continue: "続ける", pass: "パス", resolve: "解決まで", end_turn: "ターン終了", turn_start: "ターン開始" }[then]
-    || (STEP_JA[then] ? `${STEP_JA[then]}へ` : then);
+  if (["continue", "pass", "resolve", "end_turn", "turn_start"].includes(then)) return tr(`play.then.${then}`);
+  return STEPS.includes(then) ? tr("play.then.step", { step: stepLabel(then) }) : then;
 }
 
 // 下書きの行から、審判に送る依頼 {plan, then} を作る。最後の行が「その後」の行（ターン終了・パス）か、ステップを
@@ -178,8 +166,8 @@ export function toRequest(lines, turn, seat) {
 export function resumeLines(resume) {
   const lines = (resume.lines || []).map(cleanLine);
   const t = resume.then;
-  if (t === "end_turn" || t === "pass") lines.push({ kind: "then", then: t, text: t === "pass" ? "パス（相手に渡す）" : "ターン終了" });
-  else if (STEP_THEN.includes(t)) lines.push({ kind: "step", to: t, text: `${STEP_JA[t]} へ進む` });
+  if (t === "end_turn" || t === "pass") lines.push({ kind: "then", then: t, text: tr(t === "pass" ? "play.passToOpp" : "play.endTurn") });
+  else if (STEP_THEN.includes(t)) lines.push({ kind: "step", to: t, text: tr("play.goTo", { step: stepLabel(t) }) });
   return lines;
 }
 
@@ -190,7 +178,7 @@ export function requestAction(lines, comment, turn, seat, stackSize) {
   const r = toRequest(lines, turn, seat);
   const empty = !r.plan.length && !comment;
   if (empty && (r.then === "pass" || (r.then === "continue" && stackSize > 0))) {
-    return turn.priority === seat ? { kind: "pass", label: "パス" } : null;
+    return turn.priority === seat ? { kind: "pass", label: tr("play.pass") } : null;
   }
   // 依頼はゲーム前か、待たれている（優先権・ブロック・自分の番）ときだけ。相手が考えている間は下書きを作っておく
   if (turn.turn !== 0 && turn.waiting_on !== seat) return null;
@@ -199,7 +187,7 @@ export function requestAction(lines, comment, turn, seat, stackSize) {
     const next = nextStep(turn);
     r.then = STEP_THEN.includes(next) ? next : "end_turn";
   }
-  return { kind: "request", ...r, label: `審判に依頼（その後: ${thenLabel(r.then)}）` };
+  return { kind: "request", ...r, label: tr("play.sendWithThen", { then: thenLabel(r.then) }) };
 }
 
 // 下書き・送った依頼の行から、画面に出す予定: 手札に足す「？」の枚数と、束に付ける印、ブロックの予定（戦闘の欄）。
@@ -210,12 +198,12 @@ export function planned(lines, seat) {
   const lib = `${seat}.library`;
   for (const l of lines) {
     const n = l.count || 1;
-    if (l.kind === "draw") { out.hand[seat] = (out.hand[seat] || 0) + n; note(lib, `−${n} 引く`); }
-    else if (l.kind === "look") note(lib, `上 ${n} 枚を見る`);
-    else if (l.kind === "reveal") note(lib, `上 ${n} 枚を公開`);
-    else if (l.kind === "shuffle") note(lib, "シャッフル");
-    else if (l.kind === "search") note(lib, "探す");
-    else if (l.kind === "mill") note(`${(l.targets || [])[0] || seat}.library`, `−${n} 墓地へ`);
+    if (l.kind === "draw") { out.hand[seat] = (out.hand[seat] || 0) + n; note(lib, tr("play.planned.draw", { n })); }
+    else if (l.kind === "look") note(lib, tr("play.planned.look", { n }));
+    else if (l.kind === "reveal") note(lib, tr("play.planned.reveal", { n }));
+    else if (l.kind === "shuffle") note(lib, tr("play.planned.shuffle"));
+    else if (l.kind === "search") note(lib, tr("play.planned.search"));
+    else if (l.kind === "mill") note(`${(l.targets || [])[0] || seat}.library`, tr("play.planned.mill", { n }));
     else if (l.kind === "block" && (l.cards || [])[0] && (l.targets || [])[0]) out.blocks.push({ blocker: l.cards[0], attacker: l.targets[0] });
   }
   return out;
@@ -433,7 +421,7 @@ function ask({ title, fields = [], choices = null, ok = "OK" }) {
       form.append(row);
     }
     const buttons = el("div", "abuttons");
-    const cancel = el("button", null, "やめる");
+    const cancel = el("button", null, tr("play.cancel"));
     cancel.type = "button";
     cancel.onclick = () => dlg.close();
     buttons.append(cancel);
@@ -465,6 +453,9 @@ export function idleState(idle, wait, seat, now) {
     left: Math.max(1, Math.ceil((idle.limit - seconds) / 60)) };
 }
 
+// 長い文を n 文字ほどで切る（メニューの名前）
+const short = (text, n) => (text.length > n ? text.slice(0, n - 1) + "…" : text);
+
 let toastTimer = null;
 export function toast(text, error) {
   const t = $("toast");
@@ -495,8 +486,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   const me = () => ui.play.seat;
   const opp = () => (ui.view.players.find((p) => p.id !== me()) || {}).id;
-  const nm = (id) => (ui.names[id] ? `<${ui.names[id]}>` : id);
-  const ref = (id) => (ui.names[id] ? `<${ui.names[id]}> (${id})` : id);  // 依頼の文には名前と id を書く
+  // 画面に出す名前（日本語の画面では日本語名）。依頼の文（審判が読む）には英語名と id を書く（ref）
+  const nm = (id) => (ui.names[id] ? `<${displayName(ui.names[id])}>` : id);
+  const ref = (id) => (ui.names[id] ? `<${ui.names[id]}> (${id})` : id);
   const isCard = (id) => typeof id === "string" && !!findCard(ui.view, id);
   const ready = () => ui.play && ui.view && ui.live && !busy;
   const judging = () => !!ui.view && ui.view.turn.waiting_on === "judge";
@@ -532,9 +524,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   function addLine(l) {
     if (!ui.play || !ui.view) return;
-    if (!ui.live) return toast("最新の盤面（Live）に戻ってから操作する", true);
-    if (judging()) return toast("審判が処理している間は組み立てない", true);
-    if (ui.view.turn.turn === 0) return toast("ゲーム前はキープ・マリガンだけ", true);
+    if (!ui.live) return toast(tr("play.toast.live"), true);
+    if (judging()) return toast(tr("play.toast.judging"), true);
+    if (ui.view.turn.turn === 0) return toast(tr("play.toast.pregame"), true);
     const lines = loadDraft().lines;
     // 「その後」の行（ターン終了・パス）は最後に1つだけ: 足し直せば入れ替え、他の行はその前に入れる
     const end = lines.length && lines[lines.length - 1].kind === "then";
@@ -577,8 +569,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   function unplanItems(id) {
     return loadDraft().lines.map((l, i) => ({ l, i }))
       .filter(({ l }) => (l.cards || []).includes(id) || (l.targets || []).includes(id))
-      .map(({ l, i }) => ({ label: `予定を外す: ${l.text.length > 28 ? l.text.slice(0, 27) + "…" : l.text}`,
-        fn: () => removeLine(i), hint: "下書きのこの行を外す（盤面は送るまで変わらない）" }));
+      .map(({ l, i }) => ({ label: tr("play.unplan", { text: short(localize(l.text), 28) }),
+        fn: () => removeLine(i), hint: tr("play.unplan.hint") }));
   }
 
   // 途中で止まった自分の計画（view.resume）: 下書きが空なら残りを戻す。下書きがあれば、戻すかを本人が選ぶ（resumeBox）。
@@ -592,16 +584,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (add) d.lines.push(...resumeLines(r));
     d.resumed = r.id;
     saveDraft();
-    if (add) toast(`途中で止まった計画 #${r.of} の残りを下書きに戻した（直してから送る）`);
+    if (add) toast(tr("play.resume.toast", { of: r.of }));
     if (redraw) refresh();
   }
   function resumeBox(r) {
     const box = el("div", "compose");
-    box.append(el("div", "ctitle", `途中で止まった計画 #${r.of} の残り（${r.lines.length} 行・その後: ${thenLabel(r.then)}）`),
-      el("div", "chelp muted", r.unknown ? "審判がどこまで処理したか分からない。戻したら、済んだ行を外す"
-        : "相手の割り込みなどで止まった。下書きに戻して直してから送る"));
+    box.append(el("div", "ctitle", tr("play.resume.title", { of: r.of, n: r.lines.length, then: thenLabel(r.then) })),
+      el("div", "chelp muted", tr(r.unknown ? "play.resume.unknown" : "play.resume.help")));
     const row = el("div", "crow");
-    row.append(button("下書きに足す", () => takeResume(r), { cls: "on" }), button("捨てる", () => takeResume(r, false)));
+    row.append(button(tr("play.resume.add"), () => takeResume(r), { cls: "on" }), button(tr("play.resume.discard"), () => takeResume(r, false)));
     box.append(row);
     return box;
   }
@@ -610,7 +601,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   async function post(what, body, okText) {
     if (!ui.play) return false;
-    if (!ui.live) { toast("最新の盤面（Live）に戻ってから操作する", true); return false; }
+    if (!ui.live) { toast(tr("play.toast.live"), true); return false; }
     if (busy) return false;
     busy = true;
     renderPanel();
@@ -618,11 +609,11 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     try {
       const r = await source.post(ui.game, what, { ...body, seat: me(), expect: ui.cursor });
       const stopped = r.result.stopped;
-      if (stopped) toast(`送れなかった（${stopped.reason}）: ${stopped.error || ""}`, true);
+      if (stopped) toast(tr("play.post.stopped", { reason: stopped.reason, error: stopped.error || "" }), true);
       else if (okText) toast(okText);
       ok = !stopped;
     } catch (e) {
-      toast(e.stale ? "盤面が先に進んでいた。最新にしたので、下書きを確かめて送り直す" : `送れない: ${e.message}`, true);
+      toast(e.stale ? tr("play.post.stale") : tr("play.post.failed", { message: e.message }), true);
     } finally {
       busy = false;
       await reload().catch(() => {});
@@ -635,12 +626,12 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   async function sendDraft() {
     const d = loadDraft(), v = ui.view;
     const act = requestAction(d.lines, d.comment, v.turn, me(), v.stack.length);
-    if (!act) return toast("やることか、進める先（進めるボタン）を足す", true);
+    if (!act) return toast(tr("play.send.empty"), true);
     if (act.kind === "pass") return declareKind("pass");
     const lines = act.plan;
     const from = ui.cursor;
     blocker = null;
-    if (await post("request", { plan: lines, then: act.then, comment: d.comment }, "審判に依頼した")) {
+    if (await post("request", { plan: lines, then: act.then, comment: d.comment }, tr("play.send.ok"))) {
       sent = lines;
       sentFrom = from;
       d.lines = [];
@@ -673,7 +664,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (i >= 0) chosen.cards.splice(i, 1);
     else if (q.pick[1] === 1) chosen.cards = [id];  // 1 枚なら押し直しで入れ替え
     else if (chosen.cards.length < q.pick[1]) chosen.cards.push(id);
-    else return toast(`選べるのは ${q.pick[1]} 枚まで`, true);
+    else return toast(tr("play.chooseUpTo", { n: q.pick[1] }), true);
     refresh();
   }
 
@@ -684,7 +675,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   function answerCards(q, cards) {
     closeAutoOpened();
-    return answer(cards.length ? cards.map(nm).join("、") : "選ばない", cards);
+    return answer(cards.length ? cards.map(ref).join(tr("play.listSep")) : tr("play.chooseNone"), cards);
   }
 
   function marks() {
@@ -700,7 +691,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   }
 
   function start(c) {
-    if (judging()) return toast("審判が処理している間は組み立てない", true);
+    if (judging()) return toast(tr("play.toast.judging"), true);
     compose = c;
     pick = null;
     refresh();
@@ -724,70 +715,71 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   function commit(resolve = false) {
     const c = compose;
     if (!c) return;
-    const extra = c.text ? `（${c.text}）` : "";
+    const extra = c.text ? tr("paren", { text: c.text }) : "";
     if (c.kind === "target") {
-      if (!c.targets.length) return toast("対象を押して選ぶ", true);
+      if (!c.targets.length) return toast(tr("play.pickTargets"), true);
       compose = null;
-      return addLine(line("target", `${c.label} の対象を ${c.targets.map(ref).join(", ")} にする${extra}`, { targets: c.targets }));
+      return addLine(line("target", tr("play.line.target", { label: c.label, targets: c.targets.map(ref).join(", "), extra }), { targets: c.targets }));
     }
     const src = c.card || c.source;
-    const aim = c.targets.length ? ` 対象: ${c.targets.map(ref).join(", ")}` : "";
-    const verb = c.kind === "cast" ? "を唱える" : c.tap ? "をタップして能力を起動する" : "の能力を起動する";
+    const aim = c.targets.length ? tr("play.line.aim", { targets: c.targets.map(ref).join(", ") }) : "";
+    const key = c.kind === "cast" ? "play.line.cast" : c.tap ? "play.line.activateTap" : "play.line.activate";
     compose = null;
-    addLine(line(c.kind, `${ref(src)} ${verb}${aim}${extra}`, { cards: [src], targets: c.targets, tap: c.kind === "activate" && c.tap ? "tap" : null }));
-    if (resolve === true) addLine(line("resolve", `${c.kind === "cast" ? `${ref(src)} を` : `${ref(src)} の能力を`}解決する`, { cards: [src] }));
+    addLine(line(c.kind, tr(key, { card: ref(src), aim, extra }), { cards: [src], targets: c.targets, tap: c.kind === "activate" && c.tap ? "tap" : null }));
+    if (resolve === true) addLine(line("resolve", tr(c.kind === "cast" ? "play.line.resolve" : "play.line.resolveAbility", { card: ref(src) }), { cards: [src] }));
   }
 
   // ---- メニューの中身（どれも下書きに行を足すだけ）
 
   function moveItems(id, zone) {
-    const mv = (word) => () => other(`${ref(id)} を${word}`, [id]);
+    const mv = (to) => () => other(tr(`play.move.${to}.line`, { card: ref(id) }), [id]);
     return [
-      zone !== "battlefield" && { label: "戦場に出す", fn: mv("戦場に出す") },
-      !zone.endsWith(".hand") && { label: "手札に戻す（オーナーの）", fn: mv("オーナーの手札に戻す") },
-      !zone.endsWith(".graveyard") && { label: zone === "battlefield" ? "墓地へ（生け贄・破壊）" : "墓地へ", fn: mv("墓地に置く") },
-      zone !== "exile" && { label: "追放する", fn: mv("追放する") },
-      { label: "ライブラリーの一番上へ", fn: mv("ライブラリーの一番上に置く") },
-      { label: "ライブラリーの一番下へ", fn: mv("ライブラリーの一番下に置く") },
+      zone !== "battlefield" && { label: tr("play.move.battlefield"), fn: mv("battlefield") },
+      !zone.endsWith(".hand") && { label: tr("play.move.hand"), fn: mv("hand") },
+      // graveyard: 手札のメニューでは「捨てる」があるので外す（cardItems）
+      !zone.endsWith(".graveyard") && { label: tr(zone === "battlefield" ? "play.move.graveyard.bf" : "play.move.graveyard"), fn: mv("graveyard"), graveyard: true },
+      zone !== "exile" && { label: tr("play.move.exile"), fn: mv("exile") },
+      { label: tr("play.move.top"), fn: mv("top") },
+      { label: tr("play.move.bottom"), fn: mv("bottom") },
     ];
   }
 
   async function counter(target, sign) {
-    const r = await ask({ title: `${nm(target)} のカウンター`, fields: [
-      { name: "kind", label: "種類", value: "+1/+1" }, { name: "amount", label: "数", value: 1, type: "number" }] });
+    const r = await ask({ title: tr("play.counter.title", { card: nm(target) }), fields: [
+      { name: "kind", label: tr("play.field.kind"), value: "+1/+1" }, { name: "amount", label: tr("play.field.count"), value: 1, type: "number" }] });
     if (!r || !r.kind || !r.amount) return;
-    other(sign > 0 ? `${ref(target)} に ${r.kind} カウンターを ${r.amount} 個置く` : `${ref(target)} から ${r.kind} カウンターを ${r.amount} 個取り除く`,
+    other(tr(sign > 0 ? "play.counter.add" : "play.counter.remove", { target: ref(target), kind: r.kind, n: r.amount }),
       [target], isCard(target) ? [] : [target]);
   }
 
   async function note(target) {
-    const r = await ask({ title: `${nm(target)} に Note`, fields: [
-      { name: "text", label: "内容", value: "" }, { name: "eot", label: "ターン終了まで", type: "checkbox" }] });
+    const r = await ask({ title: tr("play.note.title", { card: nm(target) }), fields: [
+      { name: "text", label: tr("play.field.text"), value: "" }, { name: "eot", label: tr("play.note.eot"), type: "checkbox" }] });
     if (!r || !r.text) return;
-    other(`${ref(target)} に Note「${r.text}」を付ける${r.eot ? "（ターン終了まで）" : ""}`, [target]);
+    other(tr("play.note.line", { target: ref(target), text: r.text, eot: r.eot ? tr("play.note.eotSuffix") : "" }), [target]);
   }
 
   // 基本の書き方でない mana の Note の土地: 出すマナ（と払うライフなど）を書いてもらい、Note の文と合わせて審判に任せる
   async function tapForMana(id, note) {
-    const r = await ask({ title: `${nm(id)} をタップしてマナを出す（${note}）`, fields: [{ name: "mana", label: "出すマナ", value: "" }] });
+    const r = await ask({ title: tr("play.mana.title", { card: nm(id), note }), fields: [{ name: "mana", label: tr("play.mana.field"), value: "" }] });
     if (!r) return;
-    other(`${ref(id)} をタップする（${r.mana ? `${r.mana} を出す` : "マナを出す"}。Note: ${note}）`, [id], [], { tap: "tap" });
+    other(tr("play.mana.line", { card: ref(id), what: r.mana ? tr("play.mana.add", { mana: r.mana }) : tr("play.mana.any"), note }), [id], [], { tap: "tap" });
   }
 
   async function amount(title, fn, value = 1) {
-    const r = await ask({ title, fields: [{ name: "n", label: "数", value, type: "number" }] });
+    const r = await ask({ title, fields: [{ name: "n", label: tr("play.field.count"), value, type: "number" }] });
     if (r && r.n > 0) fn(Math.min(99, Math.floor(r.n)));
   }
 
   // 攻撃する: まず相手の Player を攻撃する行を足す。プレインズウォーカー・バトルへは、戦闘の欄で攻撃先を変える（retarget）
-  const attackText = (id, target, tap) => `${ref(id)} で ${ref(target)} を攻撃する${tap ? "" : "（タップしない）"}`;
+  const attackText = (id, target, tap) => tr("play.attack.line", { attacker: ref(id), target: ref(target), notap: tap ? "" : tr("play.attack.notap") });
   function attackItems(c) {
     const t = ui.view.turn;
     if (t.active !== me() || c.land) return [];
     const attack = (tap) => () => addLine(line("attack", attackText(c.id, opp(), tap), { cards: [c.id], targets: [opp()], tap: tap ? "tap" : "none" }));
     return [
-      { label: "攻撃する", fn: attack(true) },
-      { label: "攻撃する（タップしない・警戒）", fn: attack(false) },
+      { label: tr("play.attack"), fn: attack(true) },
+      { label: tr("play.attack.vigilance"), fn: attack(false) },
     ];
   }
 
@@ -800,7 +792,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const targets = attackTargets(ui.view, me(), opp());
     if (targets.length < 2) return null;
     return async () => {
-      const to = await ask({ title: `${nm(a.attacker)} の攻撃先`, choices: targets.map((id) =>
+      const to = await ask({ title: tr("play.attack.targetTitle", { card: nm(a.attacker) }), choices: targets.map((id) =>
         ({ label: `${id === a.target ? "✓ " : ""}${attackLabel(ui.view, id)}`, value: id })) });
       if (!to || to === a.target || loadDraft().lines[i] !== l) return;
       const tap = tapOf(l) !== "none";
@@ -812,21 +804,22 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   function attackLabel(v, id) {
     const c = (v.zones.battlefield.cards || []).find((x) => x.id === id);
-    if (!c) return `${id}（Player）`;
+    if (!c) return tr("play.attack.player", { id });
     const n = (c.counters || {})[c.attackable === "battle" ? "defense" : "loyalty"];
-    return `${nm(id)}（${c.attackable === "battle" ? "バトル" : "プレインズウォーカー"}${n !== undefined ? ` ${n}` : ""}）`;
+    return tr("play.attack.permanent", { card: nm(id), kind: tr(c.attackable === "battle" ? "play.attack.battle" : "play.attack.planeswalker"),
+      n: n !== undefined ? ` ${n}` : "" });
   }
 
   function blockItems(c) {
     const v = ui.view;
     if (v.turn.active === me() || !v.combat.attacks.length || c.land) return [];
-    return [{ label: "ブロックする…（攻撃クリーチャーを選ぶ）", fn: () => {
+    return [{ label: tr("play.block.item"), fn: () => {
       const attackers = v.combat.attacks.map((a) => a.attacker);
-      const doBlock = (attacker) => addLine(line("block", `${ref(c.id)} で ${ref(attacker)} をブロックする`,
+      const doBlock = (attacker) => addLine(line("block", tr("play.block.line", { blocker: ref(c.id), attacker: ref(attacker) }),
         { cards: [c.id], targets: [attacker] }));
       if (attackers.length === 1) return doBlock(attackers[0]);
-      pick = { prompt: `${nm(c.id)} がブロックする攻撃クリーチャーを選ぶ`, accept: (card) => {
-        if (!attackers.includes(card.id)) { toast("攻撃しているクリーチャーを選ぶ", true); return; }
+      pick = { prompt: tr("play.block.prompt", { card: nm(c.id) }), accept: (card) => {
+        if (!attackers.includes(card.id)) { toast(tr("play.block.pickAttacker"), true); return; }
         pick = null;
         doBlock(card.id);
       } };
@@ -840,70 +833,70 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const items = [];
     if (zone === `${me()}.hand`) {
       const kind = (ui.view.card_kinds || {})[id];  // 種類が分からなければ両方出す
-      items.push((!kind || kind.land) && { label: "土地として出す", fn: () => addLine(line("play_land", `${ref(id)} を出す`, { cards: [id] })) },
-        (!kind || kind.spell) && { label: "唱える…", fn: () => start({ kind: "cast", card: id, targets: [], text: "" }) },
-        { label: "公開する", fn: () => other(`${ref(id)} を公開する`, [id]) }, "-",
-        { label: "捨てる", fn: () => other(`${ref(id)} を捨てる`, [id]) },
-        ...moveItems(id, zone).filter((x) => x && !/墓地/.test(x.label)));
+      items.push((!kind || kind.land) && { label: tr("play.item.playLand"), fn: () => addLine(line("play_land", tr("play.line.playLand", { card: ref(id) }), { cards: [id] })) },
+        (!kind || kind.spell) && { label: tr("play.item.cast"), fn: () => start({ kind: "cast", card: id, targets: [], text: "" }) },
+        { label: tr("play.item.reveal"), fn: () => other(tr("play.line.reveal", { card: ref(id) }), [id]) }, "-",
+        { label: tr("play.discard"), fn: () => other(tr("play.discard.line", { card: ref(id) }), [id]) },
+        ...moveItems(id, zone).filter((x) => x && !x.graveyard));
     } else if (zone === "battlefield") {
       if (mine) {
-        items.push(c.tapped ? { label: "アンタップ", fn: () => other(`${ref(id)} をアンタップする`, [id], [], { tap: "untap" }) }
-          : { label: "タップ", fn: () => other(`${ref(id)} をタップする`, [id], [], { tap: "tap" }) });
+        items.push(c.tapped ? { label: tr("play.item.untap"), fn: () => other(tr("play.line.untap", { card: ref(id) }), [id], [], { tap: "untap" }) }
+          : { label: tr("play.item.tap"), fn: () => other(tr("play.line.tap", { card: ref(id) }), [id], [], { tap: "tap" }) });
         // Note に書いたマナ能力: 出すマナを選んでタップする（条件は文に残し、満たすかは審判が見る）
         if (!c.tapped) {
           for (const { mana, note } of manaChoices(c.notes)) {
             if (mana) {
-              const label = `タップして ${mana} を出す`;
-              items.push({ label, nodes: manaNodes(label), fn: () => other(`${ref(id)} をタップする（${mana} を出す）`, [id], [], { tap: "tap" }) });
+              const label = tr("play.item.tapFor", { mana });
+              items.push({ label, nodes: manaNodes(label), fn: () => other(tr("play.line.tapFor", { card: ref(id), mana }), [id], [], { tap: "tap" }) });
             } else {
-              const label = `タップしてマナを出す…（${note}）`;
+              const label = tr("play.item.tapForNote", { note });
               items.push({ label, nodes: manaNodes(label), fn: () => tapForMana(id, note) });
             }
           }
         }
-        items.push({ label: "能力を起動…", fn: () => start({ kind: "activate", source: id, targets: [], text: "" }) });
+        items.push({ label: tr("play.item.activate"), fn: () => start({ kind: "activate", source: id, targets: [], text: "" }) });
         items.push(...attackItems(c), ...blockItems(c));
       } else {
-        items.push(c.tapped ? { label: "アンタップ", fn: () => other(`${ref(id)} をアンタップする`, [id], [], { tap: "untap" }) }
-          : { label: "タップ（効果で）", fn: () => other(`${ref(id)} をタップする（効果で）`, [id], [], { tap: "tap" }) },
-        { label: "ダメージを与える…", fn: () => amount(`${nm(id)} へのダメージ`, (n) => other(`${ref(id)} に ${n} 点のダメージ`, [id])) },
-        { label: "コントロールを得る", fn: () => other(`${ref(id)} のコントロールを得る`, [id]) });
+        items.push(c.tapped ? { label: tr("play.item.untap"), fn: () => other(tr("play.line.untap", { card: ref(id) }), [id], [], { tap: "untap" }) }
+          : { label: tr("play.item.tapEffect"), fn: () => other(tr("play.line.tapEffect", { card: ref(id) }), [id], [], { tap: "tap" }) },
+        { label: tr("play.item.damage"), fn: () => amount(tr("play.damageTo", { card: nm(id) }), (n) => other(tr("play.line.damage", { card: ref(id), n }), [id])) },
+        { label: tr("play.item.control"), fn: () => other(tr("play.line.control", { card: ref(id) }), [id]) });
       }
       const inCombat = ui.view.combat.attacks.some((a) => a.attacker === id) || ui.view.combat.blocks.some((b) => b.blocker === id);
-      if (inCombat) items.push({ label: "戦闘から取り除く", fn: () => other(`${ref(id)} を戦闘から取り除く`, [id]) });
-      items.push("-", { label: "カウンターを置く…", fn: () => counter(id, 1) });
-      if (c.counters && Object.keys(c.counters).length) items.push({ label: "カウンターを取り除く…", fn: () => counter(id, -1) });
-      items.push({ label: "Note を付ける…", fn: () => note(id) });
+      if (inCombat) items.push({ label: tr("play.item.removeCombat"), fn: () => other(tr("play.line.removeCombat", { card: ref(id) }), [id]) });
+      items.push("-", { label: tr("play.item.addCounter"), fn: () => counter(id, 1) });
+      if (c.counters && Object.keys(c.counters).length) items.push({ label: tr("play.item.removeCounter"), fn: () => counter(id, -1) });
+      items.push({ label: tr("play.item.addNote"), fn: () => note(id) });
       for (const n of c.notes || []) {
-        items.push({ label: `Note を外す: ${n.text.length > 24 ? n.text.slice(0, 23) + "…" : n.text}`, fn: () => other(`${ref(id)} の Note「${n.text}」を外す`, [id]) });
+        items.push({ label: tr("play.item.removeNote", { text: short(n.text, 24) }), fn: () => other(tr("play.line.removeNote", { card: ref(id), text: n.text }), [id]) });
       }
       items.push("-", ...moveItems(id, zone));
-      if (c.token) items.push({ label: "取り除く（トークンの消滅）", fn: () => other(`トークン ${ref(id)} を取り除く`, [id]) });
+      if (c.token) items.push({ label: tr("play.item.removeToken"), fn: () => other(tr("play.line.removeToken", { card: ref(id) }), [id]) });
     } else if (zone && zone.endsWith(".library")) {
       items.push(...moveItems(id, zone));
     } else if (zone === "stack") {
       const i = ui.view.stack.findIndex((s) => s.card === id);
       if (i >= 0) return stackItems(ui.view.stack[i], i);
     } else if (zone) {
-      if (c.owner === me()) items.push({ label: "唱える…", fn: () => start({ kind: "cast", card: id, targets: [], text: "" }) });
+      if (c.owner === me()) items.push({ label: tr("play.item.cast"), fn: () => start({ kind: "cast", card: id, targets: [], text: "" }) });
       items.push(...moveItems(id, zone));
     }
-    items.push("-", { label: "詳細", fn: () => showCard(c) });
+    items.push("-", { label: tr("play.item.details"), fn: () => showCard(c) });
     return items;
   }
 
   function stackItems(s, i) {
     const items = [];
-    const label = s.card ? ref(s.card) : `${ref(s.source)} の能力`;
+    const label = s.card ? ref(s.card) : tr("play.abilityOf", { card: ref(s.source) });
     if (i === 0) {
-      items.push({ label: "解決する", fn: () => addLine(line("resolve", `スタックの一番上の ${label} を解決する`, { targets: [s.id] })),
-        hint: "解決を依頼する（効果・誘発は審判が処理する）" });
+      items.push({ label: tr("play.item.resolve"), fn: () => addLine(line("resolve", tr("play.line.resolveTop", { label }), { targets: [s.id] })),
+        hint: tr("play.item.resolve.hint") });
     }
     if (s.controller === me() && !s.card) {
-      items.push({ label: "対象を選ぶ…", fn: () => start({ kind: "target", item: s.id, label, targets: [], text: "" }) });
+      items.push({ label: tr("play.item.targets"), fn: () => start({ kind: "target", item: s.id, label, targets: [], text: "" }) });
     }
     const c = s.card ? findCard(ui.view, s.card) : s.source && findCard(ui.view, s.source);
-    if (c) items.push("-", { label: "詳細", fn: () => showCard(c) });
+    if (c) items.push("-", { label: tr("play.item.details"), fn: () => showCard(c) });
     return items;
   }
 
@@ -918,11 +911,11 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const attackers = v.combat.attacks.map((a) => a.attacker);
     const ids = c.ids || [c.id];
     if (ids.some((id) => attackers.includes(id))) {
-      if (!blocker) { toast("先に、ブロックする自分のクリーチャーを押す", true); return true; }
+      if (!blocker) { toast(tr("play.block.firstMine"), true); return true; }
       const attacker = ids.find((id) => attackers.includes(id));
       const b = blocker;
       blocker = null;
-      addLine(line("block", `${ref(b)} で ${ref(attacker)} をブロックする`, { cards: [b], targets: [attacker] }));
+      addLine(line("block", tr("play.block.line", { blocker: ref(b), attacker: ref(attacker) }), { cards: [b], targets: [attacker] }));
       return true;
     }
     const mine = (c.controller || c.owner) === me() && zoneOf(v, ids[0]) === "battlefield";
@@ -936,7 +929,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       removeLine(last.i);
       return true;
     }
-    if (c.tapped) { toast("タップ状態のクリーチャーはブロックできない", true); return true; }
+    if (c.tapped) { toast(tr("play.block.tapped"), true); return true; }
     blocker = blocker === free ? null : free;
     refresh();
     return true;
@@ -944,18 +937,16 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   function blockBox() {
     const box = el("div", "compose blockbox");
-    box.append(el("div", "ctitle", "ブロック指定"));
-    box.append(el("div", "chelp muted", blocker
-      ? `${nm(blocker)} がブロックする攻撃クリーチャーを押す（もう一度押すと選び直し）`
-      : "自分のクリーチャー → 攻撃クリーチャーの順に押す（予定のクリーチャーを押すと外す）"));
+    box.append(el("div", "ctitle", tr("play.block.title")));
+    box.append(el("div", "chelp muted", blocker ? tr("play.block.helpChosen", { card: nm(blocker) }) : tr("play.block.help")));
     const lines = blockLines();
     if (lines.length) {
       const list = el("ol", "cops reqlines");
       for (const { l, i } of lines) {
         const li = el("li", null, `${nm(l.cards[0])} → ${nm(l.targets[0])}`);
-        li.title = l.text;
+        li.title = localize(l.text);
         const x = el("button", "chip", "×");
-        x.title = "このブロックを外す";
+        x.title = tr("play.block.remove");
         x.onclick = () => removeLine(i);
         li.append(x);
         list.append(li);
@@ -964,10 +955,10 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     }
     const row = el("div", "crow");
     const none = loadDraft().lines.some(noBlock);
-    box.append(el("div", "chelp muted", "決めたら、下の「審判に依頼」で送る"));
-    row.append(button("ブロックしない", () => { blocker = null; other("ブロックしない", [], [], { no_block: true }); },
-      { disabled: lines.length > 0 || none, title: "ブロックしないことを下書きに足す" }));
-    if (blocker) row.append(button("選び直す", () => { blocker = null; refresh(); }));
+    box.append(el("div", "chelp muted", tr("play.block.sendHelp")));
+    row.append(button(tr("play.noBlocks"), () => { blocker = null; other(tr("play.noBlocks"), [], [], { no_block: true }); },
+      { disabled: lines.length > 0 || none, title: tr("play.noBlocks.title") }));
+    if (blocker) row.append(button(tr("play.block.again"), () => { blocker = null; refresh(); }));
     box.append(row);
     return box;
   }
@@ -990,18 +981,18 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       return true;
     }
     if (blocking() && onBlockClick(c)) return true;
-    const title = `${card.name ? `<${card.name}>` : "カード"} ${card.id}`;
+    const title = `${card.name ? `<${displayName(card.name)}>` : tr("play.card")} ${card.id}`;
     if (card.planned) {  // 下書き・送った依頼で仮に出したカード: 予定を外す・続きの予定を足す（本物になるのは審判の処理の後）
       const items = unplanItems(card.id);
       const next = zone === "battlefield" && (card.controller || card.owner) === me() ? [
-        { label: "能力を起動…", fn: () => start({ kind: "activate", source: card.id, targets: [], text: "", tap: false }),
-          hint: "出す予定のパーマネントの能力を、その後に起動する予定にする" },
-        card.tapped ? { label: "アンタップ", fn: () => other(`${ref(card.id)} をアンタップする`, [card.id], [], { tap: "untap" }) }
-          : { label: "タップ", fn: () => other(`${ref(card.id)} をタップする`, [card.id], [], { tap: "tap" }) },
+        { label: tr("play.item.activate"), fn: () => start({ kind: "activate", source: card.id, targets: [], text: "", tap: false }),
+          hint: tr("play.activateLater.hint") },
+        card.tapped ? { label: tr("play.item.untap"), fn: () => other(tr("play.line.untap", { card: ref(card.id) }), [card.id], [], { tap: "untap" }) }
+          : { label: tr("play.item.tap"), fn: () => other(tr("play.line.tap", { card: ref(card.id) }), [card.id], [], { tap: "tap" }) },
         "-"] : [];
-      openMenu(ev, title + "（予定）", [...next,
-        ...(items.length ? items : [{ label: "送った依頼の予定（審判の処理を待つ）", fn: () => {} }]),
-        "-", { label: "詳細", fn: () => showCard(c) }]);
+      openMenu(ev, title + tr("play.plannedSuffix"), [...next,
+        ...(items.length ? items : [{ label: tr("play.sentPlan"), fn: () => {} }]),
+        "-", { label: tr("play.item.details"), fn: () => showCard(c) }]);
       return true;
     }
     const unplan = unplanItems(card.id);
@@ -1018,19 +1009,19 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (zoneOf(v, id) !== `${me()}.hand`) return null;
     const card = findCard(v, id);
     if (!card || card.planned) return null;
-    const mv = (word) => ({ label: `${nm(id)} を${word}`, run: () => other(`${ref(id)} を${word}`, [id]) });
+    const mv = (key) => ({ label: tr(key, { card: nm(id) }), run: () => other(tr(key, { card: ref(id) }), [id]) });
     if (place === "battlefield") {
       const kind = (ui.view.card_kinds || {})[id] || {};  // 土地の面があれば土地として出す（唱えるならメニューから）
-      if (kind.land) return { label: `${nm(id)} を土地として出す`, run: () => addLine(line("play_land", `${ref(id)} を出す`, { cards: [id] })) };
-      return { label: `${nm(id)} を唱えて解決する`, run: () => {
-        addLine(line("cast", `${ref(id)} を唱える`, { cards: [id] }));
-        addLine(line("resolve", `${ref(id)} を解決する`, { cards: [id] }));
+      if (kind.land) return { label: tr("play.drop.land", { card: nm(id) }), run: () => addLine(line("play_land", tr("play.line.playLand", { card: ref(id) }), { cards: [id] })) };
+      return { label: tr("play.drop.cast", { card: nm(id) }), run: () => {
+        addLine(line("cast", tr("play.line.cast", { card: ref(id), aim: "", extra: "" }), { cards: [id] }));
+        addLine(line("resolve", tr("play.line.resolve", { card: ref(id) }), { cards: [id] }));
       } };
     }
-    if (place === "graveyard") return mv("捨てる");
-    if (place === "exile") return mv("追放する");
-    if (place === "library-top") return mv("ライブラリーの一番上に置く");
-    if (place === "library-bottom") return mv("ライブラリーの一番下に置く");
+    if (place === "graveyard") return mv("play.discard.line");
+    if (place === "exile") return mv("play.move.exile.line");
+    if (place === "library-top") return mv("play.move.top.line");
+    if (place === "library-bottom") return mv("play.move.bottom.line");
     return null;
   }
 
@@ -1044,15 +1035,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (compose) { if (s.id !== compose.item) toggleTarget(s.id); return true; }
     if (s.planned) {  // 下書き・送った依頼で仮に積んだ項目（plan<行の番号>。番号は送った依頼の行から数える）
       const at = Number(s.id.slice(4)) - (sent || []).length;
-      const what = s.card ? `${ref(s.card)} を` : `${ref(s.source)} の能力を`;
+      const what = tr(s.card ? "play.line.resolve" : "play.line.resolveAbility", { card: ref(s.card || s.source) });
       // 一番上なら、続けて解決する予定を足せる（呪文はカード、能力は発生源で、どの項目かを審判に伝える）
-      const resolve = i === 0 ? [{ label: "解決する", fn: () => addLine(line("resolve", `${what}解決する`, { cards: [s.card || s.source] })),
-        hint: "積む予定の項目を、続けて解決する予定にする（効果・誘発は審判が処理する）" }, "-"] : [];
-      openMenu(ev, `${s.card ? nm(s.card) : `${nm(s.source)} の能力`}（予定）`, [...resolve, ...(at >= 0
-        ? [{ label: "この予定を外す", fn: () => removeLine(at) }] : [{ label: "送った依頼の予定（審判の処理を待つ）", fn: () => {} }])]);
+      const resolve = i === 0 ? [{ label: tr("play.item.resolve"), fn: () => addLine(line("resolve", what, { cards: [s.card || s.source] })),
+        hint: tr("play.resolveNext.hint") }, "-"] : [];
+      openMenu(ev, `${s.card ? nm(s.card) : tr("play.abilityOf", { card: nm(s.source) })}${tr("play.plannedSuffix")}`, [...resolve, ...(at >= 0
+        ? [{ label: tr("play.removePlan"), fn: () => removeLine(at) }] : [{ label: tr("play.sentPlan"), fn: () => {} }])]);
       return true;
     }
-    openMenu(ev, s.card ? nm(s.card) : `${nm(s.source)} の能力`, stackItems(s, i));
+    openMenu(ev, s.card ? nm(s.card) : tr("play.abilityOf", { card: nm(s.source) }), stackItems(s, i));
     return true;
   }
 
@@ -1060,14 +1051,14 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (!ui.play || !ui.live || locked()) return;
     if (compose) return toggleTarget(pid);
     const self = pid === me();
-    const life = (word) => () => amount(`${pid} が${word}`, (n) => other(`${pid} が${word.replace("…", "")} ${n}`, [], [pid]));
+    const life = (how) => () => amount(tr(`play.life.${how}.title`, { player: pid }), (n) => other(tr(`play.life.${how}.line`, { player: pid, n }), [], [pid]));
     openMenu(ev, pid, [
-      self && { label: "ライフ −1", fn: () => other(`${pid} のライフ −1`, [], [pid]) },
-      self && { label: "ライフ ＋1", fn: () => other(`${pid} のライフ +1`, [], [pid]) },
-      { label: "ダメージを与える…", fn: () => amount(`${pid} へのダメージ`, (n) => other(`${pid} に ${n} 点のダメージ`, [], [pid])) },
-      { label: "ライフを失う…", fn: life("ライフを失う") },
-      { label: "ライフを得る…", fn: life("ライフを得る") },
-      { label: "カウンターを置く…", fn: () => counter(pid, 1) },
+      self && { label: tr("play.life.minus"), fn: () => other(tr("play.life.minus.line", { player: pid }), [], [pid]) },
+      self && { label: tr("play.life.plus"), fn: () => other(tr("play.life.plus.line", { player: pid }), [], [pid]) },
+      { label: tr("play.item.damage"), fn: () => amount(tr("play.damageTo", { card: pid }), (n) => other(tr("play.line.damage", { card: pid, n }), [], [pid])) },
+      { label: tr("play.item.loseLife"), fn: life("lose") },
+      { label: tr("play.item.gainLife"), fn: life("gain") },
+      { label: tr("play.item.addCounter"), fn: () => counter(pid, 1) },
     ]);
   }
 
@@ -1076,15 +1067,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   function onMana(pid, m, ev) {
     if (!ui.play || !ui.live || locked() || pid !== me() || ui.view.turn.turn === 0) return false;
     const sym = `{${m.color}}`;
-    const use = (n) => addLine(line("other", `マナ・プールの ${sym}（${m.id}）を ${n} 使う`, { targets: [m.id], count: n }));
+    const use = (n) => addLine(line("other", tr("play.pool.use.line", { sym, id: m.id, n }), { targets: [m.id], count: n }));
     const pool = (shownView || ui.view).players.find((p) => p.id === pid).mana;
-    openMenu(ev, `マナ ${sym} ×${m.amount}`, [
-      { label: `${sym} を 1 使う`, fn: () => use(1) },
-      m.amount > 1 && { label: `${sym} を使う…（数）`, fn: () => amount(`${sym} を使う数`, (n) => use(Math.min(n, m.amount)), m.amount) },
-      m.amount > 1 && { label: `${sym} を全部（${m.amount}）使う`, fn: () => use(m.amount) },
+    openMenu(ev, tr("play.pool.title", { sym, n: m.amount }), [
+      { label: tr("play.pool.use1", { sym }), fn: () => use(1) },
+      m.amount > 1 && { label: tr("play.pool.useN", { sym }), fn: () => amount(tr("play.pool.useN.title", { sym }), (n) => use(Math.min(n, m.amount)), m.amount) },
+      m.amount > 1 && { label: tr("play.pool.useAll", { sym, n: m.amount }), fn: () => use(m.amount) },
       "-",
-      { label: "マナ・プールを空にする", fn: () => addLine(line("other", "マナ・プールを空にする", { targets: pool.map((x) => x.id) })),
-        hint: "浮いているマナを全部失う" },
+      { label: tr("play.pool.empty"), fn: () => addLine(line("other", tr("play.pool.empty"), { targets: pool.map((x) => x.id) })),
+        hint: tr("play.pool.empty.hint") },
     ]);
     return true;
   }
@@ -1093,24 +1084,24 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   function onPile(key, ev) {
     if (!ui.play || !ui.live) return false;
     const [pid, zone] = key.split(".");
-    const open = { label: ui.open.has(key) ? "中身を閉じる" : "中身を開く（知っているカード）", fn: () => toggleOpen(key) };
+    const open = { label: tr(ui.open.has(key) ? "play.pile.close" : "play.pile.open"), fn: () => toggleOpen(key) };
     if (zone !== "library") return false;
     const items = [];
     if (ui.view.turn.turn === 0 || locked()) {  // ゲーム前・審判を待っている間は中身を見るだけ  // ゲーム前はキープ・マリガンだけ（引き直しは審判が行う）
-      openMenu(ev, `${pid} のライブラリー`, [open]);
+      openMenu(ev, tr("play.pile.library", { player: pid }), [open]);
       return true;
     }
     if (pid === me()) {
-      items.push({ label: "1 枚引く", fn: () => addLine(line("draw", "1 枚引く", { count: 1 })) },
-        { label: "N 枚引く…", fn: () => amount("引く枚数", (n) => addLine(line("draw", `${n} 枚引く`, { count: n })), 2) },
-        { label: "上から N 枚を見る…", fn: () => amount("見る枚数", (n) => addLine(line("look", `ライブラリーの上から ${n} 枚を見る`, { count: n }))) },
-        { label: "一番上を公開する", fn: () => addLine(line("reveal", "ライブラリーの一番上を公開する", { count: 1 })) },
-        { label: "シャッフルする", fn: () => addLine(line("shuffle", "ライブラリーをシャッフルする")) });
+      items.push({ label: tr("play.pile.draw1"), fn: () => addLine(line("draw", tr("play.op.draw", { n: 1 }), { count: 1 })) },
+        { label: tr("play.pile.drawN"), fn: () => amount(tr("play.pile.drawN.title"), (n) => addLine(line("draw", tr("play.op.draw", { n }), { count: n })), 2) },
+        { label: tr("play.pile.look"), fn: () => amount(tr("play.pile.look.title"), (n) => addLine(line("look", tr("play.pile.look.line", { n }), { count: n }))) },
+        { label: tr("play.pile.reveal"), fn: () => addLine(line("reveal", tr("play.pile.reveal.line"), { count: 1 })) },
+        { label: tr("play.pile.shuffle"), fn: () => addLine(line("shuffle", tr("play.pile.shuffle.line"))) });
     }
-    items.push({ label: "上から N 枚を墓地へ（切削）…", fn: () => amount("墓地へ置く枚数", (n) => addLine(
-      line("mill", `${pid} のライブラリーの上から ${n} 枚を墓地に置く`, { count: n, targets: [pid] }))) },
+    items.push({ label: tr("play.pile.mill"), fn: () => amount(tr("play.pile.mill.title"), (n) => addLine(
+      line("mill", tr("play.pile.mill.line", { player: pid, n }), { count: n, targets: [pid] }))) },
     "-", open);
-    openMenu(ev, `${pid} のライブラリー`, items);
+    openMenu(ev, tr("play.pile.library", { player: pid }), items);
     return true;
   }
 
@@ -1129,7 +1120,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const [lo, hi] = q.pick;
     const n = chosen.cards.length;
     const box = el("div", "compose");
-    box.append(el("div", "chelp muted", `${lo === hi ? `${lo} 枚` : `${lo}〜${hi} 枚`}選ぶ（候補を押す。盤面のカードを押してもよい）`));
+    box.append(el("div", "chelp muted", tr("play.ask.choose", { range: lo === hi ? tr("play.ask.one", { n: lo }) : tr("play.ask.range", { lo, hi }) })));
     // 候補が閉じた領域（墓地・追放など）にあれば、質問が来たときに1回だけ開いて盤面でも見えるようにする
     if (autoOpened.seq !== q.seq) {
       closeAutoOpened();
@@ -1143,15 +1134,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const list = el("div", "crow");
     for (const id of q.cards) {
       const on = chosen.cards.includes(id);
-      const b = button(nm(id), () => toggleChosen(q, id), { cls: "chip cand" + (on ? " on" : ""), title: `${id}（もう一度押すと外す）` });
+      const b = button(nm(id), () => toggleChosen(q, id), { cls: "chip cand" + (on ? " on" : ""), title: tr("play.ask.candidate.title", { id }) });
       const c = findCard(ui.view, id);
-      const info = button("詳細", () => showCard(c), { cls: "chip" });
+      const info = button(tr("play.item.details"), () => showCard(c), { cls: "chip" });
       info.disabled = !c;
       list.append(b, info);
     }
-    const ok = button(n ? `決定（${n} 枚）` : "決定", () => answerCards(q, chosen.cards),
+    const ok = button(n ? tr("play.ask.confirmN", { n }) : tr("play.ask.confirm"), () => answerCards(q, chosen.cards),
       { cls: "on", disabled: n < lo || n > hi || !n });
-    const none = lo === 0 && button("選ばない", () => answerCards(q, []));
+    const none = lo === 0 && button(tr("play.chooseNone"), () => answerCards(q, []));
     const row = el("div", "crow");
     row.append(...[ok, none].filter(Boolean));
     box.append(list, row);
@@ -1179,7 +1170,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   function stepButtons(off, mine) {
     const t = (shownView || ui.view).turn;
     const i = STEPS.indexOf(stepName(t));
-    const go = (s) => () => addLine(line("step", `${STEP_JA[s]} へ進む`, { to: s }));
+    const go = (s) => () => addLine(line("step", tr("play.goTo", { step: stepLabel(s) }), { to: s }));
     const then = (k, text) => () => addLine({ kind: "then", then: k, text });
     const next = mine ? STEPS.slice(i + 1).find((s) => STEP_THEN.includes(s)) : null;
     const phase = STEP_PHASE[stepName(t)];
@@ -1188,25 +1179,26 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       const g = el("div", "stepgroup");
       g.style.flexGrow = group.steps.length;
       if (mine && group.steps.some((s) => STEP_PHASE[s] === phase)) g.classList.add("curphase");
-      g.append(el("div", "sglabel", group.label));
+      g.append(el("div", "sglabel", tr(`play.group.${group.group}`)));
       const btns = el("div", "sgbtns");
       for (const s of group.steps) {
         const cur = mine && STEPS.indexOf(s) === i;
         const ok = mine && STEPS.indexOf(s) > i;
-        btns.append(iconButton(ICON[s], `${STEP_JA[s]} へ進む`, go(s),
+        const goTo = tr("play.goTo", { step: stepLabel(s) });
+        btns.append(iconButton(ICON[s], goTo, go(s),
           { disabled: off || !ok, cls: cur ? "cur" : mine && !ok ? "past" : null,
-            title: cur ? `${STEP_JA[s]}（今ここ）` : `${STEP_JA[s]} へ進む` }));
+            title: cur ? tr("play.step.now", { step: stepLabel(s) }) : goTo }));
       }
       g.append(btns);
       grid.append(g);
     }
     const acts = el("div", "stepacts");
-    acts.append(iconButton(ICON.next, next ? `次のステップ（${STEP_JA[next]}）へ進む` : "次のステップへ進む",
-        next ? go(next) : null, { disabled: off || !next, text: next ? `次へ: ${NEXT_SHORT[next]}` : "次へ" }),
-      iconButton(ICON.endTurn, "ターン終了", then("end_turn", "ターン終了"),
-        { disabled: off || !mine, text: "ターン終了", title: "ターン終了（終了ステップ・クリンナップは審判が処理する）" }),
-      iconButton(ICON.pass, "パス（相手に渡す）", then("pass", "パス（相手に渡す）"),
-        { disabled: off || !mine, text: "パス", title: "パス（最後に優先権を相手に渡す）" }));
+    acts.append(iconButton(ICON.next, next ? tr("play.next.to", { step: stepLabel(next) }) : tr("play.next.any"),
+        next ? go(next) : null, { disabled: off || !next, text: next ? tr("play.next.short", { step: tr(`play.nextShort.${next}`) }) : tr("play.next") }),
+      iconButton(ICON.endTurn, tr("play.endTurn"), then("end_turn", tr("play.endTurn")),
+        { disabled: off || !mine, text: tr("play.endTurn"), title: tr("play.endTurn.title") }),
+      iconButton(ICON.pass, tr("play.passToOpp"), then("pass", tr("play.passToOpp")),
+        { disabled: off || !mine, text: tr("play.pass"), title: tr("play.pass.title") }));
     return [grid, acts];
   }
 
@@ -1223,15 +1215,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       saveDraft();
     }
     const box = el("div", "reqbox");
-    box.append(el("div", "phead2", "審判への依頼（下書き）"));
+    box.append(el("div", "phead2", tr("play.req.title")));
     if (d.lines.length) {
       const list = el("ol", "cops reqlines");
       d.lines.forEach((l, i) => {
         const bad = staleLine(l);
-        const li = el("li", bad ? "stale" : null, l.text);
-        if (bad) li.title = "盤面が変わり、このカードが思った所に無い。外すか、足し直す";
+        const li = el("li", bad ? "stale" : null, localize(l.text));
+        if (bad) li.title = tr("play.req.stale");
         const x = el("button", "chip", "×");
-        x.title = "この行を外す";
+        x.title = tr("play.req.removeLine");
         x.disabled = locked();
         x.onclick = () => removeLine(i);
         li.append(x);
@@ -1239,12 +1231,12 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       });
       box.append(list);
     } else {
-      box.append(el("div", "chelp muted", "カード・束・Player・スタックを押して、やることを足す（送るまで盤面は変わらない）"));
+      box.append(el("div", "chelp muted", tr("play.req.empty")));
     }
     const off = judging() || asked();
     const free = el("input");
-    free.placeholder = "やること・補足を書いて Enter で1行足す（例: 対象は #c12、X=2）";
-    free.title = "ボタンに無い操作や、対象・モード・X などの補足。Enter で下書きに1行足す";
+    free.placeholder = tr("play.req.free.placeholder");
+    free.title = tr("play.req.free.title");
     free.disabled = off;
     free.onkeydown = (e) => {
       if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;  // 変換の確定の Enter は足さない
@@ -1260,24 +1252,23 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const r2 = el("label", "crow");
     r2.append(free);
     const act = requestAction(d.lines, d.comment, t, seat, v.stack.length);
-    const send = button(act ? act.label : "審判に依頼", sendDraft, { cls: "on", disabled: off || !act,
-      title: act && act.kind === "pass" ? "優先権を相手に渡す（下書きが無いので審判は通さない）"
-        : !act && t.turn !== 0 && t.waiting_on !== seat ? "相手の番（送れるのは自分の番が来てから。下書きは作っておける）"
-        : "下書きを審判に送る。「その後」は最後の行（進めるボタンで足す）で決まる。無ければ自分のターンは続ける・相手のターンはパス" });
+    const send = button(act ? act.label : tr("play.req.send"), sendDraft, { cls: "on", disabled: off || !act,
+      title: tr(act && act.kind === "pass" ? "play.req.send.pass"
+        : !act && t.turn !== 0 && t.waiting_on !== seat ? "play.req.send.theirs" : "play.req.send.title") });
     const r3 = el("div", "crow");
     r3.append(send);
     const r4 = el("div", "crow");
     // 進める・終える: アイコンのボタン（押すと下書きに「その後」の行を足す）。位置は変えず、行けない所は押せない
     const r5 = el("div", "stepbtns");
     r5.append(...stepButtons(off, t.active === seat && t.turn > 0));
-    r4.append(...[button("直前の行を取り消す", undoLine, { disabled: !d.lines.length, title: "下書きの最後の行を外す（送る前なら何度でも）" }),
-    button("全部捨てる", clearDraft, { disabled: !hasDraft() })].filter(Boolean));
+    r4.append(...[button(tr("play.req.undo"), undoLine, { disabled: !d.lines.length, title: tr("play.req.undo.title") }),
+    button(tr("play.req.clear"), clearDraft, { disabled: !hasDraft() })].filter(Boolean));
     box.append(...[r2, r3, r5, r4].filter(Boolean));
     const sentLog = (ui.log || []).filter((e) => e.mine && e.request).slice(-3).reverse();
     if (sentLog.length) {
       const list = el("details", "reqsent");
-      list.append(el("summary", null, `送った依頼（最近 ${sentLog.length} 件）`));
-      for (const e of sentLog) list.append(el("pre", "reqtext old", (e.texts || [e.label]).join("\n")));
+      list.append(el("summary", null, tr("play.req.sent", { n: sentLog.length })));
+      for (const e of sentLog) list.append(el("pre", "reqtext old", localize((e.texts || [e.label]).join("\n"))));
       box.append(list);
     }
     return box;
@@ -1294,7 +1285,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       stops = new Set((await source.getStops(ui.game, me())).stops || []);
     } catch (e) {
       stopsFailed = true;
-      toast(`止める場所を読めない: ${e.message}`, true);
+      toast(tr("play.stops.loadFailed", { message: e.message }), true);
     } finally {
       stopsLoading = false;
     }
@@ -1311,22 +1302,22 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (!compact) {
       grid.append(el("div", "sgcorner"));
       for (const g of STOP_GROUPS) {
-        const h = el("div", "sggroup", g.label);
+        const h = el("div", "sggroup", tr(`play.group.${g.group}`));
         h.style.gridColumn = `span ${g.n}`;
         grid.append(h);
       }
       grid.append(el("div", "sgcorner"));
-      for (const st of STOP_STEPS) grid.append(el("div", "sgstep" + (st === now ? " now" : ""), STOP_SHORT[st]));
+      for (const st of STOP_STEPS) grid.append(el("div", "sgstep" + (st === now ? " now" : ""), tr(`play.stopShort.${st}`)));
     }
     for (const side of ["own", "opp"]) {
-      grid.append(el("div", "sgside", side === "own" ? "自分" : "相手"));
+      grid.append(el("div", "sgside", tr(`play.stops.${side}`)));
       for (const st of STOP_STEPS) {
         const code = `${side}:${st}`;
         const here = st === now && side === nowSide;
         if (side === "own" && st === "declare_blockers") { grid.append(el("div", "sgcell none" + (here ? " here" : ""))); continue; }
         const on = set.has(code);
         const cell = el(onToggle ? "button" : "div", "sgcell" + (on ? " on" : "") + (here ? " here" : "") + (st === now ? " nowcol" : ""));
-        cell.title = `${side === "own" ? "自分" : "相手"}のターン: ${STEP_JA[st]}${on ? "（止まる）" : ""}${here ? " ← 今ここ" : ""}`;
+        cell.title = tr(`play.stops.cell.${side}`, { step: stepLabel(st), on: on ? tr("play.stops.cell.on") : "", here: here ? tr("play.stops.cell.here") : "" });
         if (onToggle) {
           cell.type = "button";
           cell.setAttribute("aria-pressed", String(on));
@@ -1344,7 +1335,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       try {
         stops = new Set((await source.getStops(ui.game, me())).stops || []);
       } catch (e) {
-        return toast(`止める場所を読めない: ${e.message}`, true);
+        return toast(tr("play.stops.loadFailed", { message: e.message }), true);
       }
     }
     const draft = new Set(stops);
@@ -1355,18 +1346,17 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const draw = () => {
       const toggle = (code) => { draft.has(code) ? draft.delete(code) : draft.add(code); draw(); };
       const events = el("div", "sgevents");
-      for (const [code, label] of [["opp:spell", "相手が呪文・能力を積んだとき"], ["opp:attack", "相手が攻撃したとき"],
-        ["opp:target", "自分のパーマネントが対象にとられたとき"]]) {
-        const b = el("button", "sgevent" + (draft.has(code) ? " on" : ""), label);
+      for (const code of ["opp:spell", "opp:attack", "opp:target"]) {
+        const b = el("button", "sgevent" + (draft.has(code) ? " on" : ""), tr(`play.stops.ev.${code.slice(4)}`));
         b.type = "button";
         b.setAttribute("aria-pressed", String(draft.has(code)));
         b.onclick = () => toggle(code);
         events.append(b);
       }
       const presets = el("div", "sgpresets");
-      presets.append(el("span", "muted", "まとめて: "));
-      for (const [label, codes] of STOP_PRESETS) {
-        const b = el("button", null, label);
+      presets.append(el("span", "muted", tr("play.stops.presets")));
+      for (const [name, codes] of STOP_PRESETS) {
+        const b = el("button", null, tr(`play.preset.${name}`));
         b.type = "button";
         b.onclick = () => { draft.clear(); codes.forEach((c) => draft.add(c)); draw(); };
         presets.append(b);
@@ -1374,22 +1364,21 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       const wrap = el("div", "sgwrap");
       wrap.append(stopGrid(draft, { onToggle: toggle }));
       body.replaceChildren(
-        el("div", "phead2", "ステップ（押して切り替え）"), wrap,
-        el("div", "phead2", "相手の行動"), events, presets,
-        el("div", "chelp muted", draft.size ? `${draft.size} か所で止まる。ここ以外の応答の機会は自動でパスされる`
-          : "どこでも止まらない。誘発・選択・審判の質問があるときだけ番が来る"));
+        el("div", "phead2", tr("play.stops.steps")), wrap,
+        el("div", "phead2", tr("play.stops.events")), events, presets,
+        el("div", "chelp muted", draft.size ? tr("play.stops.count", { n: draft.size }) : tr("play.stops.never")));
     };
     draw();
     let result = null;
     const buttons = el("div", "abuttons");
-    const cancel = el("button", null, "やめる");
+    const cancel = el("button", null, tr("play.cancel"));
     cancel.type = "button";
     cancel.onclick = () => dlg.close();
-    const submit = el("button", "on", "保存");
+    const submit = el("button", "on", tr("play.save"));
     submit.type = "submit";
     form.onsubmit = () => { result = [...draft]; };
     buttons.append(cancel, submit);
-    form.append(el("div", "atitle", "止める場所"), el("div", "chelp muted", "相手には見えない。審判がステップを進めるとき、色のついた所で止めてあなたに番を回す"),
+    form.append(el("div", "atitle", tr("play.stops.title")), el("div", "chelp muted", tr("play.stops.help")),
       body, buttons);
     dlg.replaceChildren(form);
     dlg.onclose = async () => {
@@ -1398,9 +1387,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
         const r = await source.post(ui.game, "stops", { seat: me(), stops: result });
         stops = new Set(r.stops || result);
         stopsFailed = false;
-        toast(stops.size ? `止める場所: ${stops.size} か所` : "止める場所: なし");
+        toast(stops.size ? tr("play.stops.saved", { n: stops.size }) : tr("play.stops.savedNone"));
       } catch (e) {
-        toast(`保存できない: ${e.message}`, true);
+        toast(tr("play.stops.saveFailed", { message: e.message }), true);
       }
       renderPanel();
     };
@@ -1413,33 +1402,34 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (!stops) { if (!stopsFailed) loadStops(); return null; }
     const box = el("button", "stopstrip");
     box.type = "button";
-    box.title = locked() ? "審判の処理が済んでから変える" : "止める場所を変える（相手には見えない）";
+    box.title = tr(locked() ? "play.stops.strip.locked" : "play.stops.strip.title");
     box.disabled = locked();
     box.onclick = editStops;
-    const ev = [stops.has("opp:spell") && "呪文", stops.has("opp:attack") && "攻撃", stops.has("opp:target") && "対象"].filter(Boolean);
-    box.append(el("div", "sslabel", `止める場所 ${stops.size ? `${stops.size} か所` : "なし"}${ev.length ? `・相手の${ev.join("/")}` : ""}`),
+    const ev = ["spell", "attack", "target"].filter((k) => stops.has(`opp:${k}`)).map((k) => tr(`play.stops.strip.${k}`));
+    box.append(el("div", "sslabel", tr("play.stops.strip.label", {
+      count: stops.size ? tr("play.stops.strip.n", { n: stops.size }) : tr("play.stops.strip.none"),
+      events: ev.length ? tr("play.stops.strip.events", { list: ev.join("/") }) : "" })),
       stopGrid(stops, { compact: true }));
     return box;
   }
 
   async function declare() {
-    const r = await ask({ title: "発言（相手と審判に見える）", fields: [{ name: "text", label: "内容", value: "" }] });
+    const r = await ask({ title: tr("play.say.title"), fields: [{ name: "text", label: tr("play.field.text"), value: "" }] });
     if (r && r.text) declareKind("say", r.text);
   }
 
   function composeBox() {
     const box = el("div", "compose");
     if (pick) {
-      box.append(el("div", "ctitle", pick.prompt), button("やめる", () => { pick = null; renderPanel(); }));
+      box.append(el("div", "ctitle", pick.prompt), button(tr("play.cancel"), () => { pick = null; renderPanel(); }));
       return box;
     }
     const c = compose;
-    box.append(el("div", "ctitle", c.kind === "target" ? `${c.label} の対象を選ぶ`
-      : `${nm(c.card || c.source)} を${c.kind === "cast" ? "唱える" : "起動する"}`));
-    box.append(el("div", "chelp muted", "対象: カード・Player・スタックを押す（もう一度押すと外す）" +
-      (c.kind === "target" ? "" : "。支払い・コストは審判が処理する")));
+    box.append(el("div", "ctitle", c.kind === "target" ? tr("play.compose.targetsFor", { label: localize(c.label) })
+      : tr(c.kind === "cast" ? "play.compose.cast" : "play.compose.activate", { card: nm(c.card || c.source) })));
+    box.append(el("div", "chelp muted", tr("play.compose.help") + (c.kind === "target" ? "" : tr("play.compose.helpCost"))));
     const tg = el("div", "crow");
-    tg.append(el("span", "muted", "対象 "));
+    tg.append(el("span", "muted", tr("play.compose.targets")));
     for (const t of c.targets) {
       const chip = el("button", "chip", `${nm(t)} ×`);
       chip.onclick = () => toggleTarget(t);
@@ -1448,9 +1438,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const row = el("label", "crow");
     const input = el("input");
     input.value = c.text;
-    input.placeholder = "モード・X・追加コストなど（任意）";
+    input.placeholder = tr("play.compose.placeholder");
     input.oninput = () => { c.text = input.value.trim(); };
-    row.append(el("span", "muted", "文 "), input);
+    row.append(el("span", "muted", tr("play.compose.text")), input);
     box.append(tg, row);
     if (c.kind === "activate") {  // コストの {T}: 発生源をタップして起動する（盤面の予定でもタップ状態にする）
       const tap = el("label", "crow");
@@ -1458,17 +1448,17 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       box2.type = "checkbox";
       box2.checked = !!c.tap;
       box2.onchange = () => { c.tap = box2.checked; };
-      tap.append(box2, el("span", null, ` ${nm(c.source)} をタップする（{T}）`));
+      tap.append(box2, el("span", null, tr("play.compose.tap", { card: nm(c.source), T: "{T}" })));
       box.append(tap);
     }
     const buttons = el("div", "crow");
     // 既定は「積んで解決」（積む行と解決する行）。スタックに積んだままにする（解決の前に何かする）のはオプション
     const buttons2 = c.kind === "target"
-      ? [button("下書きに足す（対象）", () => commit(), { cls: "on" })]
-      : [button(c.kind === "cast" ? "唱えて解決" : "起動して解決", () => commit(true), { cls: "on",
-          title: "積む行と、続けて解決する行を下書きに足す（相手が対応しなければ審判が解決する）" }),
-        button("スタックに積むだけ", () => commit(), { title: "積む行だけを足す（解決の前に、続けて何かを積むときなど）" })];
-    buttons.append(...buttons2, button("やめる", cancel));
+      ? [button(tr("play.compose.addTargets"), () => commit(), { cls: "on" })]
+      : [button(tr(c.kind === "cast" ? "play.compose.castResolve" : "play.compose.activateResolve"), () => commit(true), { cls: "on",
+          title: tr("play.compose.resolve.title") }),
+        button(tr("play.compose.stackOnly"), () => commit(), { title: tr("play.compose.stackOnly.title") })];
+    buttons.append(...buttons2, button(tr("play.cancel"), cancel));
     box.append(buttons);
     return box;
   }
@@ -1487,34 +1477,34 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const wait = t.waiting_on;
     const waiting = ui.live && (busy || (!!wait && wait !== seat && !(ui.ai && ui.ai.status === "suspended")));
     const status = el("div", "pstatus" + (wait === seat ? " mine" : "") + (waiting ? " waiting" : ""));
-    status.textContent = !ui.live ? (ui.playing ? "再生中…（最後まで進むと操作できる。Live で今すぐ最新へ）" : "過去の盤面を表示中（Live で操作）")
-      : busy ? "送信中…"
-        : wait === seat ? "あなたの番" + (myAsk(v, seat) ? "（審判の質問）" : t.priority === seat ? "（優先権）" : "")
-          : wait === "judge" ? "審判を待っています（処理が済むまで操作できない）" : wait ? `${wait} を待っています` : "決着";
+    status.textContent = !ui.live ? tr(ui.playing ? "play.status.replaying" : "play.status.past")
+      : busy ? tr("play.status.sending")
+        : wait === seat ? tr("play.status.mine") + (myAsk(v, seat) ? tr("play.status.question") : t.priority === seat ? tr("play.status.priority") : "")
+          : wait === "judge" ? tr("play.status.judge") : wait ? tr("play.status.waiting", { who: wait }) : tr("play.status.over");
     if (waiting) status.append(dots());
-    $("playTitle").textContent = `${seat} として操作`;
+    $("playTitle").textContent = tr("play.panelTitle", { seat });
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };
     if (ui.live && ui.ai && ui.ai.status === "suspended") {  // 審判・AI の席が止まった（上限・API の失敗など）
-      rows.push(el("div", "pask", `AI（審判・AI の席）が止まっています: ${ui.ai.reason}`));
-      row(button("再開する", async () => {
-        try { await source.post(ui.game, "resume", { seat }); toast("再開した"); reload(); } catch (e) { toast(e.message, true); }
-      }, { title: "原因が解消したら（翌日・API の復旧など）、AI をもう一度動かす" }));
+      rows.push(el("div", "pask", tr("play.ai.stopped", { reason: ui.ai.reason })));
+      row(button(tr("play.ai.resume"), async () => {
+        try { await source.post(ui.game, "resume", { seat }); toast(tr("play.ai.resumed")); reload(); } catch (e) { toast(e.message, true); }
+      }, { title: tr("play.ai.resume.title") }));
     }
     const idle = ui.live && idleState(ui.idle, wait, seat, Date.now());
     if (idle) {
-      rows.push(el("div", "phint", `${idle.who} の番が ${idle.minutes} 分続いています`));
+      rows.push(el("div", "phint", tr("play.idle.notice", { who: idle.who, minutes: idle.minutes })));
       row(idle.canClaim
-        ? button("時間切れで勝ちにする", async () => {
-          if (!confirm(`${idle.who} の時間切れ（投了）にしますか？`)) return;
-          try { await source.post(ui.game, "timeout", { seat }); toast("時間切れで決着した"); reload(); } catch (e) { toast(e.message, true); }
-        }, { title: "相手が長く操作していないとき、相手の投了として対局を終える" })
-        : el("span", "muted", `あと ${idle.left} 分で、時間切れを申し立てられます`));
+        ? button(tr("play.idle.claim"), async () => {
+          if (!confirm(tr("play.idle.confirm", { who: idle.who }))) return;
+          try { await source.post(ui.game, "timeout", { seat }); toast(tr("play.idle.done")); reload(); } catch (e) { toast(e.message, true); }
+        }, { title: tr("play.idle.claim.title") })
+        : el("span", "muted", tr("play.idle.left", { n: idle.left })));
     }
     if (locked()) { compose = null; pick = null; blocker = null; closeMenu(); }  // 審判の処理で盤面が変わる
     if (compose || pick) rows.push(composeBox());
     const mine = wait === seat && ui.live;
-    if (mine) rows.push(el("div", "phead2", "今の操作"));
+    if (mine) rows.push(el("div", "phead2", tr("play.yourMove")));
     const question = ui.live && myAsk(v, seat);
     // 質問が終わった（答えた・自由記述で答えた・審判が取り下げた）ら、自動で開いた束を閉じる
     if (autoOpened.zones.length && (!question || question.seq !== autoOpened.seq)) {
@@ -1522,25 +1512,25 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       setTimeout(render);
     }
     for (const r of (v.requests || {}).pending || []) {  // 審判が処理中の依頼（本人の分だけ届く）
-      const what = { answer: "回答", mulligan: "マリガン" }[r.kind] || "依頼";
-      rows.push(el("div", "phead2", `審判が処理中: ${r.player} の${what} #${r.seq}`),
-        el("pre", "reqtext", r.text || what));
+      const what = tr(`play.pending.${["answer", "mulligan"].includes(r.kind) ? r.kind : "request"}`);
+      rows.push(el("div", "phead2", tr("play.pending.title", { player: r.player, what, seq: r.seq })),
+        el("pre", "reqtext", localize(r.text) || what));
     }
     if (question) {
       // 審判の質問: 選択肢があればボタン、カードを選ぶ質問なら候補のカード、いつでも自由記述でも答えられる
-      rows.push(el("div", "pask", `審判の質問 #${question.seq}: ${question.text}`));
+      rows.push(el("div", "pask", tr("play.question", { seq: question.seq, text: localize(question.text) })));
       if ((question.cards || []).length) rows.push(cardAskBox(cardAsk()));
       row(...(question.choices || []).map((c) => button(c, () => answer(c))),
-        button("自由に答える…", async () => {
-          const r = await ask({ title: question.text, fields: [{ name: "text", label: "回答", value: "" }], ok: "答える" });
+        button(tr("play.answerFree"), async () => {
+          const r = await ask({ title: localize(question.text), fields: [{ name: "text", label: tr("play.answer.field"), value: "" }], ok: tr("play.answer.ok") });
           if (r && r.text) answer(r.text);
         }));
     } else if (mine && t.turn === 0 && !hasKept(v, seat)) {
       const need = (v.pregame || {}).to_bottom || 0;
-      row(button("キープ", () => declareKind("keep"),
-        { title: need ? `この手札でキープする（下に置く ${need} 枚は審判が聞く）` : "この手札でキープする" }),
-      button("マリガン", () => declareKind("mulligan"), { title: "手札をライブラリーに戻してシャッフルし、引き直す（審判が処理する）" }));
-      if (mulligans(v, seat)) rows.push(el("div", "phint muted", `マリガン ${mulligans(v, seat)} 回。キープすると、審判が下に置く ${need} 枚を聞く`));
+      row(button(tr("play.keep"), () => declareKind("keep"),
+        { title: need ? tr("play.keep.titleBottom", { n: need }) : tr("play.keep.title") }),
+      button(tr("play.mulligan"), () => declareKind("mulligan"), { title: tr("play.mulligan.title") }));
+      if (mulligans(v, seat)) rows.push(el("div", "phint muted", tr("play.mulligan.count", { n: mulligans(v, seat), need })));
     }
     // 攻撃されていてブロックを決める所: 盤面のカードを押して組む
     if (!blocking()) blocker = null;
@@ -1555,11 +1545,11 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const self = v.players.find((p) => p.id === seat);
     const usable = ui.live && !busy && !locked() && !!wait && (!self || self.status === "playing");
     if (usable) {
-      rows.push(el("div", "phead2 sep", "発言・設定"));
+      rows.push(el("div", "phead2 sep", tr("play.sayAndSettings")));
       const strip = stopsStrip();
       if (strip) rows.push(strip);
-      row(button("発言…", declare), !strip && button("止める場所…", editStops, { title: "審判がステップを進めるとき、止めてあなたに番を回す場所" }),
-        button("投了", async () => { if (confirm("投了する？")) declareKind("concede"); }));
+      row(button(tr("play.say"), declare), !strip && button(tr("play.stops.button"), editStops, { title: tr("play.stops.button.title") }),
+        button(tr("play.concede"), async () => { if (confirm(tr("play.concede.confirm"))) declareKind("concede"); }));
     }
     body.replaceChildren(status, ...rows);
   }

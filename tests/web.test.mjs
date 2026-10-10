@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { Timeline } from "../mtgtable/web/timeline.js";
 import { createSource, latestLoader } from "../mtgtable/web/source.js";
 import { attackTargets, blockTime, cleanLine, describeOp, hasKept, manaChoices, mulligans, nextStep, noBlock, planMarks, planned, preview, requestAction, resumeLines, stepName, tapOf, toRequest, zoneOf } from "../mtgtable/web/play.js";
+import { lang, setLang } from "../mtgtable/web/i18n.js";
+
+// 画面の文言は日本語で確かめる（node の既定の言語は英語）。英語は個別のテストで切り替えて戻す
+setLang("ja");
 
 test("timeline supports seeking, deletion, root replacement and keyframes without mutating input", () => {
   const data = { cursor: 4, frames: [
@@ -442,4 +446,20 @@ test("t fills placeholders and falls back to the other language, then the key", 
   DICTS[other]["test.only"] = "only {x}";
   try { assert.equal(t("test.only", { x: 1 }), "only 1"); } finally { delete DICTS[other]["test.only"]; }
   assert.equal(t("no.such.key"), "no.such.key");
+});
+
+test("play texts follow the screen language while line marks do not", () => {
+  const mine = { turn: 3, active: "p1", step: "main", phase: "main1", priority: "p1", waiting_on: "p1" };
+  const end = { kind: "then", then: "end_turn", text: "ターン終了" };
+  setLang("en");
+  try {
+    assert.equal(lang(), "en");
+    assert.equal(requestAction([end], "", mine, "p1", 0).label, "Send to the judge (then: End turn)");
+    assert.deepEqual(resumeLines({ lines: [], then: "main2" }).at(-1), { kind: "step", to: "main2", text: "Go to Main 2" });
+    assert.equal(describeOp({ op: "damage", target: "p2", amount: 3 }), "3 damage to p2");
+    assert.deepEqual(planned([{ kind: "draw", count: 2 }], "p1").piles, { "p1.library": ["−2 draw"] });
+  } finally {
+    setLang("ja");
+  }
+  assert.equal(requestAction([end], "", mine, "p1", 0).label, "審判に依頼（その後: ターン終了）");
 });
