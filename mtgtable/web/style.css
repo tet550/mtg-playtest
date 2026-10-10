@@ -736,9 +736,21 @@ body.sitepage .bar { position: sticky; top: 0; z-index: var(--z-play);
   background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px); }
 /* サイトのメニューがあるときは、盤面でもほかの画面と同じ寸法にする（画面を移ってもメニューの位置と幅が変わらない） */
-/* 盤面は部品が多いので、間は詰めて、入りきらない幅では2行に折り返す */
+/* 盤面は部品が多いので、間は詰めて2行にする。1行目はロゴ・メニュー・受信状態・復元 URL・Log・⋯、
+   2行目に盤面の部品（対局・席・画像・動き・ターン）。成り行きで折り返すと「⋯」だけが2行目の右端に落ちるので、行を決めて並べる */
 .bar:has(.sitenav:not([hidden])) { padding: 10px 20px; gap: 6px 10px; flex-wrap: wrap; }
 .bar:has(.sitenav:not([hidden])) .brand { font-size: 16px; margin-right: 14px; }
+.bar:has(.sitenav:not([hidden])) > label, .bar:has(.sitenav:not([hidden])) > .turn,
+.bar:has(.sitenav:not([hidden])) > .thinking, .bar:has(.sitenav:not([hidden])) > .playing { order: 4; }
+body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .conn { margin-left: auto; }
+body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .more { margin-left: 0; }
+@media (min-width: 820px) {  /* 1行目と2行目の境目（819px 以下ではメニュー自体が1行を占めるので要らない） */
+  body:not(.sitepage) .bar:has(.sitenav:not([hidden]))::after { content: ""; order: 3; flex-basis: 100%; }
+}
+@media (min-width: 681px) and (max-width: 819px) {  /* 盤面の1行目に入りきらない幅: メニューを1行にする（680px 以下と同じ） */
+  body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .sitenav { order: 3; width: 100%; flex-wrap: nowrap;
+    overflow-x: auto; scrollbar-width: none; }
+}
 @media (max-width: 1199px) {  /* 「対局」「席」「画像」「動き」の文字を隠して、入力だけ残す */
   .bar:has(.sitenav:not([hidden])) label { font-size: 0; gap: 0; }
   .bar:has(.sitenav:not([hidden])) label select { font-size: 13px; }
@@ -832,11 +844,6 @@ table.decks .sharerow .crow { display: flex; flex-wrap: wrap; gap: 6px; align-it
   .bar:has(.sitenav:not([hidden])) { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
   .bar:has(.sitenav:not([hidden])) .brand { display: inline-flex; }
   .bar:has(.sitenav:not([hidden])) .sitenav { order: 3; width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  /* 盤面の部品はメニューの下の行へ（1行目のロゴとメニューの位置を、ほかの画面とそろえる） */
-  .bar:has(.sitenav:not([hidden])) > label, .bar:has(.sitenav:not([hidden])) > .turn,
-  .bar:has(.sitenav:not([hidden])) > .playing { order: 4; }
-  body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .conn { margin-left: auto; }
-  body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .more { margin-left: 0; }
   .sitenav a { padding: 4px 10px; white-space: nowrap; }
   table.decks th { white-space: nowrap; }
   .page { padding: 20px 16px 8px; }
