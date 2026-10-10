@@ -128,6 +128,9 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 .handbox { margin-top: 10px; }
 .hand { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 6px; }
 .hand.fan { flex-wrap: nowrap; overflow-x: auto; padding: 14px 4px 4px; }
+/* 手札が 0 枚でも高さを保つ（盤面の位置がずれないように） */
+.hand { min-height: 95px; }
+.hand.fan { min-height: 141px; }
 .hand.fan > .card { flex: none; transition: transform .12s; }
 .hand.fan > .card + .card { margin-left: -46px; }
 .hand.fan > .card:hover { transform: translateY(-12px); z-index: 2; position: relative; }
@@ -237,7 +240,7 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
   .bfrow, .lands, .hand.fan { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
   .handbox { flex: none; margin-top: 0; display: flex; align-items: center; gap: 8px; }
   .handbox h3 { writing-mode: vertical-rl; margin: 0; }
-  .hand.fan { padding: 8px 4px 2px; }
+  .hand.fan { padding: 8px 4px 2px; min-height: calc(var(--h) + 10px); }
   .zone.opened { position: absolute; left: 110px; right: 10px; bottom: 8px; max-height: 70%; overflow: auto; z-index: 5;
     margin: 0; background: var(--panel); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
   .zone.opened .row { max-height: none; flex-wrap: wrap; }
