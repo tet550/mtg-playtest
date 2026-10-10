@@ -27,6 +27,14 @@ class PromptTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_table_text_is_written_in_english(self):
+        # 卓に書く Note・カウンターの種類・トークン名は英語で統一（画面の言語で訳さない。design/i18n_plan.md 段階 0）
+        for mode in ("judge", "direct"):
+            system = prompt.role_system(mode)
+            self.assertIn("卓に書く文字列は英語で書く", system, mode)
+            for word in ("`note_add` / `note_update` の `text`", "`counter_add` / `counter_remove` の `kind`", "`create` の `name`"):
+                self.assertIn(word, system, mode)
+
     def test_fixed_part_is_byte_stable_and_cached(self):
         first = prompt.build(self.st, "p1", mode="direct")
         req1 = json.loads(first["request"].read_text(encoding="utf-8"))

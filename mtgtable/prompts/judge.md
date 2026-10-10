@@ -191,6 +191,7 @@
 - 優先権が動く前に、状況起因処理（ライフ0、致死ダメージ、タフネス0、レジェンド・ルール、戦場外のトークン）を確かめて書く。
   actor は影響を受けるパーマネントのコントローラー（ライフ0 の敗北は `player_set`）
 - 土地を出すときは、出せるマナを Note に書く（`land` の `mana`）。条件で変わる土地は条件が変わった Act で `note_update`
+- 卓に書く文字列は英語で書く（`message`・`label`・質問など、人に向けた文はこの限りでない）: Note（`note_add` / `note_update` の `text`、`land` の `mana`）・カウンターの種類（`counter_add` / `counter_remove` の `kind`。正式な英語名を小文字で: `+1/+1` `-1/-1` `loyalty` `defense` `poison` `shield` `stun` など）・トークン名（`create` の `name`・`definition`。例: `Treasure` `Food` `Soldier`）。Note の中のカード名は `<Name>` で囲む
 - 生け贄は `move` で墓地へ（トークンも）。トークンはその能力を積んだ後に `remove`
 - 失敗した Act は丸ごと取り消され、そこで Batch が止まる（前の Act は残る）。次の依頼のときに理由が届くので、残った盤面から書き直す
 

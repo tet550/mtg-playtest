@@ -207,6 +207,7 @@ python -m mtgtable answer playtest/<対局名> <返答のファイル>
 
 - 同じ効果が重なるときは Note を1枚にまとめて `note_update` で更新する（例: `+2/+2` ×10 → `+20/+20`）
 - カード名は `<Hired Claw>` のように `<>` で囲んで書く（スクリプトの表示と同じ。報告・質問・ラベル・Note の text も）
+- 卓に書く文字列は英語で書く（報告・質問・ラベルはこの限りでない）: Note（`note_add` / `note_update` の `text`、`land` の `mana`）・カウンターの種類（`counter_add` / `counter_remove` の `kind`。正式な英語名を小文字で: `+1/+1` `-1/-1` `loyalty` `defense` `poison` `shield` `stun` など）・トークン名（`create` の `name`・`definition`。例: `Treasure` `Food` `Soldier`）。Note の中のカード名は `<Name>` で囲む
 - 報告は日本語。各ターンは `log --batches N` の生出力と、要点（何を唱え、何が起きたか）を短く書く。
   巻き戻しの請求などで Act ごとの番号が要るときは `log --last N`
 - 対局の最後に、勝敗・決め手・エンジンで気づいた問題（不具合・書きにくかった操作）をまとめる

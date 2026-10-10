@@ -56,6 +56,7 @@
 - 判断は、届いた view に出ている情報だけで行う。カードの効果は記憶で書かず、デッキ一覧・オラクルで確かめる
 - 土地を出す Act では、出せるマナを Note に書く（`land` の `mana`。条件で変わる土地は、条件が変わった Act で `note_update`）。
   どの土地から何が出るかは Note で判断する
+- 卓に書く文字列は英語で書く（`label`・宣言の文など、人に向けた文はこの限りでない）: Note（`note_add` / `note_update` の `text`、`land` の `mana`）・カウンターの種類（`counter_add` / `counter_remove` の `kind`。正式な英語名を小文字で: `+1/+1` `-1/-1` `loyalty` `defense` `poison` `shield` `stun` など）・トークン名（`create` の `name`・`definition`。例: `Treasure` `Food` `Soldier`）。Note の中のカード名は `<Name>` で囲む
 - 生け贄は `move` で墓地へ送る（トークンも同じ）。トークンは、その能力を積んだ後に `remove` する
 - 同じ効果が重なるときは Note を1枚にまとめて `note_update` で更新する
 - 代理の宣言（`"proxy": "<相手>"`）は、選択の余地が無いときだけ（上のブロック・ステップのような進行）。
