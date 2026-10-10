@@ -409,7 +409,7 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 }
 
 /* 再生位置の文字は幅を固定（桁数が変わってもスライダーの長さが変わらないように） */
-#posText { flex: none; min-width: 12.5em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#posText { flex: none; min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* ---- 小窓（スタック・宣言・カード）と、開閉する Log ---- */
 .layout { grid-template-columns: minmax(0, 1fr) 0 0; gap: 0; }
@@ -911,4 +911,19 @@ body.sitepage { padding-bottom: 32px; }
 @media (prefers-reduced-motion: reduce) {
   .dots i, .thinking::before, .chip.think, .side:has(.chip.think) { animation: none; }
   .dots i { opacity: .7; }
+}
+
+/* ---- 再生のバーはヘッダーの中に置く ---- */
+/* ふだん（サイトのメニューが無いとき）は、ヘッダーの下に独立した1行として出す */
+.bar > .replay { order: 99; flex: 1 0 100%; padding: 6px 16px; margin: 0 -16px -6px; border-top: 1px solid var(--line); }
+.bar:has(> .replay:not([hidden])) { flex-wrap: wrap; row-gap: 6px; }
+.bar:has(> .replay:not([hidden])) .turn { flex: 1 1 0; }
+/* サイトの盤面: 2行目に対局の部品（対局・席・画像・動き・ターン）と再生のバーを並べて1行にする。
+   入りきらない幅では再生のバーだけが次の行へ回る */
+.bar:has(.sitenav:not([hidden])) > .replay { order: 5; flex: 1 1 auto; padding: 0; margin: 0; border: 0; gap: 6px; }
+.bar:has(.sitenav:not([hidden])) > .turn { flex: none; }
+.bar:has(.sitenav:not([hidden])) > .replay > :is(button, select) { padding-left: 7px; padding-right: 7px; }
+@media (max-width: 899px) and (orientation: portrait) {
+  .bar > .replay { padding: 3px 8px; margin: 0 -8px -4px; }
+  .bar:has(.sitenav:not([hidden])) > .replay { padding: 0; margin: 0; flex-basis: 100%; }
 }

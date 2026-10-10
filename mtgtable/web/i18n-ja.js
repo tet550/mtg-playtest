@@ -173,6 +173,7 @@ export default {
   "thinking.judge": "審判が処理中",
   "thinking.player": "{who} が考え中",
   "replay.position": "{pos} / {cursor} 件目の後（v{version}）",
+  "replay.position.short": "{pos} / {cursor}",
   "log.judgeOnly": "Log は judge の席だけ（AI のラベルに非公開の情報が入りうるため）",
 
   // 対局の操作（play.js）

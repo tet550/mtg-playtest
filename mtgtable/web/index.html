@@ -39,27 +39,28 @@
       <span id="legallinks" hidden><a role="menuitem" href="#/terms" data-i18n="more.terms">利用規約</a><a role="menuitem" href="#/privacy" data-i18n="more.privacy">プライバシー</a></span>
     </div>
   </div>
+  <!-- 再生のバー: サイトの盤面では2行目に対局の部品と並べて1行にする（ほかは独立した行） -->
+  <div class="replay">
+    <button id="first" data-i18n-title="replay.first" title="最初">⏮</button>
+    <button id="prev" data-i18n-title="replay.prev" title="1 Act 戻る">◀</button>
+    <input id="pos" type="range" min="0" max="0" value="0">
+    <button id="next" data-i18n-title="replay.next" title="1 Act 進む">▶</button>
+    <button id="play" data-i18n="replay.play" data-i18n-title="replay.play.title" title="自動再生（スペースキー）">▶ 再生</button>
+    <select id="unit" data-i18n-title="replay.unit.title" title="1回に進める単位">
+      <option value="act" data-i18n="replay.unit.act">Act ごと</option>
+      <option value="batch" data-i18n="replay.unit.batch">Batch ごと</option>
+    </select>
+    <select id="speed" data-i18n-title="replay.speed.title" title="進める間隔">
+      <option value="150" data-i18n="replay.speed.fastest">とても速い</option>
+      <option value="400" data-i18n="replay.speed.fast">速い</option>
+      <option value="1000" selected data-i18n="replay.speed.normal">普通</option>
+      <option value="2500" data-i18n="replay.speed.slow">遅い</option>
+    </select>
+    <button id="live" class="on" data-i18n-title="replay.live.title" title="最新を追う">Live</button>
+    <span id="posText" class="muted"></span>
+  </div>
 </header>
 
-<div class="replay">
-  <button id="first" data-i18n-title="replay.first" title="最初">⏮</button>
-  <button id="prev" data-i18n-title="replay.prev" title="1 Act 戻る">◀</button>
-  <input id="pos" type="range" min="0" max="0" value="0">
-  <button id="next" data-i18n-title="replay.next" title="1 Act 進む">▶</button>
-  <button id="play" data-i18n="replay.play" data-i18n-title="replay.play.title" title="自動再生（スペースキー）">▶ 再生</button>
-  <select id="unit" data-i18n-title="replay.unit.title" title="1回に進める単位">
-    <option value="act" data-i18n="replay.unit.act">Act ごと</option>
-    <option value="batch" data-i18n="replay.unit.batch">Batch ごと</option>
-  </select>
-  <select id="speed" data-i18n-title="replay.speed.title" title="進める間隔">
-    <option value="150" data-i18n="replay.speed.fastest">とても速い</option>
-    <option value="400" data-i18n="replay.speed.fast">速い</option>
-    <option value="1000" selected data-i18n="replay.speed.normal">普通</option>
-    <option value="2500" data-i18n="replay.speed.slow">遅い</option>
-  </select>
-  <button id="live" class="on" data-i18n-title="replay.live.title" title="最新を追う">Live</button>
-  <span id="posText" class="muted"></span>
-</div>
 
 <section id="page" class="page" hidden></section>
 

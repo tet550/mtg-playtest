@@ -173,6 +173,7 @@ export default {
   "thinking.judge": "Judge is working",
   "thinking.player": "{who} is thinking",
   "replay.position": "After {pos} / {cursor} (v{version})",
+  "replay.position.short": "{pos} / {cursor}",
   "log.judgeOnly": "The log is only for the judge seat (AI labels may contain hidden information)",
 
   // Playing (play.js)

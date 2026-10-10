@@ -940,7 +940,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const pos = $("pos");
     pos.max = ui.cursor;
     pos.value = ui.pos;
-    $("posText").textContent = tr("replay.position", { pos: ui.pos, cursor: ui.cursor, version: v.version });
+    const posText = $("posText");
+    posText.textContent = tr("replay.position.short", { pos: ui.pos, cursor: ui.cursor });
+    posText.title = tr("replay.position", { pos: ui.pos, cursor: ui.cursor, version: v.version });
     $("live").classList.toggle("on", ui.live);
     renderLog();
     placeSpeech();
