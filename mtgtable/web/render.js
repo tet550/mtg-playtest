@@ -306,7 +306,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       layer.style.transform = `translate(${i * 2}px, ${i * 2}px)`;
       stackBox.append(layer);
     }
-    const face = el("div", "face" + (top ? "" : " back"));
+    const face = el("div", "face" + (top ? "" : " back") + (opts.known ? " known" : ""));
     if (top && ui.images) {
       const img = el("img");
       img.alt = top.name;
@@ -327,7 +327,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     p.append(stackBox);
     if (opts.note) p.title = (p.title ? p.title + "\n" : "") + opts.note;
     if (opts.onclick && count) p.onclick = opts.onclick;
-    if (opts.known) stackBox.append(el("span", "chip pknown", "上を知っている"));
+    // 一番上を知っている: カードの表を出し、小さな印だけ付ける（束の幅は狭いので、長い文字はカードを隠す）
+    if (opts.known) stackBox.append(el("span", "chip pknown", "既知"));
     if (top) p.title = `一番上${opts.known ? "（知っている）" : ""}: <${top.name}>`;
     return p;
   }
@@ -338,9 +339,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   }
 
   // 開いた束の中身。画像で並べ、ライブラリーは上からの位置を重ねて出す
-  function openedBlock(title, cards) {
+  function openedBlock(key, title, cards) {
     const z = el("div", "zone opened");
-    z.append(el("h3", null, title));
+    const close = el("button", "chip oclose", "閉じる");
+    close.title = "一覧を閉じて盤面を見る";
+    close.onclick = () => toggleOpen(key);
+    const h = el("h3", null, title);
+    h.append(close);
+    z.append(h);
     const row = el("div", "row");
     row.append(...(cards.length ? cards.map((c) => cardTile(c, ui.images ? " inhand" : " small"))
       : [el("div", "muted", "知っているカードはない")]));
@@ -686,12 +692,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     // 開いた墓地・追放の中身
     const opened = [];
     if (ui.open.has(libKey) && !lib.collapsed) {
-      opened.push(openedBlock(`ライブラリー ${lib.count}（知っているカード。上から）`, libraryCards(lib)));
+      opened.push(openedBlock(libKey, `ライブラリー ${lib.count}（知っているカード。上から）`, libraryCards(lib)));
     }
     if (ui.open.has(gyKey) && gy.count) {
-      opened.push(openedBlock(`墓地 ${gy.count}（上から）`, (gy.cards || []).map((c, i) => ({ ...c, pos: String(i + 1) }))));
+      opened.push(openedBlock(gyKey, `墓地 ${gy.count}（上から）`, (gy.cards || []).map((c, i) => ({ ...c, pos: String(i + 1) }))));
     }
-    if (ui.open.has(exKey) && ex.length) opened.push(openedBlock(`追放 ${ex.length}`, ex));
+    if (ui.open.has(exKey) && ex.length) opened.push(openedBlock(exKey, `追放 ${ex.length}`, ex));
 
     const hand = handRow(v, pid);
     box.append(...(mirrored ? [head, hand, grid, ...opened] : [head, grid, ...opened, hand]));

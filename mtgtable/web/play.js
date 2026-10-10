@@ -485,6 +485,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   let sent = null;     // 送った依頼の行。審判が処理するまで、印と「？」を出したままにする
   let sentFrom = 0;    // 送る前の cursor。盤面がこれより先に進んでから（依頼が届いた盤面で）処理済みかを見る
   const chosen = { seq: null, cards: [] };  // カードを選ぶ審判の質問で、今選んでいるカード
+  // カードを選ぶ質問で自動で開いた束（墓地・追放など）。開くのは質問ごとに1回だけ（閉じて盤面を見られる）、答えたら閉じる
+  const autoOpened = { seq: null, zones: [] };
   // 盤面のカードの印は、下書き・組み立て中の行・カードを選ぶ質問から毎回作る（描画のたびに読む）
   Object.defineProperty(ui, "marks", { get: () => marks(), set() {}, configurable: true });
   // 下書きの「？」（手札に足す枚数・束の印）。render が読む
@@ -674,7 +676,13 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     refresh();
   }
 
+  function closeAutoOpened() {
+    for (const z of autoOpened.zones) ui.open.delete(z);
+    autoOpened.zones = [];  // seq は残す（答えを送った後、審判が処理するまで同じ質問が出ていても開き直さない）
+  }
+
   function answerCards(q, cards) {
+    closeAutoOpened();
     return answer(cards.length ? cards.map(nm).join("、") : "選ばない", cards);
   }
 
@@ -1109,10 +1117,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const n = chosen.cards.length;
     const box = el("div", "compose");
     box.append(el("div", "chelp muted", `${lo === hi ? `${lo} 枚` : `${lo}〜${hi} 枚`}選ぶ（候補を押す。盤面のカードを押してもよい）`));
-    // 候補が閉じた領域（墓地・追放など）にあれば開いて、盤面でも見えるようにする
-    for (const id of q.cards) {
-      const z = zoneOf(ui.view, id);
-      if (z && z !== "battlefield" && z !== "stack" && !z.endsWith(".hand") && !ui.open.has(z)) { ui.open.add(z); setTimeout(render); }
+    // 候補が閉じた領域（墓地・追放など）にあれば、質問が来たときに1回だけ開いて盤面でも見えるようにする
+    if (autoOpened.seq !== q.seq) {
+      closeAutoOpened();
+      autoOpened.seq = q.seq;
+      for (const id of q.cards) {
+        const z = zoneOf(ui.view, id);
+        if (z && z !== "battlefield" && z !== "stack" && !z.endsWith(".hand") && !ui.open.has(z)) { ui.open.add(z); autoOpened.zones.push(z); }
+      }
+      if (autoOpened.zones.length) setTimeout(render);
     }
     const list = el("div", "crow");
     for (const id of q.cards) {
@@ -1490,6 +1503,11 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const mine = wait === seat && ui.live;
     if (mine) rows.push(el("div", "phead2", "今の操作"));
     const question = ui.live && myAsk(v, seat);
+    // 質問が終わった（答えた・自由記述で答えた・審判が取り下げた）ら、自動で開いた束を閉じる
+    if (autoOpened.zones.length && (!question || question.seq !== autoOpened.seq)) {
+      closeAutoOpened();
+      setTimeout(render);
+    }
     for (const r of (v.requests || {}).pending || []) {  // 審判が処理中の依頼（本人の分だけ届く）
       const what = { answer: "回答", mulligan: "マリガン" }[r.kind] || "依頼";
       rows.push(el("div", "phead2", `審判が処理中: ${r.player} の${what} #${r.seq}`),
