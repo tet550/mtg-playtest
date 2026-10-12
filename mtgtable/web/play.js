@@ -1496,7 +1496,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       rows.push(el("div", "phint", tr("play.idle.notice", { who: idle.who, minutes: idle.minutes })));
       row(idle.canClaim
         ? button(tr("play.idle.claim"), async () => {
-          if (!confirm(tr("play.idle.confirm", { who: idle.who }))) return;
+          if (!await ask({ title: tr("play.idle.confirm", { who: idle.who }), choices: [{ label: tr("play.idle.claim"), value: true }] })) return;
           try { await source.post(ui.game, "timeout", { seat }); toast(tr("play.idle.done")); reload(); } catch (e) { toast(e.message, true); }
         }, { title: tr("play.idle.claim.title") })
         : el("span", "muted", tr("play.idle.left", { n: idle.left })));
@@ -1549,7 +1549,10 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       const strip = stopsStrip();
       if (strip) rows.push(strip);
       row(button(tr("play.say"), declare), !strip && button(tr("play.stops.button"), editStops, { title: tr("play.stops.button.title") }),
-        button(tr("play.concede"), async () => { if (confirm(tr("play.concede.confirm"))) declareKind("concede"); }));
+        button(tr("play.concede"), async () => {
+          // confirm() はブラウザペインなどでダイアログを出さずに false を返すので、ページ内のダイアログで確かめる
+          if (await ask({ title: tr("play.concede.confirm"), choices: [{ label: tr("play.concede"), value: true }] })) declareKind("concede");
+        }));
     }
     body.replaceChildren(status, ...rows);
   }

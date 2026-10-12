@@ -13,3 +13,30 @@ export const dots = () => {
   d.append(el("i"), el("i"), el("i"));
   return d;
 };
+
+// はい・いいえの確認。window.confirm() はブラウザペインなどでダイアログを出さずに false を返すので、ページ内の <dialog> で聞く。
+// 返り値は Promise<boolean>（ok を押したら true）
+export function confirmDialog(title, ok, cancel = "やめる") {
+  return new Promise((resolve) => {
+    const dlg = el("dialog", "ask");
+    const form = el("form", "askform");
+    form.method = "dialog";
+    let result = false;
+    const yes = el("button", null, ok);
+    yes.type = "button";
+    yes.onclick = () => { result = true; dlg.close(); };
+    const no = el("button", null, cancel);
+    no.type = "button";
+    no.onclick = () => dlg.close();
+    const choices = el("div", "achoices");
+    choices.append(yes);
+    const buttons = el("div", "abuttons");
+    buttons.append(no);
+    form.append(el("div", "atitle", title), choices, buttons);
+    dlg.append(form);
+    dlg.onclose = () => { dlg.remove(); resolve(result); };
+    document.body.append(dlg);
+    dlg.showModal();
+    no.focus();
+  });
+}

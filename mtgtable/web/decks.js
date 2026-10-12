@@ -1,5 +1,5 @@
 // デッキの画面（手元のサイト）: 登録したデッキの一覧と、登録・編集（貼り付け → 検査 → 保存）・削除。
-import { el } from "./dom.js";
+import { confirmDialog, el } from "./dom.js";
 
 export const FORMATS = [
   ["standard", "スタンダード"], ["pioneer", "パイオニア"], ["modern", "モダン"], ["legacy", "レガシー"],
@@ -60,7 +60,7 @@ export function createDecks(source, { toast }) {
       const del = el("button", null, "削除");
       del.type = "button";
       del.onclick = async () => {
-        if (!window.confirm(`デッキ「${d.name}」を消しますか？（対局の記録は残ります）`)) return;
+        if (!await confirmDialog(`デッキ「${d.name}」を消しますか？（対局の記録は残ります）`, "消す")) return;
         try {
           await source.deleteDeck(d.id);
           if (editing === d.id) renderForm(form, null, list);

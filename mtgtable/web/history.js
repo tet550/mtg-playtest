@@ -1,5 +1,5 @@
 // 履歴（手元のサイト）。終わった対局は盤面で再生する（#/view/<対局>。どの席の視点も、全体の視点も）。
-import { el } from "./dom.js";
+import { confirmDialog, el } from "./dom.js";
 
 export const RESULT = { won: "勝ち", lost: "負け", ongoing: "対局中", over: "終了" };
 
@@ -44,7 +44,7 @@ export function createHistory(source, { toast, openGame }) {
       else if (g.seat) ops.append(button("続ける", () => openGame(g.id), "on"));
       if (!live) {
         ops.append(button("消す", async () => {
-          if (!window.confirm("この対局を消しますか？（対局の記録も消えます）")) return;
+          if (!await confirmDialog("この対局を消しますか？（対局の記録も消えます）", "消す")) return;
           try { await source.deleteGame(g.id); await renderHistory(root); } catch (e) { toast(e.message, true); }
         }));
       }
