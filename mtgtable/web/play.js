@@ -443,7 +443,7 @@ function ask({ title, fields = [], choices = null, ok = "OK" }) {
   });
 }
 
-// 時間切れの知らせ（公開のサーバーの人間どうしの対局）: 相手（人間）の番が続いている分。idle はサーバーが時系列に付けた
+// 時間切れの知らせ（手元のサイトの人間どうしの対局）: 相手（人間）の番が続いている分。idle はサーバーが時系列に付けた
 // {seconds, notice, limit, humans} と、受け取った時刻 at。知らせる前・自分の番・審判や AI の番なら null
 export function idleState(idle, wait, seat, now) {
   if (!idle || !wait || wait === seat || wait === "judge" || !(idle.humans || []).includes(wait)) return null;

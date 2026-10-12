@@ -31,7 +31,7 @@ packages = ["mtgtable"]
 "decklists" = "mtgtable/assets/decklists"
 ".claude/skills/mtg-playtest/references" = "mtgtable/assets/references"
 
-# sdist は wheel を作り直せるものとテスト（先頭の / でリポジトリ直下に限る。無いと deploy/mtgtable.service なども入る）。カードのキャッシュ・キー・対局は .gitignore で入らない
+# sdist は wheel を作り直せるものとテスト（先頭の / でリポジトリ直下に限る。無いと tests/ の下の同じ名前なども入る）。カードのキャッシュ・キー・対局は .gitignore で入らない
 [tool.hatch.build.targets.sdist]
 include = [
   "/mtgtable",

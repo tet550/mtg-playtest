@@ -233,8 +233,8 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .chip.mana { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; }
 .chip.mana img.ms { width: 15px; height: 15px; }
 
-/* ---- 画面の高さに収める（広い画面のとき）: ページはスクロールしない。カードの大きさは各 Player の領域の高さから決める ---- */
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
+/* ---- 画面の高さに収める（高さが 560px 以上か縦長のとき。幅では分けない）: ページはスクロールしない。カードの大きさは各 Player の領域の高さから決める ---- */
+@media (min-height: 560px), (orientation: portrait) {
   html, body { height: 100%; }
   body { display: flex; flex-direction: column; overflow: hidden; }
   .bar, .replay { flex: none; }
@@ -297,7 +297,7 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .combatbox[hidden] { display: none; }
 .decl { font-size: 11px; max-height: 4.5em; overflow: auto; margin-bottom: 4px; }
 .plabel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; font-size: 10px; }
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
+@media (min-height: 560px), (orientation: portrait) {
   .combatbox { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); z-index: 3;
     box-shadow: 0 6px 24px rgba(0, 0, 0, .35); max-height: 90%; overflow: auto; }
   .combat { --h: min(13vh, 120px); }
@@ -308,7 +308,7 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .detail { height: 240px; max-height: none; }
 .stack.panel { height: 170px; max-height: none; }
 .decl { height: 4.6em; max-height: none; overflow: auto; }
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
+@media (min-height: 560px), (orientation: portrait) {
   .detail { flex: 0 0 32%; height: auto; max-height: none; }
   .stack.panel { flex: 0 0 20%; height: auto; max-height: none; }
   .decl { flex: 0 0 4.6em; height: auto; }
@@ -327,7 +327,7 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .life.low { border-left-color: var(--warn); }
 .life.low .lnum { color: var(--warn); }
 .life.dead { border-left-color: var(--muted); opacity: .7; }
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) { .life { font-size: 17px; } }
+@media (min-height: 560px), (orientation: portrait) { .life { font-size: 17px; } }
 
 /* ---- ライフの増減（1件前からの差） ---- */
 .lifewrap { display: inline-flex; align-items: center; gap: 6px; }
@@ -351,7 +351,7 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .ldelta { position: absolute; right: 0; top: 0; transform: translate(55%, -45%); z-index: 2;
   font-size: 11px; padding: 1px 5px; border-radius: 8px; line-height: 1.2; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
 @keyframes ldpop { from { transform: translate(55%, -95%) scale(1.3); opacity: 0; } to { transform: translate(55%, -45%); opacity: 1; } }
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) { .life { font-size: inherit; } .life .lnum { font-size: 17px; } }
+@media (min-height: 560px), (orientation: portrait) { .life { font-size: inherit; } .life .lnum { font-size: 17px; } }
 
 /* ライフ（調整）: 見出しの行の高さに収まるよう、ラベルと数を横に並べた1行に */
 .life { flex-direction: row; align-items: baseline; gap: 4px; min-width: 0; padding: 1px 7px; border-radius: 7px; }
@@ -379,13 +379,13 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
   padding: 1px 0; text-align: center; font-size: 9px; font-weight: 700; color: #fff; background: rgba(0, 0, 0, .62);
   border-radius: 6px 6px 0 0; }
 .pile.empty .pstack .plabel { color: var(--muted); background: none; }
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
+@media (min-height: 560px), (orientation: portrait) {
   .piles { --h: min(16cqh, 100px); gap: 6px; }
   .sidegrid { grid-template-columns: calc(min(16cqh, 100px) * .72 + 14px) minmax(0, 1fr); }
 }
 
 /* ---- 戦場の行は高さを固定し、枚数が変わっても行の位置が動かないように ---- */
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
+@media (min-height: 560px), (orientation: portrait) {
   .field { justify-content: flex-start; gap: 6px; }
   .bfrow:not(.lands) { --peek: .05; flex: none; height: calc(var(--h) * 1.16 + 8px); align-items: flex-end; }
   .lands { flex: none; height: calc(var(--h) + 8px); align-items: center; }
@@ -395,17 +395,18 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 
 /* 開いた束の一覧にもカードの高さを与える（無いと画像の大きさが 0 になって見えない） */
 .zone.opened { --h: 123px; }
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) { .zone.opened { --h: min(26cqh, 123px); } }
+@media (min-height: 560px), (orientation: portrait) { .zone.opened { --h: min(26cqh, 123px); } }
 
 /* 増減の表示: 見出しの行（はみ出しを切る）に収まるよう、ライフの右端に縦中央で重ねる */
 .lifewrap { margin-right: 16px; }
 .ldelta { top: 50%; transform: translate(70%, -50%); }
 @keyframes ldpop { from { transform: translate(70%, -110%) scale(1.3); opacity: 0; } to { transform: translate(70%, -50%); opacity: 1; } }
 
-/* 狭い画面では再生バーを折り返す */
+/* 狭い画面では再生バーを折り返さず、細かい部品（最初へ・単位・間隔・位置の文字）を隠す */
 @media (max-width: 899px) {
-  .replay { flex-wrap: wrap; }
-  .replay input { flex-basis: 100%; order: 10; }
+  .replay { flex-wrap: nowrap; gap: 4px; }
+  .replay input { flex: 1 1 auto; min-width: 60px; }
+  #first, #unit, #speed, #posText { display: none; }
 }
 
 /* 再生位置の文字は幅を固定（桁数が変わってもスライダーの長さが変わらないように） */
@@ -442,7 +443,7 @@ body.log-open .resizer:hover { background: var(--accent); }
 #fl-detail .detail { height: auto; max-height: none; border: none; border-radius: 0 0 10px 10px; margin: 0; }
 
 /* 既定の置き場所: 戦闘は盤面の中央、宣言は上の中央、スタックは右上、カードは右下 */
-@media (min-width: 900px) and (min-height: 560px), (max-width: 899px) and (orientation: portrait) {
+@media (min-height: 560px), (orientation: portrait) {
   .combatbox { right: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 }
 
@@ -469,8 +470,8 @@ body.log-open .resizer:hover { background: var(--accent); }
 #logClose { padding: 0 8px; }
 body:not(.log-open) #logClose { display: none; }
 
-/* ---- スマホの縦画面: 画面の高さに収め、スクロールしない ---- */
-@media (max-width: 899px) and (orientation: portrait) {
+/* ---- 狭い画面（スマホの縦画面・幅の狭い窓）: 画面の高さに収め、スクロールしない ---- */
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
   html, body { height: 100dvh; }
   .bar { gap: 6px; padding: 4px 8px; }
   .bar .brand { display: none; }
@@ -496,11 +497,11 @@ body:not(.log-open) #logClose { display: none; }
     background: var(--bg); box-shadow: -8px 0 28px rgba(0, 0, 0, .45); }
   .logpane .log { max-height: none; }
 }
-@media (max-width: 899px) and (orientation: portrait) {
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
   .combatbox { max-width: 94%; }
   .combat { --h: min(8.5vh, 90px); flex-wrap: nowrap; overflow-x: auto; }
 }
-@media (max-width: 899px) and (orientation: portrait) {
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
   /* 重なりを減らす: 戦闘は中央、スタックは上寄り、宣言は下 */
   .stackbox { top: 27%; }
   .stackbox, .float { font-size: 12px; }
@@ -525,7 +526,7 @@ body:not(.log-open) #logClose { display: none; }
 .ph[title="終了"] svg { fill: currentColor; stroke: none; }
 .ph.cur { background: var(--accent); color: #fff; }
 .ph .pstep { font-size: 11px; font-weight: 700; white-space: nowrap; }
-@media (max-width: 899px) and (orientation: portrait) {
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
   .ph { padding: 0 2px; height: 18px; }
   .ph svg { width: 13px; height: 13px; }
   .ph .pstep { font-size: 10px; }
@@ -538,7 +539,7 @@ body:not(.log-open) #logClose { display: none; }
 .life .lnum { min-width: 2ch; text-align: right; }
 /* 見出しの高さはフェイズ列の有無で変えない（変わると戦場が上下にずれる） */
 .phead { height: 24px; }
-@media (max-width: 899px) and (orientation: portrait) { .phead { height: 22px; } }
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) { .phead { height: 22px; } }
 
 /* カードの動き（motion.js）: 画面全体に重ねた層で写しを動かす。クリックは下に通す */
 #motionlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; overflow: visible; }
@@ -551,7 +552,7 @@ body:not(.log-open) #logClose { display: none; }
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); }
 .pextra > * { flex: none; }
 .phead .pextra .chip.mana { max-width: none; }
-@media (max-width: 899px) and (orientation: portrait) {
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
   .phead { gap: 5px; }
   .phead .chip.prio { padding-left: 4px; padding-right: 4px; }
 }
@@ -621,13 +622,15 @@ body:not(.log-open) #logClose { display: none; }
 /* 狭い画面では盤面が縦に伸びてページがスクロールするので、操作パネルは画面の下に留める */
 @media (max-width: 899px) {
   #fl-play { left: 6px !important; right: 6px !important; top: auto !important; bottom: 6px !important;
-    width: auto; max-height: 34vh; }
+    width: auto; max-height: 34vh; --docked: 1; }  /* --docked: ドラッグで動かさない（app.js の setupFloat） */
   #fl-play .fhead { cursor: default; }
   .bar .playing { display: none; }  /* 席の欄が p1 で固定されているので、それで分かる */
 }
-/* スマホの縦画面は画面の高さに収めるので、盤面をパネルの分だけ縮めて手札を隠さない */
-@media (max-width: 899px) and (orientation: portrait) {
-  body.playing .layout { margin-bottom: 34vh; }
+/* 画面の高さに収めるときは、盤面をパネルの分だけ縮めて手札を隠さない。パネルの高さは中身で変えない（盤面が伸び縮みしないように） */
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
+  #fl-play { height: 34vh; }
+  #fl-play.min { height: auto; }
+  body.playing .layout { margin-bottom: calc(34vh + 6px); }
   body.playing:has(#fl-play.min) .layout { margin-bottom: 36px; }
 }
 .reqbox { display: flex; flex-direction: column; gap: 4px; }
@@ -722,7 +725,7 @@ button.sgcell:hover { border-color: var(--accent); }
 .chip.mana.clickable { cursor: pointer; }
 .chip.mana.clickable:hover { outline: 1px solid #6aa9ff; }
 
-/* ---- 公開のサーバーの画面（トップ・デッキ・対局を作る・履歴・公開の対局・規約） ---- */
+/* ---- 手元のサイトの画面（トップ・デッキ・対局を作る・履歴） ---- */
 .sitenav { display: flex; gap: 2px; flex: none; flex-wrap: wrap; }
 .sitenav a { color: var(--muted); text-decoration: none; padding: 5px 11px; border-radius: 999px; font-weight: 500;
   transition: background .15s, color .15s; }
@@ -741,27 +744,32 @@ body.sitepage .bar { position: sticky; top: 0; z-index: var(--z-play);
   background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px); }
 /* サイトのメニューがあるときは、盤面でもほかの画面と同じ寸法にする（画面を移ってもメニューの位置と幅が変わらない） */
-/* 盤面は部品が多いので、間は詰めて2行にする。1行目はロゴ・メニュー・受信状態・復元 URL・Log・⋯、
-   2行目に盤面の部品（対局・席・画像・動き・ターン）。成り行きで折り返すと「⋯」だけが2行目の右端に落ちるので、行を決めて並べる */
+/* 行は幅と中身で成り行きに折り返さず、決めて並べる（窓の幅や「考え中」の表示で行の数・並びが変わらないように）。
+   1行目: ロゴ・メニュー（入らない分は横にスクロール）・受信状態・Log・⋯。どの幅でも1行
+   2行目（盤面）: 盤面の部品（対局・席・画像・動き・ターン）。入らない分は対局の欄を詰める。1200px 以上では再生のバーも
+   3行目（盤面・1199px 以下）: 再生のバー */
 .bar:has(.sitenav:not([hidden])) { padding: 10px 20px; gap: 6px 10px; flex-wrap: wrap; }
-.bar:has(.sitenav:not([hidden])) .brand { font-size: 16px; margin-right: 14px; }
-.bar:has(.sitenav:not([hidden])) > label, .bar:has(.sitenav:not([hidden])) > .turn,
-.bar:has(.sitenav:not([hidden])) > .thinking, .bar:has(.sitenav:not([hidden])) > .playing { order: 4; }
+.bar:has(.sitenav:not([hidden])) .brand { display: inline-flex; flex: none; font-size: 16px; margin-right: 14px; }
+.bar:has(.sitenav:not([hidden])) .sitenav { flex: 1 1 0; min-width: 0; max-width: max-content; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.bar:has(.sitenav:not([hidden])) .sitenav::-webkit-scrollbar { display: none; }
+.sitenav a { white-space: nowrap; }
+.bar:has(.sitenav:not([hidden])) .more { margin-left: auto; }
 body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .conn { margin-left: auto; }
 body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .more { margin-left: 0; }
-@media (min-width: 820px) {  /* 1行目と2行目の境目（819px 以下ではメニュー自体が1行を占めるので要らない） */
-  body:not(.sitepage) .bar:has(.sitenav:not([hidden]))::after { content: ""; order: 3; flex-basis: 100%; }
-}
-@media (min-width: 681px) and (max-width: 819px) {  /* 盤面の1行目に入りきらない幅: メニューを1行にする（680px 以下と同じ） */
-  body:not(.sitepage) .bar:has(.sitenav:not([hidden])) .sitenav { order: 3; width: 100%; flex-wrap: nowrap;
-    overflow-x: auto; scrollbar-width: none; }
-}
+body:not(.sitepage) .bar:has(.sitenav:not([hidden]))::after { content: ""; order: 3; flex-basis: 100%; }  /* 1行目と2行目の境目 */
+/* 盤面の部品は1つの塊にして、行の中では幅を取らない（flex-basis: 0）。残りの幅に広がり、足りなければ対局の欄から詰める。
+   これで1行目が折り返さない（「⋯」だけが次の行へ落ちない） */
+.barctl { display: flex; align-items: center; column-gap: inherit; flex: 1 1 0; min-width: 0; overflow: hidden; }
+.bar:has(.sitenav:not([hidden])) > .barctl { order: 4; column-gap: 10px; max-width: max-content; }  /* サイト: 中身の幅まで */
+.barctl > * { flex: none; }
+.barctl > label:has(#game) { flex: 0 1 auto; min-width: 7em; }
+.barctl #game { min-width: 0; width: 100%; }
+.barctl > .turn, .barctl > .thinking { flex: 0 1 auto; min-width: 0; overflow: hidden; }
 @media (max-width: 1199px) {  /* 「対局」「席」「画像」「動き」の文字を隠して、入力だけ残す */
   .bar:has(.sitenav:not([hidden])) label { font-size: 0; gap: 0; }
   .bar:has(.sitenav:not([hidden])) label select { font-size: 13px; }
 }
 .sitenav { font-size: 14px; }
-body.sitepage #recovery { margin-left: auto; }
 body:not(.sitepage) .more { margin-left: auto; }
 
 .page { width: 100%; max-width: 960px; margin: 0 auto; padding: 32px 20px 8px; }
@@ -846,10 +854,9 @@ table.decks .sharerow .crow { display: flex; flex-wrap: wrap; gap: 6px; align-it
   border-radius: 8px; padding: 6px 10px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 
 @media (max-width: 680px) {
-  .bar:has(.sitenav:not([hidden])) { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
-  .bar:has(.sitenav:not([hidden])) .brand { display: inline-flex; }
-  .bar:has(.sitenav:not([hidden])) .sitenav { order: 3; width: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .sitenav a { padding: 4px 10px; white-space: nowrap; }
+  .bar:has(.sitenav:not([hidden])) { padding: 8px 12px; gap: 8px; }
+  .bar:has(.sitenav:not([hidden])) .brand { margin-right: 4px; }
+  .sitenav a { padding: 4px 9px; }
   table.decks th { white-space: nowrap; }
   .page { padding: 20px 16px 8px; }
   .hero h2 { font-size: 26px; }
@@ -858,6 +865,9 @@ table.decks .sharerow .crow { display: flex; flex-wrap: wrap; gap: 6px; align-it
   table.decks th:nth-child(4), table.decks td:nth-child(4) { display: none; }
   table.decks .dops { white-space: normal; }
   table.decks .dops button { margin: 2px 0 2px 4px; }
+}
+@media (max-width: 560px) {  /* ロゴは印だけにして、メニューに幅を回す */
+  .bar:has(.sitenav:not([hidden])) .brand { font-size: 0; gap: 0; margin-right: 0; }
 }
 
 /* ---- ヘッダーの「⋯」メニューと、権利の表記のダイアログ */
@@ -884,9 +894,6 @@ table.decks .sharerow .crow { display: flex; flex-wrap: wrap; gap: 6px; align-it
 .credits .crow { display: flex; justify-content: flex-end; margin-top: 14px; }
 .credits button { padding: 6px 16px; border-radius: 8px; }
 body.sitepage { padding-bottom: 32px; }
-.page.legal { max-width: 760px; }
-.page.legal h3 { font-size: 15px; color: var(--ink); margin-top: 24px; letter-spacing: 0; }
-.page.legal li { margin: 4px 0; }
 .page .draft { border: 1px dashed var(--warn); color: var(--warn); padding: 8px 12px; border-radius: 8px; }
 
 /* ---------------------------------------------------------------- 待っている間の動き（審判・AI・相手の番） */
@@ -918,12 +925,10 @@ body.sitepage { padding-bottom: 32px; }
 .bar > .replay { order: 99; flex: 1 0 100%; padding: 6px 16px; margin: 0 -16px -6px; border-top: 1px solid var(--line); }
 .bar:has(> .replay:not([hidden])) { flex-wrap: wrap; row-gap: 6px; }
 .bar:has(> .replay:not([hidden])) .turn { flex: 1 1 0; }
-/* サイトの盤面: 2行目に対局の部品（対局・席・画像・動き・ターン）と再生のバーを並べて1行にする。
-   入りきらない幅では再生のバーだけが次の行へ回る */
-.bar:has(.sitenav:not([hidden])) > .replay { order: 5; flex: 1 1 auto; padding: 0; margin: 0; border: 0; gap: 6px; }
-.bar:has(.sitenav:not([hidden])) > .turn { flex: none; }
+/* サイトの盤面: 1200px 以上では2行目に盤面の部品と並べ、1199px 以下では3行目を1本で使う（中身では変えず、幅で決める） */
+.bar:has(.sitenav:not([hidden])) > .replay { order: 5; flex: 1 0 100%; padding: 0; margin: 0; border: 0; gap: 6px; }
+@media (min-width: 1200px) { .bar:has(.sitenav:not([hidden])) > .replay { flex: 1 1 620px; } }
 .bar:has(.sitenav:not([hidden])) > .replay > :is(button, select) { padding-left: 7px; padding-right: 7px; }
-@media (max-width: 899px) and (orientation: portrait) {
+@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
   .bar > .replay { padding: 3px 8px; margin: 0 -8px -4px; }
-  .bar:has(.sitenav:not([hidden])) > .replay { padding: 0; margin: 0; flex-basis: 100%; }
 }

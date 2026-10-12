@@ -16,19 +16,21 @@
 <header class="bar">
   <strong class="brand">mtgtable</strong>
   <nav id="sitenav" class="sitenav" hidden></nav>
-  <label><span data-i18n="header.game">対局</span> <select id="game"></select></label>
-  <label><span data-i18n="header.seat">席</span> <select id="seat">
-    <option value="judge" data-i18n="seat.judge">judge（全知）</option>
-    <option value="p1">p1</option>
-    <option value="p2">p2</option>
-  </select></label>
-  <label><input id="images" type="checkbox" checked> <span data-i18n="header.images">画像</span></label>
-  <label data-i18n-title="header.motion.title" title="タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）"><input id="motion" type="checkbox" checked> <span data-i18n="header.motion">動き</span></label>
-  <span id="turn" class="turn"></span>
-  <span id="thinking" class="thinking" hidden></span>
-  <span id="playing" class="chip strong playing" hidden></span>
+  <!-- 盤面の部品。サイトの盤面ではまとめて1行に置く（ほかは並びに溶かす） -->
+  <div class="barctl">
+    <label><span data-i18n="header.game">対局</span> <select id="game"></select></label>
+    <label><span data-i18n="header.seat">席</span> <select id="seat">
+      <option value="judge" data-i18n="seat.judge">judge（全知）</option>
+      <option value="p1">p1</option>
+      <option value="p2">p2</option>
+    </select></label>
+    <label><input id="images" type="checkbox" checked> <span data-i18n="header.images">画像</span></label>
+    <label data-i18n-title="header.motion.title" title="タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）"><input id="motion" type="checkbox" checked> <span data-i18n="header.motion">動き</span></label>
+    <span id="turn" class="turn"></span>
+    <span id="thinking" class="thinking" hidden></span>
+    <span id="playing" class="chip strong playing" hidden></span>
+  </div>
   <span id="conn" class="conn" data-i18n-title="header.conn.title" title="更新の受信状態"></span>
-  <button id="recovery" data-i18n="header.recovery" data-i18n-title="header.recovery.title" title="別の端末で同じ対局を見るための URL を作る" hidden>復元 URL</button>
   <button id="logToggle" data-i18n-title="header.log.title" title="Log を開く・閉じる（L キー）">Log</button>
   <div class="more">
     <button id="moreBtn" data-i18n-title="header.more.title" title="その他" aria-haspopup="menu" aria-expanded="false">⋯</button>
@@ -36,7 +38,6 @@
       <!-- 言語（日本語・English。名前は訳さない） -->
       <div class="langrow" role="group" data-i18n-aria-label="more.lang" aria-label="言語"><button type="button" role="menuitemradio" data-lang="ja" lang="ja">日本語</button><button type="button" role="menuitemradio" data-lang="en" lang="en">English</button></div>
       <button type="button" role="menuitem" data-open="credits" data-i18n="more.credits">権利の表記</button>
-      <span id="legallinks" hidden><a role="menuitem" href="#/terms" data-i18n="more.terms">利用規約</a><a role="menuitem" href="#/privacy" data-i18n="more.privacy">プライバシー</a></span>
     </div>
   </div>
   <!-- 再生のバー: サイトの盤面では2行目に対局の部品と並べて1行にする（ほかは独立した行） -->

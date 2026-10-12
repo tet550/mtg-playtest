@@ -1,13 +1,13 @@
-"""デッキ登録（公開のサーバー）: デッキリストの検査と、所有者ごとの保存。
+"""デッキ登録（手元のサイト）: デッキリストの検査と保存。
 
 検査は登録・更新のたびに行い、通ったものだけを保存する。
 - 書式: decklists/README.md と同じ（"4 Forest"、Deck / Sideboard 見出し、MTG Arena の書き出し）。読めない行は行番号つきで返す
 - カード名: Scryfall の /cards/collection でまとめて引く（carddb.resolve_names）。見つからない名前は行番号つきで返す
 - 構築: メイン 60 枚以上・サイドボード 15 枚以下・同じ名前は 4 枚まで（基本土地と「好きな枚数を入れてよい」カードは除く）
 - フォーマット: Scryfall の legalities で、そのフォーマットで使えるか（free は見ない）。制限カード（restricted）は 1 枚まで
-- 入力の大きさ: 文字数・行数・デッキ名の形・1人が登録できる数
+- 入力の大きさ: 文字数・行数・デッキ名の形・登録できる数
 
-デッキは表 decks（所有者・名前・フォーマット・本文・プレイ方針・正式なカード名の対応）。プレイ方針は、対局で
+デッキは表 decks（名前・フォーマット・本文・プレイ方針・正式なカード名の対応）。プレイ方針は、対局で
 そのデッキを使う AI のプロンプトに入る（prompt.seat_system）。
 """
 from __future__ import annotations
@@ -29,7 +29,8 @@ MAX_TEXT = 20000
 MAX_LINES = 250
 MAX_COPIES_IN_LINE = 99
 MAX_STRATEGY = 8000
-MAX_DECKS = 50  # 1人が登録できる数
+MAX_DECKS = 200  # 登録できる数
+LOCAL = "local"  # 表の owner 列に入れる値（使うのは手元の1人だけ。前の版の DB の行は owner を問わず読む）
 MIN_MAIN = 60
 MAX_SIDE = 15
 COPIES = 4
@@ -186,7 +187,7 @@ def decklist(text: str, cards: dict, name: str) -> Decklist:
 
 
 class Decks:
-    """所有者ごとのデッキ（SQLite）。"""
+    """登録したデッキ（SQLite）。"""
 
     def __init__(self, db, resolve=None):
         self.db = db
@@ -220,25 +221,24 @@ class Decks:
 
     _COLS = "id, name, format, main, sideboard, updated_at, text, strategy, cards"
 
-    def list(self, owner: str) -> list:
-        rows = self._run("SELECT %s FROM decks WHERE owner = ? ORDER BY updated_at DESC, name" % self._COLS,
-                         (owner,), many=True)
+    def list(self) -> list:
+        rows = self._run("SELECT %s FROM decks ORDER BY updated_at DESC, name" % self._COLS, many=True)
         return [self._row(r) for r in rows]
 
-    def get(self, owner: str, deck_id: str) -> dict:
-        r = self._run("SELECT %s FROM decks WHERE owner = ? AND id = ?" % self._COLS, (owner, deck_id))
+    def get(self, deck_id: str) -> dict:
+        r = self._run("SELECT %s FROM decks WHERE id = ?" % self._COLS, (deck_id,))
         if r is None:
             raise LookupError("no deck %r" % deck_id)
         return self._row(r, full=True)
 
-    def _validate(self, owner: str, body: dict, deck_id: Optional[str] = None) -> tuple:
+    def _validate(self, body: dict, deck_id: Optional[str] = None) -> tuple:
         name = body.get("name")
         fmt = body.get("format") or "standard"
         strategy = body.get("strategy") or ""
         pre = []
         if not isinstance(name, str) or not NAME.match(name):
             pre.append(_error("デッキ名は半角英小文字・数字・ハイフン（40 文字まで。例: mono-red）"))
-        elif self._run("SELECT id FROM decks WHERE owner = ? AND name = ? AND id != ?", (owner, name, deck_id or "")):
+        elif self._run("SELECT id FROM decks WHERE name = ? AND id != ?", (name, deck_id or "")):
             pre.append(_error("同じ名前のデッキがあります"))
         if not isinstance(strategy, str) or len(strategy) > MAX_STRATEGY:
             pre.append(_error("プレイ方針は %d 文字まで" % MAX_STRATEGY))
@@ -249,27 +249,27 @@ class Decks:
             raise Invalid(result)
         return name, fmt, strategy, result
 
-    def create(self, owner: str, body: dict) -> dict:
-        if self._run("SELECT COUNT(*) FROM decks WHERE owner = ?", (owner,))[0] >= MAX_DECKS:
+    def create(self, body: dict) -> dict:
+        if self._run("SELECT COUNT(*) FROM decks")[0] >= MAX_DECKS:
             raise Invalid({"ok": False, "errors": [_error("デッキは %d 個まで（使わないものを消す）" % MAX_DECKS)],
                            "warnings": []})
-        name, fmt, strategy, result = self._validate(owner, body)
+        name, fmt, strategy, result = self._validate(body)
         deck_id, now = secrets.token_hex(6), _now()
         self._write("INSERT INTO decks (id, owner, name, format, text, strategy, main, sideboard, cards, created_at, "
                   "updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  (deck_id, owner, name, fmt, body["text"], strategy, result["main"], result["sideboard"],
+                  (deck_id, LOCAL, name, fmt, body["text"], strategy, result["main"], result["sideboard"],
                    json.dumps(result["cards"], ensure_ascii=False), now, now))
-        return dict(self.get(owner, deck_id), warnings=result["warnings"])
+        return dict(self.get(deck_id), warnings=result["warnings"])
 
-    def update(self, owner: str, deck_id: str, body: dict) -> dict:
-        self.get(owner, deck_id)
-        name, fmt, strategy, result = self._validate(owner, body, deck_id)
+    def update(self, deck_id: str, body: dict) -> dict:
+        self.get(deck_id)
+        name, fmt, strategy, result = self._validate(body, deck_id)
         self._write("UPDATE decks SET name = ?, format = ?, text = ?, strategy = ?, main = ?, sideboard = ?, cards = ?, "
-                  "updated_at = ? WHERE owner = ? AND id = ?",
+                  "updated_at = ? WHERE id = ?",
                   (name, fmt, body["text"], strategy, result["main"], result["sideboard"],
-                   json.dumps(result["cards"], ensure_ascii=False), _now(), owner, deck_id))
-        return dict(self.get(owner, deck_id), warnings=result["warnings"])
+                   json.dumps(result["cards"], ensure_ascii=False), _now(), deck_id))
+        return dict(self.get(deck_id), warnings=result["warnings"])
 
-    def delete(self, owner: str, deck_id: str) -> None:
-        self.get(owner, deck_id)
-        self._run("DELETE FROM decks WHERE owner = ? AND id = ?", (owner, deck_id))
+    def delete(self, deck_id: str) -> None:
+        self.get(deck_id)
+        self._run("DELETE FROM decks WHERE id = ?", (deck_id,))

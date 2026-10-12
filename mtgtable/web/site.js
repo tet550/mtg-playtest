@@ -1,16 +1,15 @@
-// 公開のサーバーの画面の骨組み: ヘッダーの切り替え（トップ・デッキ・対局）と、トップの画面。
+// 手元のサイトの画面の骨組み: ヘッダーの切り替え（トップ・デッキ・対局）と、トップの画面。
 // 対局の画面は今までの盤面（app.js）。トップとデッキは、盤面の代わりに #page に描く。URL は #/top・#/decks・#/games
 import { $, el } from "./dom.js";
 import { createDecks } from "./decks.js";
 import { createLobby } from "./lobby.js";
 import { createHistory } from "./history.js";
-import { renderPrivacy, renderTerms } from "./legal.js";
 import { t } from "./i18n.js";
 
 // ヘッダーのメニューの画面（名前は辞書の nav.<画面>）
-export const PAGES = ["top", "decks", "new", "games", "history", "public"];
-// ヘッダーに出さない画面（招待の URL: #/join/<招待>/<鍵>、再生・観戦: #/view/<対局>[/<共有の鍵>]）
-const HIDDEN = ["join", "view", "terms", "privacy"];
+export const PAGES = ["top", "decks", "new", "games", "history"];
+// ヘッダーに出さない画面（招待の URL: #/join/<招待>/<鍵>、終わった対局の再生: #/view/<対局>）
+const HIDDEN = ["join", "view"];
 export const BOARD_PAGES = ["games", "view"];  // 盤面を出す画面
 
 // #/decks → {page: "decks", args: []}、#/join/abc/xyz → {page: "join", args: ["abc", "xyz"]}
@@ -31,8 +30,14 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
   const lobby = createLobby(source, { toast, openGame, active: () => current === "new" });
   const history = createHistory(source, { toast, openGame });
 
+  const host = () => !!config().host;  // ゲスト（招待で着いた外のブラウザ）にはメニューを出さない
+
   function nav() {
     const box = $("sitenav");
+    if (!host()) {
+      box.hidden = true;
+      return;
+    }
     box.replaceChildren(...PAGES.map((key) => {
       const a = el("a", key === current ? "on" : null, t(`nav.${key}`));
       a.href = `#/${key}`;
@@ -50,7 +55,7 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
     };
     const cta = el("div", "cta");
     cta.append(mine.length ? link("primary", t("top.cta.games"), "#/games") : link("primary", t("top.cta.decks"), "#/decks"),
-      link(null, t("top.cta.new"), "#/new"), link(null, t("top.cta.public"), "#/public"));
+      link(null, t("top.cta.new"), "#/new"), link(null, t("top.cta.history"), "#/history"));
     const hero = el("div", "hero");
     hero.append(
       el("h2", null, t("top.title")),
@@ -71,9 +76,10 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
     item(t("top.step.new"), "#/new", t("top.step.new.link"));
     item(mine.length ? t("top.step.play.mine", { count: mine.length }) : t("top.step.play.invited"),
       mine.length ? "#/games" : null, t("top.step.play.link"));
-    item(t("top.step.history"), "#/public", t("top.step.history.link"));
-    item(t("top.step.recovery"));
+    item(t("top.step.history"), "#/history", t("top.step.history.link"));
     root.append(steps);
+    // 審判と AI の席を回すもの（既定は Claude Code）
+    root.append(el("p", "muted", t(config().ai === "server" ? "top.ai.server" : "top.ai.claudeCode")));
   }
 
   async function show(page, args = []) {
@@ -87,16 +93,12 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
     for (const id of ["conn", "logToggle", "turn", "thinking", "playing", "fl-play"]) $(id).classList.toggle("offpage", !board);
     const root = $("page");
     root.hidden = board;
-    root.classList.remove("legal");
     document.body.classList.toggle("sitepage", !board);
     if (page === "top") renderTop(root);
     if (page === "decks") await decks.render(root);
     if (page === "new") await lobby.render(root);
     if (page === "join") await lobby.renderJoin(root, args[0], args[1]);
     if (page === "history") await history.renderHistory(root);
-    if (page === "public") await history.renderPublic(root);
-    if (page === "terms") renderTerms(root, config());
-    if (page === "privacy") renderPrivacy(root, config());
     if (!board) window.scrollTo(0, 0);
   }
 

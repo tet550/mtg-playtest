@@ -357,23 +357,17 @@ def cmd_serve(a):
     from . import llm
     if a.site and not DB:
         raise SystemExit("serve --site needs --db PATH (or MTGTABLE_DB)")
-    ai = (a.ai or a.site) and not a.no_ai
-    if ai:
+    if a.ai:
         if not (a.play or a.site):
             raise SystemExit("serve --ai needs --play or --site")
         try:
             llm.check_ready()  # キー・SDK が足りなければ、対局を中断させる前にここで止める
         except llm.LLMError as e:
-            raise SystemExit("%s（AI を回さずに動かすなら --no-ai）" % e)
-    if a.site:
-        from .web import SITE_INFO
-        if not (SITE_INFO["operator"] and SITE_INFO["contact"]):
-            print("注意: MTGTABLE_OPERATOR / MTGTABLE_CONTACT（運営者と連絡先）が未設定。利用規約・プライバシーの画面に出る",
-                  file=sys.stderr)
-        if a.host not in ("127.0.0.1", "localhost", "::1") and not a.trust_proxy:
-            print("注意: %s で待ち受けている。HTTPS は前のリバース・プロキシ（deploy/Caddyfile）に任せ、"
-                  "サーバーは 127.0.0.1 で動かす" % a.host, file=sys.stderr)
-    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site, ai=ai, trust_proxy=a.trust_proxy)
+            raise SystemExit("%s（Claude Code で回すなら --ai を付けない）" % e)
+    if a.host not in ("127.0.0.1", "localhost", "::1"):
+        print("注意: %s で待ち受けている。通信は暗号化されない。ホスト（デッキ・対局を作る・履歴）は手元のブラウザ"
+              "（127.0.0.1）からだけで、外からは招待の URL・席の鍵でその席だけ" % a.host, file=sys.stderr)
+    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site, ai=a.ai)
 
 
 def cmd_db_backup(a):
@@ -490,6 +484,22 @@ def _print_prompt(built):
         print("prompt for %s: %s  (request: %s)" % (who, built["latest"], built["request"].name))
 
 
+def _print_body(built):
+    """Claude Code のエージェントに本文も出す（ファイルを読む1回を省く）。届けた盤面を、次の差分の元にする。"""
+    from . import prompt
+    print("----- %s の本文（Read しない）-----" % built["user"].name)
+    print(built["user"].read_text(encoding="utf-8").rstrip())
+    prompt.delivered(built)
+
+
+def _print_compact(res):
+    """Claude Code のエージェント向けの apply の結果: 全部適用できたら1行（盤面は次の本文に出る）。止まったら全部。"""
+    if res["stopped"]:
+        _emit_result(res)
+    else:
+        print("applied %d acts (v%d)" % (res["applied"], res["version"]))
+
+
 def cmd_prompt(a):
     """プロンプトをファイルに書き出す（手動でモデルに渡す。request.json は API の本文）。"""
     store = _existing(a.game)
@@ -502,16 +512,74 @@ def cmd_prompt(a):
     _print_prompt(built)
 
 
+def _gui_games():
+    """GUI の人間がいる（席の文書 "seats" がある）、決着していない対局。--db なら DB の、無ければ playtest/ の。"""
+    from .store import FileGames
+    if DB:
+        from .sqlstore import SqliteGames
+        source = SqliteGames(DB)
+    else:
+        source = FileGames(paths.games_dir())
+    for gid in source.ids():
+        st = source.open(gid)
+        try:
+            if play.seats(st) and play.waiting_on(st.load()) is not None:
+                yield st
+        except (OSError, LookupError, ValueError):
+            continue
+
+
+def _next_any(a):
+    """対局を指定しない next: どれかの対局で審判か AI の席（鍵の無い席）の番が来るまで待つ（サイトで作った対局を
+    Claude Code が拾う）。来たら game: と、answer に使うコマンドの頭を出してから、プロンプトを書き出す。"""
+    import time
+    from . import prompt
+    deadline = time.monotonic() + a.timeout
+    while True:
+        for store in _gui_games():
+            if prompt.leased(store):  # Claude Code のエージェントが受け持っている（自分で待っている）
+                continue
+            prompt.advance(store)
+            role = prompt.next_role(store, prompt.ai_seats(store))
+            if role:
+                if a.claude_code:
+                    prompt.write_claude_code(store)
+                # CLI で対局を指す形（answer・log・oracle などに使う）: --db なら id、無ければ対局フォルダ
+                head, target = "python -m mtgtable%s" % (" --db %s" % DB if DB else ""), store.name if DB else store.root
+                print("game: %s <コマンド> %s" % (head, target))
+                # この対局を受け持つエージェントが、自分で待つコマンド（起動するまでの間にほかの監視が拾わないよう、印も付ける）
+                print("wait: %s next %s %s --claude-code --body --timeout 240"
+                      % (head, target, " ".join("--ai %s" % p for p in prompt.ai_seats(store))))
+                prompt.touch_lease(store)
+                built = _prompt_build(store, role, mode="direct" if a.direct and role != "judge" else None)
+                _print_prompt(built)
+                if a.body and built["cc"]:
+                    _print_body(built)
+                return
+        if time.monotonic() > deadline:
+            print("timeout: 審判か AI の席の番の対局は無い")
+            sys.exit(3)
+        time.sleep(1.0)
+
+
 def cmd_next(a):
     """審判か AI の席の番が来るまで待ち、その役割のプロンプトを書き出す（人間の番の間は待つ）。"""
     import time
     from . import play, prompt
+    if not a.game:
+        return _next_any(a)
     store = _existing(a.game)
     ai = a.ai or []
     if a.claude_code:
         prompt.write_claude_code(store)
+    if a.full:
+        prompt.forget_delivered(store)
     deadline = time.monotonic() + a.timeout
+    touched = 0.0
     while True:
+        if a.body and time.monotonic() - touched > 30:  # 待っているエージェントがこの対局を受け持っている印
+            prompt.touch_lease(store)
+            touched = time.monotonic()
         role = prompt.next_role(store, ai)
         if role:
             break
@@ -523,7 +591,10 @@ def cmd_next(a):
             print("timeout: %s を待っている" % wait)
             sys.exit(3)
         time.sleep(0.5)
-    _print_prompt(_prompt_build(store, role, mode="direct" if a.direct and role != "judge" else None))
+    built = _prompt_build(store, role, mode="direct" if a.direct and role != "judge" else None)
+    _print_prompt(built)
+    if a.body and built["cc"]:
+        _print_body(built)
 
 
 def cmd_answer(a):
@@ -536,8 +607,11 @@ def cmd_answer(a):
         out = prompt.apply_response(store, text, role)
     except (ValueError, FileNotFoundError) as e:
         raise SystemExit(str(e))
+    cc = prompt.claude_code_path(store).exists()
+    if cc:
+        prompt.touch_lease(store)
     if out["result"]:
-        _emit_result(public_result(out["result"]))
+        (_print_compact if cc else _emit_result)(public_result(out["result"]))
     if out["error"]:
         print("failed: %s" % out["error"])
     nxt = out["next"] or (prompt.auto_build(store) if out["ok"] else None)
@@ -546,10 +620,11 @@ def cmd_answer(a):
             print("失敗の理由を付けてプロンプトを作り直した")
         _print_prompt(nxt)
         if nxt["cc"]:  # Claude Code のエージェントは続けて答える: ファイルを読み直す1回を省くため、本文もここに出す
-            print("----- %s の本文（Read しない）-----" % nxt["user"].name)
-            print(nxt["user"].read_text(encoding="utf-8").rstrip())
+            _print_body(nxt)
+    elif play.waiting_on(store.load()) is None:
+        print("決着（待っている Player はいない）")
     else:
-        print("waiting on %s（人間の番。GUI で操作する）" % (play.waiting_on(store.load()) or "-"))
+        print("waiting on %s（人間の番。GUI で操作する）" % play.waiting_on(store.load()))
     if not out["ok"]:
         sys.exit(2)
 
@@ -721,13 +796,10 @@ def build_parser():
     p.add_argument("--offline", action="store_true", help="キャッシュに無いカード画像を取りに行かない")
     p.add_argument("--play", action="store_true", help="席の操作（GUI の対局）を受ける。invite した対局は席の鍵で守る")
     p.add_argument("--site", action="store_true",
-                   help="公開のサーバーとして動かす（--db が要る。--play を含む）。所有者の鍵（Cookie）で、自分が席を持つ対局だけを"
-                        "見せ、judge の席は出さない。書き込みは同じサイトからだけ。審判と AI の席もサーバーの中で回す")
+                   help="手元の1人用のサイト（--db が要る。--play を含む）: デッキの登録・対局を作る（AI と・招待した人と）・履歴。"
+                        "審判と AI の席は Claude Code が回す（next の監視と mtg-table エージェント）")
     p.add_argument("--ai", action="store_true",
-                   help="審判と AI の席をサーバーの中で回す（--play と。auto --watch の代わり。--site では既定）")
-    p.add_argument("--no-ai", action="store_true", help="--site でも AI を回さない（手で回す・auto を使う）")
-    p.add_argument("--trust-proxy", action="store_true",
-                   help="前のリバース・プロキシ（Caddy など）が付ける X-Forwarded-For を送り元の IP として使う（レート制限・ログ）")
+                   help="審判と AI の席をサーバーの中で LLM の API で回す（--play か --site と。Claude Code の代わり）")
     p.set_defaults(fn=cmd_serve)
 
     p = sub.add_parser("db-backup", help="--db の DB を、動かしたまま写す（バックアップ）")
@@ -746,7 +818,7 @@ def build_parser():
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--base", help="サーバーの URL（既定 http://127.0.0.1:PORT/）")
     p.add_argument("--ttl", type=float, default=168,
-                   help="鍵の有効期限（時間。既定 168 = 7日。0 で期限なし）。公開のサーバーでは、席を取った後は Cookie で入る")
+                   help="鍵の有効期限（時間。既定 168 = 7日。0 で期限なし）")
     p.set_defaults(fn=cmd_invite)
 
     p = sub.add_parser("revoke", help="席の鍵を失効させる（invite で作り直すまで、その席は誰も使えない）")
@@ -764,12 +836,17 @@ def build_parser():
     p.set_defaults(fn=cmd_wait)
 
     p = sub.add_parser("next", help="審判か AI の席の番まで待ち、そのプロンプトを書き出す（手動でモデルに渡す）")
-    p.add_argument("game")
+    p.add_argument("game", nargs="?",
+                   help="対局（省略で、GUI の人間がいる対局のどれか。AI の席は鍵の無い席。サイトで作った対局を拾う）")
     p.add_argument("--ai", action="append", help="AI の席（複数可）。審判の番は常にプロンプトを作る")
     p.add_argument("--timeout", type=float, default=540, help="秒（時間切れは終了コード 3）")
     p.add_argument("--direct", action="store_true", help="AI の席は審判を通さず Batch を直接書く（前の形。鍵の対局では使えない）")
     p.add_argument("--claude-code", action="store_true",
                    help="Claude Code のエージェント1つが審判と AI の席を兼ねる固定部分を prompts/claude-code.md に書き出す")
+    p.add_argument("--body", action="store_true",
+                   help="プロンプトの本文も出す（エージェントが自分で待つとき。ファイルを読む1回を省く）。対局を受け持つ印も付ける")
+    p.add_argument("--full", action="store_true",
+                   help="前に届けた盤面・オラクルの控えを消し、全部を送る（エージェントを起動し直したとき）")
     p.set_defaults(fn=cmd_next)
 
     p = sub.add_parser("auto", help="審判と AI の席を LLM の API で回す（提供元・キーは secrets/README.md）")

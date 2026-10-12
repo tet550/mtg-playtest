@@ -1,33 +1,34 @@
-"""対局を作る（公開のサーバー）: 登録したデッキで、AI と・招待した人と。
+"""対局を作る（手元のサイト）: 登録したデッキで、AI と・招待した人と。
 
-- AI と: すぐに対局を作る。自分は p1（席を持つ）、p2 は鍵の無い席（AI）。AI のデッキは自分の登録デッキか、
-  リポジトリの decklists/*.txt
-- 招待した人と: まず招待（表 invites）だけを作り、URL を返す。招待された人が自分の登録デッキを選んで席に着いた時点で
-  対局を作る（相手のデッキが決まるまで初期状態を作れないので）。招待の URL は1回だけ使える（使われたら対局になり、
-  もう誰も使えない）。期限つきで、作った人は取り消し・URL の作り直しができる
+使うのは手元の1人（ホスト）。ホストの席は、卓の外の文書 "seats" に鍵の無い席として置く（host_seats）。
+審判と AI の席は既定では Claude Code が回す（`next` の監視と mtg-table エージェント。`serve --ai` ならサーバーの中で）。
+
+- AI と: すぐに対局を作る。ホストは p1、p2 は "seats" に無い席（AI）。AI のデッキは登録したデッキか、同梱のデッキ
+- 招待した人と: まず招待（表 invites）だけを作り、URL を返す。招待された人（ゲスト）は、デッキリストを貼るか同梱のデッキを
+  選んで席に着く。その時点で対局を作り（相手のデッキが決まるまで初期状態を作れないので）、ゲストの席の鍵を返す。
+  ゲストはその鍵（ブラウザが覚える）で自分の席だけを読み書きする。招待の URL は1回だけ使え、期限つきで、ホストは
+  取り消し・URL の作り直しができる
 - デッキは対局を作る時点の写しを初期状態に入れる（meta.decks.<席>: 名前・フォーマット・本文・プレイ方針）。後でデッキを
   編集・削除しても、対局と Replay は変わらない
-- 公開・非公開（既定は公開）は対局の文書 "site" に置く。終わった対局の公開の一覧はフェーズ 6
 - 時間切れ: 人間どうしの対局で、相手の番のまま IDLE_LIMIT 秒書き込みが無ければ、待っている側が勝ちを申し立てられる
   （相手の投了として卓に書く）
 """
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import secrets
 from typing import Optional
 
 from . import carddb, paths, play
-from .decks import Decks, decklist
-from .owners import Owners, _hash
+from .decks import LOCAL, Decks, Invalid, check as check_deck_text, decklist
 from .setup import bundled_decks, check_deck, load_decklist, new_game
 from .sqlstore import SqliteGames, _now, connect
 
 INVITE_TTL = 72  # 招待の URL の期限（時間）
 IDLE_NOTICE = 5 * 60  # 相手の番がこれだけ続いたら、画面に知らせる（秒）
 IDLE_LIMIT = 30 * 60  # これだけ続いたら、時間切れで勝ちを申し立てられる（秒）
-VISIBILITY = ("public", "private")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS invites (
@@ -87,9 +88,19 @@ def start_game(store, entries: dict, seed: Optional[int] = None, offline: bool =
     return state
 
 
+def _hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def host_seats(store) -> list:
+    """ホスト（手元の1人）の席: "seats" にあって鍵の無い席（対局を作るときに置く）。鍵のある席は招待のゲストか、
+    CLI の invite で作った席（URL の鍵で入る）。"""
+    return sorted(s for s, rec in play.seats(store).items() if "claimed" in rec and not rec.get("token_sha256"))
+
+
 class Lobby:
-    def __init__(self, db, games: SqliteGames, decks: Decks, owners: Owners, offline: bool = False):
-        self.db, self.games, self.decks, self.owners, self.offline = db, games, decks, owners, offline
+    def __init__(self, db, games: SqliteGames, decks: Decks, offline: bool = False):
+        self.db, self.games, self.decks, self.offline = db, games, decks, offline
         conn = connect(db)
         try:
             conn.executescript(SCHEMA)
@@ -104,113 +115,114 @@ class Lobby:
         finally:
             conn.close()
 
-    def _new_game(self, entries: dict, humans: dict, visibility: str, game: Optional[str] = None) -> str:
-        """対局を作り、人間の席を owner のものにする（席の鍵は作らない。Cookie で入る）。"""
+    def _new_game(self, entries: dict, host: list, game: Optional[str] = None) -> str:
+        """対局を作り、host の席をホストの席にする（鍵は作らない）。"""
         game = game or secrets.token_hex(5)
         st = self.games.open(game)
         start_game(st, entries, offline=self.offline)
         now = _now()
-        st.write_doc("seats", {seat: {"claimed": now} for seat in humans})  # 鍵の無い人間の席（AI に回さない）
-        st.write_doc("site", {"visibility": visibility, "created": now})
-        for seat, owner in humans.items():
-            self.owners.claim(game, seat, owner)
+        st.write_doc("seats", {seat: {"claimed": now} for seat in host})  # 鍵の無い人間の席（AI に回さない）
         return game
-
-    @staticmethod
-    def _visibility(body: dict) -> str:
-        v = body.get("visibility") or "public"
-        if v not in VISIBILITY:
-            raise ValueError("visibility must be public or private")
-        return v
 
     # ---- 作る
 
-    def create(self, owner: str, body: dict) -> dict:
-        """{"deck": 自分のデッキの id, "opponent": "ai" | "human", "ai_deck": "deck:<id>" | "repo:<名前>", "visibility"}"""
-        mine = snapshot(self.decks.get(owner, str(body.get("deck") or "")))
-        visibility = self._visibility(body)
+    def create(self, body: dict) -> dict:
+        """{"deck": 登録したデッキの id, "opponent": "ai" | "human", "ai_deck": "deck:<id>" | "repo:<名前>"}"""
+        mine = snapshot(self.decks.get(str(body.get("deck") or "")))
         if body.get("opponent") == "ai":
             ai = str(body.get("ai_deck") or "")
             kind, _, ref = ai.partition(":")
             if kind == "deck":
-                other = snapshot(self.decks.get(owner, ref))
+                other = snapshot(self.decks.get(ref))
             elif kind == "repo":
                 other = ref
             else:
                 raise ValueError('ai_deck must be "deck:<id>" or "repo:<name>"')
-            game = self._new_game({"p1": mine, "p2": other}, {"p1": owner}, visibility)
+            game = self._new_game({"p1": mine, "p2": other}, ["p1"])
             return {"game": game, "seat": "p1"}
         if body.get("opponent") != "human":
             raise ValueError("opponent must be ai or human")
         invite, token = secrets.token_hex(5), secrets.token_urlsafe(24)
         expires = (datetime.datetime.now() + datetime.timedelta(hours=INVITE_TTL)).isoformat(timespec="seconds")
         self._run("INSERT INTO invites (id, owner, deck, visibility, token_sha256, expires_at, created_at) "
-                  "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  (invite, owner, json.dumps(mine, ensure_ascii=False), visibility, _hash(token), expires, _now()))
+                  "VALUES (?, ?, ?, '', ?, ?, ?)",
+                  (invite, LOCAL, json.dumps(mine, ensure_ascii=False), _hash(token), expires, _now()))
         return {"invite": invite, "token": token, "expires": expires}
 
     # ---- 招待
 
-    def invites(self, owner: str) -> list:
-        """自分が作った招待（相手待ちと、相手が着いて対局になったもの）。新しい順。"""
-        rows = self._run("SELECT id, deck, visibility, expires_at, created_at, game FROM invites WHERE owner = ? "
-                         "ORDER BY created_at DESC LIMIT 50", (owner,), many=True)
-        return [{"id": r[0], "deck": json.loads(r[1])["name"], "visibility": r[2], "expires": r[3], "created": r[4],
-                 "game": r[5], "expired": r[5] is None and r[3] < _now()} for r in rows]
+    def invites(self) -> list:
+        """作った招待（相手待ちと、相手が着いて対局になったもの）。新しい順。"""
+        rows = self._run("SELECT id, deck, expires_at, created_at, game FROM invites "
+                         "ORDER BY created_at DESC LIMIT 50", many=True)
+        return [{"id": r[0], "deck": json.loads(r[1])["name"], "expires": r[2], "created": r[3],
+                 "game": r[4], "expired": r[4] is None and r[2] < _now()} for r in rows]
 
     def _invite(self, invite: str, token: Optional[str]):
-        row = self._run("SELECT owner, deck, visibility, token_sha256, expires_at, game FROM invites WHERE id = ?",
-                        (invite,))
-        if row is None or not token or not secrets.compare_digest(row[3], _hash(token)):
+        row = self._run("SELECT deck, token_sha256, expires_at, game FROM invites WHERE id = ?", (invite,))
+        if row is None or not token or not secrets.compare_digest(row[1], _hash(token)):
             raise Refused("this invite link is wrong or was replaced")
-        if row[5]:
+        if row[3]:
             raise Refused("this invite has already been used")
-        if row[4] < _now():
+        if row[2] < _now():
             raise Refused("this invite has expired")
         return row
 
     def invite_info(self, invite: str, token: Optional[str]) -> dict:
-        """招待された人に見せる中身（相手のデッキの名前とフォーマット・公開か）。デッキリストは見せない。"""
-        owner, deck, visibility, _, expires, _ = self._invite(invite, token)
+        """招待された人に見せる中身（相手のデッキの名前とフォーマット・選べる同梱のデッキ）。デッキリストは見せない。"""
+        deck, _, expires, _ = self._invite(invite, token)
         deck = json.loads(deck)
-        return {"invite": invite, "deck": deck["name"], "format": deck["format"], "visibility": visibility,
-                "expires": expires}
+        return {"invite": invite, "deck": deck["name"], "format": deck["format"], "expires": expires,
+                "repo_decks": repo_decks()}
 
-    def join(self, owner: str, invite: str, body: dict) -> dict:
-        """招待に着く: 自分のデッキを選び、対局を作る。招待した人が p1、着いた人が p2。"""
-        host, deck, visibility, _, _, _ = self._invite(invite, body.get("token"))
-        if host == owner:
-            raise Refused("you cannot join your own invite (open it in the other player's browser)")
-        mine = snapshot(self.decks.get(owner, str(body.get("deck") or "")))
+    def _guest_deck(self, body: dict):
+        """ゲストのデッキ: {"repo": 同梱のデッキの名前} か {"text": デッキリスト, "format", "name"}（検査してから写す）。"""
+        if body.get("repo"):
+            name = str(body["repo"])
+            if name not in repo_decks():
+                raise LookupError("unknown deck %r" % name)
+            return name
+        fmt = body.get("format") or "standard"
+        result = check_deck_text(body.get("text"), fmt, self.decks.resolve)
+        if not result["ok"]:
+            raise Invalid(result)
+        name = str(body.get("name") or "guest").strip()[:40] or "guest"
+        return {"name": name, "format": fmt, "text": body["text"], "cards": result["cards"], "strategy": ""}
+
+    def join(self, invite: str, body: dict) -> dict:
+        """招待に着く: ゲストのデッキで対局を作り、ゲストの席（p2）の鍵を返す。招待した人（ホスト）が p1。"""
+        deck = self._invite(invite, body.get("token"))[0]
+        guest = self._guest_deck(body)
         # 先に招待を使用済みにする（同時に2人が着いても、対局になるのは1人だけ）
         game = secrets.token_hex(5)
         if self._run("UPDATE invites SET game = ? WHERE id = ? AND game IS NULL", (game, invite)) != 1:
             raise Refused("this invite has already been used")
         try:
-            self._new_game({"p1": json.loads(deck), "p2": mine}, {"p1": host, "p2": owner}, visibility, game)
+            self._new_game({"p1": json.loads(deck), "p2": guest}, ["p1"], game)
+            token = play.invite(self.games.open(game), "p2")
         except Exception:
             self._run("UPDATE invites SET game = NULL WHERE id = ?", (invite,))
             raise
-        return {"game": game, "seat": "p2"}
+        return {"game": game, "seat": "p2", "token": token}
 
-    def _own_invite(self, owner: str, invite: str) -> None:
-        row = self._run("SELECT game FROM invites WHERE id = ? AND owner = ?", (invite, owner))
+    def _pending_invite(self, invite: str) -> None:
+        row = self._run("SELECT game FROM invites WHERE id = ?", (invite,))
         if row is None:
             raise LookupError("no invite %r" % invite)
         if row[0]:
             raise Refused("this invite has already been used")
 
-    def renew(self, owner: str, invite: str) -> dict:
+    def renew(self, invite: str) -> dict:
         """招待の URL を作り直す（前の URL は使えなくなる。期限も延びる）。"""
-        self._own_invite(owner, invite)
+        self._pending_invite(invite)
         token = secrets.token_urlsafe(24)
         expires = (datetime.datetime.now() + datetime.timedelta(hours=INVITE_TTL)).isoformat(timespec="seconds")
         self._run("UPDATE invites SET token_sha256 = ?, expires_at = ? WHERE id = ?", (_hash(token), expires, invite))
         return {"invite": invite, "token": token, "expires": expires}
 
-    def cancel(self, owner: str, invite: str) -> None:
-        self._own_invite(owner, invite)
-        self._run("DELETE FROM invites WHERE id = ? AND owner = ?", (invite, owner))
+    def cancel(self, invite: str) -> None:
+        self._pending_invite(invite)
+        self._run("DELETE FROM invites WHERE id = ?", (invite,))
 
     # ---- 時間切れ
 
@@ -220,15 +232,14 @@ class Lobby:
         last = datetime.datetime.fromisoformat(store.summary()["updated"])
         return max(0.0, (datetime.datetime.now() - last).total_seconds())
 
-    def timeout(self, owner: str, game: str, seat: str) -> dict:
-        """相手（人間）の番のまま IDLE_LIMIT 秒書き込みが無ければ、相手の投了として書く（seat の勝ち）。"""
-        if not seat or self.owners.seat_owner(game, seat) != owner:
-            raise Refused("this seat is not yours")
+    def timeout(self, game: str, seat: str) -> dict:
+        """相手（人間）の番のまま IDLE_LIMIT 秒書き込みが無ければ、相手の投了として書く（seat の勝ち）。
+        seat として書いてよいか（ホストの席か、席の鍵）は呼ぶ側（web）が確かめる。"""
         st = self.games.open(game)
         idle = play.waiting_on(st.load())
         if idle is None:
             raise Refused("the game is over")
-        if idle == seat or idle not in st.load().players or self.owners.seat_owner(game, idle) is None:
+        if idle == seat or idle not in st.load().players or idle not in play.seats(st):
             raise Refused("the game is not waiting on the other player")  # 自分の番・審判・AI の番
         waited = self.idle_seconds(st)
         if waited < IDLE_LIMIT:

@@ -124,15 +124,29 @@ def game_system(store: GameStore) -> str:
     return "\n".join(out) + "\n"
 
 
+def _on_demand(path: pathlib.Path) -> str:
+    """必要なときだけ読むリファレンスの目次（見出しと行番号。Read の offset に使う）。"""
+    rows = ["- `%s`" % path]
+    for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if line.startswith("## ") and "目次" not in line:
+            rows.append("  - L%d %s" % (i, line[3:].strip()))
+    return "\n".join(rows)
+
+
 def claude_code_system(store: GameStore) -> str:
     """Claude Code のエージェント1つが審判と AI の席を兼ねるときの固定部分（最初に1回だけ読む）。
-    API の形（役割ごとに system を送る）と違い、両方の役割の指示とリファレンスを1つにまとめ、重なる rules.md を1回にする。
+    API の形（役割ごとに system を送る）と違い、両方の役割の指示と cli のリファレンスを1つにまとめる。patterns.md・rules.md は
+    毎回の呼び出しで読み直される固定部分を軽くするため入れず、目次（パスと見出しの行番号）だけ置いて、必要なときに Read させる。
     毎回の状況は役割ごとの NNNN.user.md のまま。"""
     state = store.initial()
     out = [_read(HERE / "claude_code.md"),
            "---\n\n# 審判の役割（judge.md）", _read(HERE / "judge.md"),
            "---\n\n# AI の席の役割（player_intent.md）", _read(HERE / "player_intent.md"),
-           "---\n\n# リファレンス", _cli_reference(), _read(REFERENCES / "patterns.md"), _read(REFERENCES / "rules.md"),
+           "---\n\n# リファレンス", _cli_reference(),
+           "# 必要なときに読むリファレンス\n\n以下で「patterns.md」「rules.md」とあるのはこれらのファイル。最初から全部は読まない。"
+           "新しい種類の処理（誘発・トークン・コピー・戦闘の細部など）を書く前や、ルールに迷ったときに、該当する見出しの節だけを "
+           "Read の offset・limit で読む（一度読んだ節は読み直さない）\n\n"
+           + _on_demand(REFERENCES / "patterns.md") + "\n" + _on_demand(REFERENCES / "rules.md"),
            "---\n\n" + game_system(store).strip() + "\n\nPlayer の担当: " + _players_line(store, state)]
     for seat in ai_seats(store):
         strategy = _strategy(state, seat)
@@ -218,12 +232,92 @@ def _situation(state, me: Optional[str], cc: bool = False) -> list:
             % (t.turn, t.phase, t.step, t.active or "-", t.priority or "-", who)]
 
 
+def _view_blocks(text: str) -> list:
+    """盤面の文を (key, 行) の塊に分ける。key は「-- p1 piza」の Player と、その下の領域の見出し（「hand」など）。
+    字下げ 4 以上の行（領域の中のカード）は直前の見出しの塊に入る。"""
+    blocks, who = [], ""
+    for line in text.splitlines():
+        indent = len(line) - len(line.lstrip(" "))
+        if indent >= 4 and blocks:
+            blocks[-1][1].append(line)
+            continue
+        if indent == 0:
+            who = line.split("  ")[0]
+            key = None  # Player の行（ライフなど）・ターンの行は毎回出す
+        else:
+            key = (who, line.strip().split(" (")[0].split(":")[0])
+        blocks.append((key, [line]))
+    return blocks
+
+
+SAME = "（前回と同じ）"
+
+
+def cc_view(store: GameStore, role: str, text: str) -> str:
+    """Claude Code のエージェントに送る盤面: 前に届けた盤面（prompts/<役割>/cc-view.txt。delivered が書く）と中身が同じ
+    領域は、見出しの行だけにする。前に届けたものが無ければ全部。"""
+    prev_path = prompt_dir(store, role) / "cc-view.txt"
+    if not prev_path.exists():
+        return text
+    prev = {k: lines for k, lines in _view_blocks(prev_path.read_text(encoding="utf-8")) if k is not None}
+    out = []
+    for key, lines in _view_blocks(text):
+        if key is not None and len(lines) > 1 and prev.get(key) == lines:
+            out.append(lines[0] + "  " + SAME)
+        else:
+            out += lines
+    return "\n".join(out)
+
+
+def delivered(built: dict) -> None:
+    """プロンプトの本文をエージェントに届けた（next・answer が出力した）。次の盤面はこれとの差分で送る。"""
+    view = built["dir"] / ("%s.view.txt" % built["stem"])
+    if view.exists():
+        (built["dir"] / "cc-view.txt").write_text(view.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def forget_delivered(store: GameStore) -> None:
+    """エージェントを起動し直したとき（引き継ぎ）: 前に届けた盤面・オラクルの控えと返答待ちの控えを消し、次は全部を送る。"""
+    root = store.root / "prompts"
+    for d in [p for p in root.glob("*") if p.is_dir()]:
+        for name in ("cc-view.txt", "cc-seen.json", "pending.json"):
+            (d / name).unlink(missing_ok=True)
+    pending_path(store).unlink(missing_ok=True)
+
+
+LEASE = 600  # 秒。エージェントがこの対局を受け持っている印の有効な長さ（answer・next で更新する）
+
+
+def touch_lease(store: GameStore) -> None:
+    """Claude Code のエージェントがこの対局を受け持っている印（対局を指定しない next が拾わないように）。"""
+    path = store.root / "prompts" / "agent.lease"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+
+
+def leased(store: GameStore) -> bool:
+    import time
+    path = store.root / "prompts" / "agent.lease"
+    return path.exists() and time.time() - path.stat().st_mtime < LEASE
+
+
+def _board(store: GameStore, role: str, title: str, text: str, cc: bool, keep: list) -> list:
+    """盤面の節。cc なら前に届けたものとの差分にし、全体は keep に入れる（build が NNNN.view.txt に書く）。"""
+    text = text.rstrip()
+    if not cc:
+        return ["", title, text]
+    keep.append(text)
+    shown = cc_view(store, role, text)
+    return ["", title + ("（中身が前回と同じ領域は見出しだけ）" if SAME in shown else ""), shown]
+
+
 def _error(error: Optional[str]) -> list:
     return ["", "# 前回のあなたの返答は適用できなかった", error,
             "失敗した Act とそれより後は適用されていない。今の盤面から書き直す。"] if error else []
 
 
-def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode: str = "direct", cc: bool = False) -> str:
+def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode: str = "direct", cc: bool = False,
+                 keep: Optional[list] = None) -> str:
     """Player（intent / direct）への今回のメッセージ。seat が見てよいものだけ。
 
     cc（Claude Code の同じエージェントが続けて受け取る）: 止める場所は設定があるときだけ、相手のカードのオラクルは
@@ -243,7 +337,7 @@ def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode:
     if not cc or play.get_stops(store, seat):
         out += ["", "# 止める場所（あなたの非公開の設定。変えるなら返答に stops）", _stops_text(store, seat)]
     view = info.player_view(state, seat, library=True, graveyard=True)
-    out += ["", "# 盤面（あなたの view）", render_view(view).rstrip()]
+    out += _board(store, seat, "# 盤面（あなたの view）", render_view(view), cc, [] if keep is None else keep)
     seen_path = prompt_dir(store, seat) / "cc-seen.json"
     seen = json.loads(seen_path.read_text(encoding="utf-8")) if cc and seen_path.exists() else []
     opp = _opponent_oracle(state, seat, seen)
@@ -294,7 +388,7 @@ def _stops_text(store: GameStore, pid: str) -> str:
                      for c in codes)
 
 
-def judge_message(store: GameStore, error: Optional[str] = None, cc: bool = False) -> str:
+def judge_message(store: GameStore, error: Optional[str] = None, cc: bool = False, keep: Optional[list] = None) -> str:
     """審判への今回のメッセージ: 処理する依頼・最近の記録・全情報の盤面。
 
     cc（Claude Code の同じエージェントが続けて受け取る）: 変わらないもの（Player の人間・AI、依頼の文）は claude-code.md に
@@ -361,7 +455,7 @@ def judge_message(store: GameStore, error: Optional[str] = None, cc: bool = Fals
     else:
         out += [_entry_line(e) for e in recent_entries(store)] or ["（なし）"]
     view = info.player_view(state, None, graveyard=True)
-    out += ["", "# 盤面（全情報）", render_view(view).rstrip()]
+    out += _board(store, JUDGE, "# 盤面（全情報）", render_view(view), cc, [] if keep is None else keep)
     if not cc:
         out += ["", "# 依頼", "上の依頼を処理し、JSON のコード・ブロック（batch・ask・message）で返す。"]
     return "\n".join(out) + "\n"
@@ -467,15 +561,18 @@ def build(store: GameStore, role: str, error: Optional[str] = None, mode: Option
             and (d / ("%s.user.md" % own.get("stem"))).exists():
         _dump(pending_path(store), own)
         return _built(store, d, own)
+    keep = []  # cc: 盤面の全体（差分で送った分も含む。届けたら次の差分の元になる）
     if role == JUDGE:
-        user = judge_message(store, error, cc=cc)
+        user = judge_message(store, error, cc=cc, keep=keep)
     else:
-        user = user_message(store, role, error, mode, cc=cc)
+        user = user_message(store, role, error, mode, cc=cc, keep=keep)
     stem, n = "%04d" % cur, 1
     while (d / ("%s.user.md" % stem)).exists():
         n += 1
         stem = "%04d-%d" % (cur, n)
     (d / ("%s.user.md" % stem)).write_text(user, encoding="utf-8")
+    if keep:
+        (d / ("%s.view.txt" % stem)).write_text(keep[0], encoding="utf-8")
     if not cc:
         if role == JUDGE:
             system = [role_system("judge"), game_system(store)]
@@ -520,7 +617,7 @@ def auto_build(store: GameStore) -> Optional[dict]:
     鍵を作った対局（GUI の人間がいる対局）だけ。同じ役割・同じ cursor のプロンプトがあれば作り直さない。"""
     if not play.seats(store):
         return None
-    play.autopass(store)
+    advance(store)
     role = next_role(store, ai_seats(store))
     if not role:
         return None
@@ -528,6 +625,81 @@ def auto_build(store: GameStore) -> Optional[dict]:
     if own.get("cursor") == store.cursor():
         return None
     return build(store, role)
+
+
+# ターンの開始（アンタップ・アップキープ・ドロー）で何か起きうる文。当たれば自動で始めず審判に回す（広めに当てる）
+TURN_START_TEXT = re.compile(r"upkeep|draw step|\bdraws\b|\byou draw\b|next turn|untap step|untaps? during|"
+                             r"doesn't untap|don't untap|phas(e|ing)|アップキープ|ドロー|次のターン|アンタップ", re.I)
+TURN_START_ZONES = ("battlefield", "graveyard", "exile", "command")
+FROM_HAND = re.compile(r"forecast|in your hand|from your hand|手札にある|手札から", re.I)  # 手札のまま働く（予見など）
+
+
+def _card_texts(state, card, decks: dict) -> str:
+    if card.token or card.definition:
+        return json.dumps(card.definition, ensure_ascii=False)
+    if card.owner not in decks:
+        decks[card.owner] = (_deck_data(state, card.owner) or {}).get("cards", {})
+    rec = decks[card.owner].get(card.name) or (carddb.lookup(card.name, offline=True) if card.name else None) or {}
+    faces = [f.get("oracle_text") or "" for f in rec.get("card_faces") or rec.get("faces") or []]
+    return "\n".join([rec.get("oracle_text") or ""] + faces)
+
+
+def turn_start_reason(store: GameStore, state) -> Optional[str]:
+    """次のターンの開始を審判に任せる理由（止める場所・先の指示・アップキープやドローに関わるカード・Note）。無ければ None。"""
+    nxt = play.next_turn_player(state)
+    for p in state.player_order:
+        side = "own" if p == nxt else "opp"
+        hit = [c for c in play.get_stops(store, p) if c in ("%s:upkeep" % side, "%s:draw" % side)]
+        if hit:
+            return "%s の止める場所 %s" % (p, hit[0])
+    for d in standing_requests(state, []):
+        if TURN_START_TEXT.search(d.text):
+            return "先の指示 #%d" % d.seq
+    for n in state.notes.values():
+        if TURN_START_TEXT.search(n.text):
+            return "Note %s" % n.id
+    for link in state.links.values():
+        if TURN_START_TEXT.search(link.text or ""):
+            return "Link %s" % link.id
+    decks = {}
+    for cid, c in state.cards.items():
+        kind = state.zones[c.zone].kind
+        if kind not in TURN_START_ZONES + ("hand",):
+            continue
+        text = _card_texts(state, c, decks)
+        if TURN_START_TEXT.search(text) and (kind != "hand" or FROM_HAND.search(text)):
+            return "%s <%s>" % (cid, c.name)
+    return None
+
+
+def auto_turn_start(store: GameStore) -> Optional[dict]:
+    """クリンナップで止まっていて（審判が次のターンを始める番）、ターンの開始で何も起きえないなら、審判を呼ばずに
+    turn_start（to main1）を書く。審判の処理と同じ形（ruled の印付き）。書いたら結果、書かなければ None。"""
+    cur = store.cursor()
+    state = store.load()
+    if not play.turn_start_pending(state) or turn_start_reason(store, state):
+        return None
+    _, acts = judge_acts(state, {"batch": {"acts": [{"proc": "turn_start", "to": "main1"}]},
+                                 "message": "自動（アップキープ・ドローで起きることが無い）"})
+    try:
+        result = store.apply({"actor": None, "label": "審判: %s のターン開始（自動）" % play.next_turn_player(state),
+                              "acts": acts}, expect=cur)
+    except StaleCursor:
+        return None
+    result.pop("_state", None)
+    return result
+
+
+def advance(store: GameStore) -> list:
+    """審判・席に聞かずに進められる所を進める: 止める場所に当たらない自動パスと、何も起きえないターンの開始。書いた件の結果。"""
+    done = []
+    for _ in range(4):
+        done += play.autopass(store)
+        started = auto_turn_start(store)
+        if not started:
+            break
+        done.append(started)
+    return done
 
 
 # ---------------------------------------------------------------- 返答

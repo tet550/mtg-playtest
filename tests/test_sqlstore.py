@@ -134,6 +134,23 @@ class SqliteStoreTest(unittest.TestCase):
         self.assertEqual(json.loads(json.dumps(SqliteGameStore(self.db, "f1").load().to_dict())),
                          src.load().to_dict())
 
+    def test_next_without_a_game_picks_up_games_made_on_the_site(self):
+        site = SqliteGameStore(self.db, "s1")
+        site.create(game().state)
+        site.write_doc("seats", {"p1": {"claimed": "2026-01-01T00:00:00"}})  # サイトで作った対局: p1 はホスト、p2 は AI
+        # self.st（席の文書の無い対局）は拾わない。ホストの番の間は待つ
+        with contextlib.redirect_stdout(io.StringIO()) as out, self.assertRaises(SystemExit) as e:
+            cli.main(["--db", str(self.db), "next", "--timeout", "0"])
+        self.assertEqual(e.exception.code, 3)
+        self.assertIn("timeout", out.getvalue())
+        site.apply({"actor": "p1", "acts": [{"act": [{"op": "declare", "kind": "keep"}]}]})
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            cli.main(["--db", str(self.db), "next", "--timeout", "0", "--claude-code"])
+        text = out.getvalue()
+        self.assertIn("game: python -m mtgtable --db %s <コマンド> s1" % self.db, text)
+        self.assertIn("prompt for p2", text)
+        self.assertTrue((site.root / "prompts" / "claude-code.md").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

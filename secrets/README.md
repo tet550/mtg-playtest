@@ -4,7 +4,7 @@ API キーなど、リポジトリに入れないものの置き場所。この�
 
 | ファイル | 中身 | 使う所 |
 |---|---|---|
-| `openai_api_key` | OpenAI の API キーを1行で（`sk-...`）。拡張子なし | 提供元 openai（`auto`・`serve --ai` / `--site`。`mtgtable/llm.py`） |
+| `openai_api_key` | OpenAI の API キーを1行で（`sk-...`）。拡張子なし | 提供元 openai（`auto`・`serve --ai`。`mtgtable/llm.py`） |
 | `anthropic_api_key` | Anthropic の API キーを1行で。拡張子なし（省略可） | 提供元 anthropic |
 | `llm.json` | 提供元・モデルなどの設定（省略可）。下の例。無ければ前の名前の `openai.json` を読む | 同上 |
 

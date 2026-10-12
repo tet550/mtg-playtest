@@ -1,7 +1,6 @@
-// 対局を作る画面（公開のサーバー）: 自分のデッキで、AI と・招待した人と。招待の URL を開いた人の「席に着く」画面も。
+// 対局を作る画面（手元のサイト）: 登録したデッキで、AI と・招待した人と。招待の URL を開いた人（ゲスト）の「席に着く」画面も。
 import { el } from "./dom.js";
-
-export const VISIBILITY = [["public", "公開（終わった後、誰でも見られる）"], ["private", "非公開（参加者だけ）"]];
+import { FORMATS, checkLines } from "./decks.js";
 
 export function inviteURL(origin, invite, token) {
   return `${origin}/#/join/${encodeURIComponent(invite)}/${encodeURIComponent(token)}`;
@@ -81,9 +80,8 @@ export function createLobby(source, { toast, openGame, active }) {
     let aiDecks = [];
     try { aiDecks = await source.aiDecks(); } catch (_) { aiDecks = []; }
     const aiDeck = select([...aiDecks.map((n) => [`repo:${n}`, `用意したデッキ: ${n}`]),
-      ...decks.map((d) => [`deck:${d.id}`, `自分のデッキ: ${d.name}`])]);
-    const aiField = field("AI のデッキ", aiDeck);
-    const visibility = select(VISIBILITY, "public");
+      ...decks.map((d) => [`deck:${d.id}`, `登録したデッキ: ${d.name}`])]);
+    const aiField = field("AI のデッキ", aiDeck, "審判と AI の席は Claude Code が回します（mtg-playtest スキルの GUI の対局）");
     opponent.onchange = () => { aiField.hidden = opponent.value !== "ai"; };
     const go = el("button", "on", "対局を作る");
     go.type = "submit";
@@ -93,8 +91,7 @@ export function createLobby(source, { toast, openGame, active }) {
       go.disabled = true;
       out.replaceChildren(el("div", "muted", "用意しています…"));
       try {
-        const r = await source.createGame({ deck: mine.value, opponent: opponent.value, ai_deck: aiDeck.value,
-          visibility: visibility.value });
+        const r = await source.createGame({ deck: mine.value, opponent: opponent.value, ai_deck: aiDeck.value });
         if (r.game) return openGame(r.game);
         fresh[r.invite] = inviteURL(location.origin, r.invite, r.token);
         out.replaceChildren(el("div", "ok", "招待を作りました。下の一覧の URL を相手にだけ渡します（1回だけ使える・3日で切れる）"));
@@ -107,8 +104,8 @@ export function createLobby(source, { toast, openGame, active }) {
     };
     const buttons = el("div", "crow");
     buttons.append(go);
-    f.append(field("自分のデッキ", mine), field("相手", opponent), aiField,
-      field("公開", visibility, "公開の対局は、終わった後に一覧に出て誰でも再生できる"), buttons, out);
+    f.append(field("自分のデッキ", mine), field("相手", opponent, "招待した人は、この PC のサーバーに届くブラウザから参加します（serve --host）"),
+      aiField, buttons, out);
     return f;
   }
 
@@ -161,6 +158,7 @@ export function createLobby(source, { toast, openGame, active }) {
     list.replaceChildren(table);
   }
 
+  // 招待の URL を開いたゲスト: デッキリストを貼るか、同梱のデッキを選んで席に着く（登録はしない）
   async function renderJoin(root, invite, token) {
     clearInterval(timer);
     root.replaceChildren(el("h2", null, "招待された対局"));
@@ -171,37 +169,47 @@ export function createLobby(source, { toast, openGame, active }) {
       root.append(el("p", "bad", e.status === 403 ? `この招待は使えません（${e.message}）` : e.message));
       return;
     }
-    const vis = (VISIBILITY.find(([k]) => k === info.visibility) || [])[1] || info.visibility;
-    root.append(el("p", null, `相手のデッキ: ${info.deck}（${info.format}）`), el("p", "muted", `${vis}。招待の期限: ${info.expires.replace("T", " ")}`));
-    let decks = [];
-    try { decks = await source.decks(); } catch (_) { decks = []; }
-    if (!decks.length) {
-      const p = el("p", null, "席に着くには、先にデッキを登録します（登録したら、もう一度この URL を開く）。");
-      const a = el("a", null, "デッキへ");
-      a.href = "#/decks";
-      p.append(" ", a);
-      root.append(p);
-      return;
-    }
+    root.append(el("p", null, `相手のデッキ: ${info.deck}（${info.format}）`),
+      el("p", "muted", `招待の期限: ${info.expires.replace("T", " ")}`));
     const f = el("form", "deckform");
-    const mine = select(decks.map((d) => [d.id, `${d.name}（${d.main} 枚）`]));
+    const kind = select([["text", "デッキリストを貼る"], ...(info.repo_decks.length ? [["repo", "用意したデッキを使う"]] : [])]);
+    const name = el("input");
+    name.placeholder = "guest";
+    name.maxLength = 40;
+    const format = select(FORMATS, info.format);
+    const text = el("textarea");
+    text.rows = 14;
+    text.placeholder = "4 Lightning Bolt\n20 Mountain\n…";
+    const repo = select(info.repo_decks.map((n) => [n, n]));
+    const textFields = [field("デッキ名", name), field("フォーマット", format), field("デッキリスト", text)];
+    const repoField = field("用意したデッキ", repo);
+    const sync = () => {
+      for (const x of textFields) x.hidden = kind.value !== "text";
+      repoField.hidden = kind.value !== "repo";
+    };
+    kind.onchange = sync;
     const go = el("button", "on", "このデッキで席に着く");
     go.type = "submit";
     const out = el("div", "checkresult");
     f.onsubmit = async (e) => {
       e.preventDefault();
       go.disabled = true;
+      out.replaceChildren(el("div", "muted", "用意しています…"));
       try {
-        const r = await source.joinInvite(invite, token, mine.value);
-        openGame(r.game);
+        const deck = kind.value === "repo" ? { repo: repo.value }
+          : { text: text.value, format: format.value, name: name.value.trim() || "guest" };
+        const r = await source.joinInvite(invite, token, deck);
+        openGame(r.game, { seat: r.seat, token: r.token });
       } catch (err) {
-        out.replaceChildren(el("div", "bad", err.message));
+        out.replaceChildren(el("div", "bad", err.message),
+          ...checkLines(err.check).map((x) => el("div", x.kind === "error" ? "bad" : "muted", x.text)));
         go.disabled = false;
       }
     };
     const buttons = el("div", "crow");
     buttons.append(go);
-    f.append(field("自分のデッキ", mine, `席に着くと、この対局は${vis.split("（")[0]}になることに同意したことになります`), buttons, out);
+    f.append(field("デッキ", kind), ...textFields, repoField, buttons, out);
+    sync();
     root.append(f);
   }
 

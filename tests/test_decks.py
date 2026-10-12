@@ -12,9 +12,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from mtgtable import carddb, decks, prompt  # noqa: E402
 from mtgtable.sqlstore import SqliteGameStore  # noqa: E402
-from mtgtable.web import Handler, Viewer  # noqa: E402
 from helpers import game  # noqa: E402
-from test_site import Browser  # noqa: E402
+from test_site import Browser, start_site  # noqa: E402
 
 LEGAL = {"standard": "legal", "modern": "legal", "vintage": "legal"}
 CARDS = {
@@ -181,13 +180,8 @@ class DeckApiTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db = pathlib.Path(self.tmp.name) / "mtg.sqlite"
-        viewer = Viewer(self.tmp.name, offline=True, db=self.db, site=True)
+        self.httpd, viewer, self.base = start_site(self.tmp.name, self.db)
         viewer.decks.resolve = fake_resolve
-        handler = type("SiteHandler", (Handler,), {"viewer": viewer})
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-        self.httpd.daemon_threads = True
-        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
-        self.base = "http://127.0.0.1:%d" % self.httpd.server_address[1]
 
     def tearDown(self):
         self.httpd.shutdown()
@@ -195,33 +189,19 @@ class DeckApiTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def call(self, b, method, path, body=None, origin="same"):
-        import urllib.error
-        import urllib.request
-        headers = {"Content-Type": "application/json", "Cookie": "mtg_owner=%s" % b.cookie}
-        if origin:
-            headers["Origin"] = "http://" + b.host
-        req = urllib.request.Request(self.base + path, method=method, headers=headers,
-                                     data=json.dumps(body).encode() if body is not None else None)
-        try:
-            with urllib.request.urlopen(req) as r:
-                return r.status, json.loads(r.read())
-        except urllib.error.HTTPError as e:
-            with e:
-                return e.code, json.loads(e.read())
+        return b.call(path, body if body is not None else ({} if method != "GET" else None), origin=origin,
+                      method=method)
 
-    def test_register_list_update_delete_only_your_own(self):
-        a, b = Browser(self.base).open_site(), Browser(self.base).open_site()
+    def test_register_list_update_delete(self):
+        a = Browser(self.base)
         body = {"name": "green", "format": "standard", "text": deck("56 Forest", "4 Grizzly Bears"),
                 "strategy": "熊で殴る"}
         code, d = self.call(a, "POST", "/api/decks", body)
         self.assertEqual((code, d["name"], d["main"], d["strategy"]), (201, "green", 60, "熊で殴る"))
         self.assertEqual([x["name"] for x in self.call(a, "GET", "/api/decks")[1]], ["green"])
-        self.assertEqual(self.call(b, "GET", "/api/decks"), (200, []))  # 他の人のデッキは見えない
-        self.assertEqual(self.call(b, "GET", "/api/decks/" + d["id"])[0], 404)
-        self.assertEqual(self.call(b, "DELETE", "/api/decks/" + d["id"])[0], 404)
+        self.assertEqual(self.call(a, "GET", "/api/decks/nope")[0], 404)
         self.assertEqual(self.call(a, "POST", "/api/decks", body)[1]["check"]["errors"][0]["message"],
                          "同じ名前のデッキがあります")
-        self.assertEqual(self.call(b, "POST", "/api/decks", body)[0], 201)  # 名前は所有者ごと
         # 更新も同じ検査を通る
         code, r = self.call(a, "PUT", "/api/decks/" + d["id"], dict(body, text=deck("55 Forest", "5 Grizzly Bears")))
         self.assertEqual((code, r["check"]["errors"][0]["line"]), (400, 3))
@@ -232,8 +212,14 @@ class DeckApiTest(unittest.TestCase):
         self.assertEqual(self.call(a, "DELETE", "/api/decks/" + d["id"]), (200, {"ok": True}))
         self.assertEqual(self.call(a, "GET", "/api/decks"), (200, []))
 
+    def test_decks_of_an_older_db_are_read_whatever_the_owner(self):
+        decks.Decks(self.db)._run("INSERT INTO decks (id, owner, name, format, text, strategy, main, sideboard, cards, "
+                                  "created_at, updated_at) VALUES ('d1', 'someone', 'old', 'standard', ?, '', 60, 0, "
+                                  "'{}', '2026-01-01', '2026-01-01')", (deck("60 Forest"),))
+        self.assertEqual([x["name"] for x in self.call(Browser(self.base), "GET", "/api/decks")[1]], ["old"])
+
     def test_check_without_saving_and_input_errors(self):
-        a = Browser(self.base).open_site()
+        a = Browser(self.base)
         code, r = self.call(a, "POST", "/api/decks/check", {"text": deck("56 Forest", "4 Lightning Bolt"), "format": "modern"})
         self.assertEqual((code, r["ok"]), (200, True))
         self.assertEqual(self.call(a, "GET", "/api/decks"), (200, []))
@@ -241,7 +227,7 @@ class DeckApiTest(unittest.TestCase):
                                                        "strategy": "x" * (decks.MAX_STRATEGY + 1)})
         self.assertEqual(code, 400)
         self.assertEqual([e["message"][:6] for e in r["check"]["errors"]], ["デッキ名は半", "プレイ方針は"])
-        self.assertEqual(self.call(Browser(self.base), "GET", "/api/decks")[0], 403)  # 所有者の鍵が無い
+        self.assertEqual(self.call(Browser(self.base, guest=True), "GET", "/api/decks")[0], 403)  # ホストだけ
 
 
 class StrategyPromptTest(unittest.TestCase):

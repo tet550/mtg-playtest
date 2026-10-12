@@ -356,27 +356,19 @@ test("invite links and routes", async () => {
 test("history helpers: view links, matchups and the view route", async () => {
   const { viewURL, matchup, when, RESULT } = await import("../mtgtable/web/history.js");
   const { routeOf, BOARD_PAGES } = await import("../mtgtable/web/site.js");
-  const url = viewURL("https://mtg.example", "g1", "s/k");
-  assert.equal(url, "https://mtg.example/#/view/g1/s%2Fk");
-  assert.deepEqual(routeOf(new URL(url).hash), { page: "view", args: ["g1", "s/k"] });
-  assert.deepEqual(routeOf("#/view/g1"), { page: "view", args: ["g1"] });
-  assert.equal(viewURL("https://mtg.example", "g1"), "https://mtg.example/#/view/g1");
+  const url = viewURL("https://mtg.example", "g/1");
+  assert.equal(url, "https://mtg.example/#/view/g%2F1");
+  assert.deepEqual(routeOf(new URL(url).hash), { page: "view", args: ["g/1"] });
   assert.ok(BOARD_PAGES.includes("view") && BOARD_PAGES.includes("games"));
   assert.equal(matchup([{ id: "p1", name: "green" }, { id: "p2", name: "piza" }]), "green（p1） 対 piza（p2）");
   assert.equal(when("2026-10-09T16:02:43"), "2026-10-09 16:02");
   assert.equal(RESULT.won, "勝ち");
 });
 
-test("legal pages show the operator and contact, or say they are unset", async () => {
-  const { termsSections, privacySections } = await import("../mtgtable/web/legal.js");
-  const flat = (sections) => sections.flatMap(([h, items]) => [h, ...items]).join("\n");
-  const set = flat(termsSections({ operator: "山田", contact: "mail@example.com" }));
-  assert.ok(set.includes("運営者: 山田") && set.includes("連絡先: mail@example.com"));
-  assert.ok(flat(privacySections({})).includes("連絡先: （未設定）"));
-  assert.ok(flat(privacySections({})).includes("mtg_owner"));  // 使う Cookie を書いている
-  const { routeOf } = await import("../mtgtable/web/site.js");
-  assert.equal(routeOf("#/terms").page, "terms");
-  assert.equal(routeOf("#/privacy").page, "privacy");
+test("the local site has no public, share or legal pages", async () => {
+  const { routeOf, PAGES } = await import("../mtgtable/web/site.js");
+  assert.deepEqual(PAGES, ["top", "decks", "new", "games", "history"]);
+  for (const page of ["public", "terms", "privacy"]) assert.equal(routeOf(`#/${page}`), null);
 });
 
 test("basic mana notes become the choices of mana to tap for; others stay as the note", () => {

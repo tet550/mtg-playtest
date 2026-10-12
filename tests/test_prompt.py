@@ -61,7 +61,11 @@ class PromptTest(unittest.TestCase):
         self.assertTrue(text.startswith("# Claude Code で審判と AI の席を兼ねる"))
         self.assertIn(prompt._read(prompt.HERE / "judge.md"), text)
         self.assertIn(prompt._read(prompt.HERE / "player_intent.md"), text)
-        self.assertEqual(text.count("# MTG 基本ルール"), 1)
+        # patterns.md・rules.md は本文を入れず、パスと見出しの行番号だけ（毎回読み直される固定部分を軽くする）
+        self.assertNotIn("# MTG 基本ルール", text)
+        self.assertIn(str(prompt.REFERENCES / "rules.md"), text)
+        self.assertIn(str(prompt.REFERENCES / "patterns.md"), text)
+        self.assertRegex(text, r"  - L\d+ ")
         self.assertIn(prompt.game_system(self.st).strip(), text)
         self.st.apply({"actor": "p1", "acts": [{"proc": "turn_start", "to": "main1"}]})
         self.assertEqual(prompt.claude_code_system(self.st), text)  # 盤面が進んでも同じ

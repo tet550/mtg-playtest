@@ -312,7 +312,7 @@ def step(store: GameStore, ai: Optional[list] = None, guard=None) -> Optional[di
     """審判か AI の席の番なら、プロンプトを作って送り、返答を卓に書く。人間の番・決着なら None。
     guard（サーバーの利用の上限。worker.Guard）があれば、呼ぶ前に check()（超えていれば例外）、呼んだ後に record(usage)。"""
     ai = prompt.ai_seats(store) if ai is None else ai
-    play.autopass(store)  # 止める場所に当たらない応答の機会は、API を呼ばず・人間に聞かずにパス
+    prompt.advance(store)  # 止める場所に当たらない応答の機会・何も起きえないターンの開始は、API を呼ばず・人間に聞かずに進める
     role = prompt.next_role(store, ai)
     if not role:
         return None

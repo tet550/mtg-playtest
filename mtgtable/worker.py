@@ -5,9 +5,12 @@
 - 回す: 変わった対局ごとに llm.run（自動パス → 審判か AI の席の番ならプロンプトを送って返答を卓に書く → 人間の番まで）。
   同じ対局は同時に1つだけ、全体で CONCURRENCY 個まで。1手ごとに Viewer.notify（観戦・相手の画面がすぐ変わる）
 - 止める: 返答を続けて卓に書けない（llm.run の決まり。AI の席は一度審判に回してから）・API を呼べない・利用の上限に
-  当たったら、その対局を「中断」にする（卓の文書 "ai" に理由）。画面に理由を出し、席を持つ人が「再開」できる
-- 利用の上限（Limits。環境変数で変える）: 対局ごとの呼び出し回数とトークン数、所有者（対局を作った人）ごとの1日の
-  トークン数、サイト全体の1日のトークン数。数えるのはトークンの合計（入力（キャッシュ分を含む）＋出力）
+  当たったら、その対局を「中断」にする（卓の文書 "ai" に理由）。画面に理由を出し、ホストが「再開」できる
+- 利用の上限（Limits。環境変数で変える）: 対局ごとの呼び出し回数とトークン数。数えるのはトークンの合計
+  （入力（キャッシュ分を含む）＋出力）
+
+既定（serve --site）ではワーカーを動かさず、審判と AI の席は Claude Code が回す（`next` の監視と mtg-table エージェント）。
+ワーカーは serve --ai のときだけ（API のキーを使う）。
 """
 from __future__ import annotations
 
@@ -42,11 +45,8 @@ CREATE INDEX IF NOT EXISTS ai_usage_day ON ai_usage (day, owner);
 class Limits:
     calls_per_game: int = 600
     tokens_per_game: int = 6_000_000
-    tokens_per_owner_day: int = 10_000_000
-    tokens_per_day: int = 100_000_000
 
-    ENV = {"calls_per_game": "MTGTABLE_AI_CALLS_PER_GAME", "tokens_per_game": "MTGTABLE_AI_TOKENS_PER_GAME",
-           "tokens_per_owner_day": "MTGTABLE_AI_TOKENS_PER_OWNER_DAY", "tokens_per_day": "MTGTABLE_AI_TOKENS_PER_DAY"}
+    ENV = {"calls_per_game": "MTGTABLE_AI_CALLS_PER_GAME", "tokens_per_game": "MTGTABLE_AI_TOKENS_PER_GAME"}
 
     @classmethod
     def from_env(cls) -> "Limits":
@@ -70,11 +70,11 @@ def _today() -> str:
 
 
 class Budget:
-    """AI の利用（呼び出し回数・トークン数）を数える。db があれば SQLite（再起動しても続く）、無ければメモリ。"""
+    """AI の利用（呼び出し回数・トークン数）を対局ごとに数える。db があれば SQLite（再起動しても続く）、無ければメモリ。"""
 
     def __init__(self, limits: Limits, db=None):
         self.limits, self.db = limits, db
-        self._mem: dict = {}  # (game, day) → [owner, calls, tokens]
+        self._mem: dict = {}  # (game, day) → [calls, tokens]
         self._lock = threading.Lock()
         if db:
             conn = connect(db)
@@ -83,68 +83,54 @@ class Budget:
             finally:
                 conn.close()
 
-    def _rows(self, sql: str, args) -> tuple:
-        conn = connect(self.db)
-        try:
-            return conn.execute(sql, args).fetchone()
-        finally:
-            conn.close()
-
-    def used(self, game: str, owner: Optional[str]) -> dict:
-        day = _today()
+    def used(self, game: str) -> dict:
         if self.db:
-            g = self._rows("SELECT COALESCE(SUM(calls), 0), COALESCE(SUM(tokens), 0) FROM ai_usage WHERE game = ?", (game,))
-            o = self._rows("SELECT COALESCE(SUM(tokens), 0) FROM ai_usage WHERE day = ? AND owner = ?", (day, owner)) \
-                if owner else (0,)
-            a = self._rows("SELECT COALESCE(SUM(tokens), 0) FROM ai_usage WHERE day = ?", (day,))
-            return {"game_calls": g[0], "game_tokens": g[1], "owner_tokens": o[0], "day_tokens": a[0]}
+            conn = connect(self.db)
+            try:
+                g = conn.execute("SELECT COALESCE(SUM(calls), 0), COALESCE(SUM(tokens), 0) FROM ai_usage WHERE game = ?",
+                                 (game,)).fetchone()
+            finally:
+                conn.close()
+            return {"game_calls": g[0], "game_tokens": g[1]}
         with self._lock:
-            rows = list(self._mem.items())
-        return {"game_calls": sum(v[1] for (gm, _), v in rows if gm == game),
-                "game_tokens": sum(v[2] for (gm, _), v in rows if gm == game),
-                "owner_tokens": sum(v[2] for (_, d), v in rows if d == day and owner and v[0] == owner),
-                "day_tokens": sum(v[2] for (_, d), v in rows if d == day)}
+            rows = [v for (gm, _), v in self._mem.items() if gm == game]
+        return {"game_calls": sum(v[0] for v in rows), "game_tokens": sum(v[1] for v in rows)}
 
-    def check(self, game: str, owner: Optional[str]) -> None:
-        u, lim = self.used(game, owner), self.limits
+    def check(self, game: str) -> None:
+        u, lim = self.used(game), self.limits
         if u["game_calls"] >= lim.calls_per_game:
             raise LimitReached("この対局の AI の呼び出しが上限（%d 回）に達した" % lim.calls_per_game)
         if u["game_tokens"] >= lim.tokens_per_game:
             raise LimitReached("この対局の AI の利用が上限（%d トークン）に達した" % lim.tokens_per_game)
-        if owner and u["owner_tokens"] >= lim.tokens_per_owner_day:
-            raise LimitReached("今日の AI の利用が、1人の上限（%d トークン）に達した。明日になったら再開できる"
-                               % lim.tokens_per_owner_day)
-        if u["day_tokens"] >= lim.tokens_per_day:
-            raise LimitReached("今日の AI の利用が、サイト全体の上限に達した。明日になったら再開できる")
 
-    def record(self, game: str, owner: Optional[str], usage: dict) -> None:
+    def record(self, game: str, usage: dict) -> None:
         tokens, day = int(usage.get("total_tokens") or 0), _today()
         if self.db:
             conn = connect(self.db)
             try:
-                conn.execute("INSERT INTO ai_usage (game, day, owner, calls, tokens) VALUES (?, ?, ?, 1, ?) "
+                conn.execute("INSERT INTO ai_usage (game, day, calls, tokens) VALUES (?, ?, 1, ?) "
                              "ON CONFLICT (game, day) DO UPDATE SET calls = calls + 1, tokens = tokens + excluded.tokens",
-                             (game, day, owner, tokens))
+                             (game, day, tokens))
             finally:
                 conn.close()
             return
         with self._lock:
-            row = self._mem.setdefault((game, day), [owner, 0, 0])
-            row[1] += 1
-            row[2] += tokens
+            row = self._mem.setdefault((game, day), [0, 0])
+            row[0] += 1
+            row[1] += tokens
 
 
 class Guard:
     """llm.step に渡す: 呼ぶ前に上限を確かめ、呼んだ後に数える。"""
 
-    def __init__(self, budget: Budget, game: str, owner: Optional[str]):
-        self.budget, self.game, self.owner = budget, game, owner
+    def __init__(self, budget: Budget, game: str):
+        self.budget, self.game = budget, game
 
     def check(self) -> None:
-        self.budget.check(self.game, self.owner)
+        self.budget.check(self.game)
 
     def record(self, usage: dict) -> None:
-        self.budget.record(self.game, self.owner, usage)
+        self.budget.record(self.game, usage)
 
 
 # ---------------------------------------------------------------- 中断・再開
@@ -171,8 +157,8 @@ def suspended(store) -> bool:
 
 def _needs_ai(st) -> bool:
     """審判か AI の席の番か（自動パスで進む所は進めてから）。"""
-    from . import play, prompt
-    if play.autopass(st):
+    from . import prompt
+    if prompt.advance(st):
         return True
     return prompt.next_role(st, prompt.ai_seats(st)) is not None
 
@@ -183,10 +169,9 @@ def _settled(reason: str) -> bool:
 
 
 class Worker:
-    def __init__(self, viewer, budget: Budget, owner_of=None, report=print,
+    def __init__(self, viewer, budget: Budget, report=print,
                  interval: float = INTERVAL, concurrency: int = CONCURRENCY):
         self.viewer, self.budget, self.report = viewer, budget, report
-        self.owner_of = owner_of or (lambda game: None)  # 対局 → 利用を数える所有者（対局を作った人）
         self.interval, self.concurrency = interval, concurrency
         self.seen: dict = {}  # 対局 → 最後に回し終えたときの stamp（変わっていなければ回さない）
         self.running: set = set()
@@ -254,7 +239,7 @@ class Worker:
         def report(line: str) -> None:
             self.report("[ai %s] %s" % (game, line))
             self.viewer.notify()  # 1手ごとに画面へ
-        guard = Guard(self.budget, game, self.owner_of(game))
+        guard = Guard(self.budget, game)
         try:
             reason = llm.run(st, report=report, guard=guard)
         except LimitReached as e:

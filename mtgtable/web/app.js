@@ -53,11 +53,24 @@ const params = new URLSearchParams(location.search);
   }
 })();
 
-let mySeats = {};  // 公開のサーバーで、所有者の鍵（Cookie）で持っている席 {対局: 席}
+let mySeats = {};  // 手元のサイトで、ホストの席 {対局: 席}（鍵が無くても手元のブラウザなので対局できる）
 let gameList = [];
-let viewing = null;  // 再生・観戦（#/view/<対局>[/<共有の鍵>]）: {game, share, finished, views}
+let viewing = null;  // 再生（#/view/<対局>）: {game, finished, views}
 const VIEW_LABEL = (v) => (v === "judge" ? t("seat.all") : v);
-let site = null;  // 公開のサーバーの画面の切り替え（トップ・デッキ・対局）
+let site = null;  // 手元のサイトの画面の切り替え（トップ・デッキ・対局）
+const guest = () => !!(config.site && !config.host);  // 招待で着いたゲスト（外のブラウザ。席の鍵だけで入る）
+
+// ゲストの対局: 一覧は見せないので、このブラウザが鍵を覚えている対局
+function rememberedGames() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("mtgtable.key.")) out.push(k.slice("mtgtable.key.".length));
+    }
+  } catch (_) { /* 保存できない */ }
+  return out;
+}
 function keyOf(game) {
   let k = null;
   try { k = JSON.parse(recall("key." + game) || "null"); } catch (_) { k = null; }
@@ -97,6 +110,7 @@ function seatLabels() {
 function gameLabel(id) {
   const g = gameList.find((x) => x.id === id);
   if (g) return t("game.option", { id: g.id, turn: g.turn, version: g.version });
+  if (guest()) return t("game.option.seat", { id });  // ゲストが鍵で入っている対局（一覧が無いので、ターンは出せない）
   return t(viewing && viewing.finished ? "game.option.replay" : "game.option.watch", { id });
 }
 
@@ -106,14 +120,16 @@ async function loadGames() {
   const games = await source.games();
   gameList = games;
   mySeats = Object.fromEntries(games.filter((g) => g.my_seat).map((g) => [g.id, g.my_seat]));
+  const ids = games.map((g) => g.id);
+  if (guest()) ids.push(...rememberedGames().filter((id) => !ids.includes(id)));
   const sel = $("game");
-  sel.replaceChildren(...games.map((g) => {
-    const o = el("option", null, gameLabel(g.id));
-    o.value = g.id;
+  sel.replaceChildren(...ids.map((id) => {
+    const o = el("option", null, gameLabel(id));
+    o.value = id;
     return o;
   }));
   const saved = params.get("game") || recall("game");
-  ui.game = games.some((g) => g.id === saved) ? saved : (games[0] && games[0].id);
+  ui.game = ids.includes(saved) ? saved : ids[0];
   if (ui.game) sel.value = ui.game;
 }
 
@@ -129,7 +145,7 @@ async function load() {
   const follow = timeline && ui.live && added > 1;
   if (timeline && ui.live && added === 1) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
-  ui.idle = result.timeline.idle ? { ...result.timeline.idle, at: Date.now() } : null;  // 時間切れの知らせ（公開のサーバー）
+  ui.idle = result.timeline.idle ? { ...result.timeline.idle, at: Date.now() } : null;  // 時間切れの知らせ（手元のサイト）
   ui.ai = result.timeline.ai || null;  // サーバーの中で回す AI の状態（中断していれば理由）
   ui.log = result.log;
   ui.cursor = timeline.cursor;
@@ -171,43 +187,17 @@ function changeSelection() {
   listen();
 }
 
-// 公開のサーバー: 復元 URL（#recover=...）で開いたら、この端末を同じ所有者に戻す。ヘッダーに復元 URL を作るボタン
-async function siteSetup() {
-  const token = new URLSearchParams(location.hash.slice(1)).get("recover");
-  if (token) {
-    history.replaceState(null, "", location.pathname + location.search);
-    try {
-      await source.recover(token);
-    } catch (e) {
-      showError(new Error(t("error.recover", { message: e.message })));
-    }
-  }
-  // 招待の URL（?game=G&seat=p1#key=...）で来たら、その席をこの所有者のものにする（取った後は鍵が無くても入れる）
-  const game = params.get("game"), invited = game && keyOf(game);
-  if (invited && invited.token) {
-    try {
-      await source.claim(game, invited.seat, invited.token);
-    } catch (e) {
-      showError(new Error(e.status === 403 ? t("error.seatTaken") : e.message));
-    }
-  }
+// 手元のサイト: ヘッダーの画面の切り替え。全体の視点（judge）は、終わった対局の再生（#/view）でだけ選べる
+function siteSetup() {
   $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value !== "judge"));
   site = createSite(source, { toast, games: () => gameList, openGame, config: () => config });
-  $("recovery").hidden = false;
-  $("legallinks").hidden = false;
-  $("recovery").onclick = async () => {
-    try {
-      const { token } = await source.recovery();
-      window.prompt(t("recovery.prompt"), `${location.origin}/#recover=${token}`);
-    } catch (e) { showError(e); }
-  };
 }
 
-// 再生・観戦: 見られる視点（サーバーの access）を席の選択に出し、その対局を開く。共有の鍵は読み取りに付ける
-async function openView(game, share) {
-  const a = await source.access(game, share);
-  viewing = { game, share, finished: a.finished, views: a.views };
-  source.setViewing({ game, share });
+// 再生: 見られる視点（サーバーの access）を席の選択に出し、その対局を開く
+async function openView(game) {
+  const a = await source.access(game);
+  viewing = { game, finished: a.finished, views: a.views };
+  source.setViewing({ game });
   const sel = $("game");
   if (![...sel.options].some((o) => o.value === game)) {
     const o = el("option", null, gameLabel(game));
@@ -231,8 +221,9 @@ async function closeView() {
   changeSelection();
 }
 
-// 作った・着いた対局を開く（一覧を取り直し、その対局のその席で）
-async function openGame(id) {
+// 作った・着いた対局を開く（一覧を取り直し、その対局のその席で）。ゲストは着いたときの席の鍵を覚える
+async function openGame(id, key) {
+  if (key) remember("key." + id, JSON.stringify({ seat: key.seat, token: key.token }));
   remember("game", id);
   await loadGames();
   ui.game = id;
@@ -324,38 +315,56 @@ const floatClamps = [];  // 盤面の大きさが変わったら（Log の開閉
 function clampFloats() { floatClamps.forEach((f) => f()); }
 addEventListener("resize", () => { placeSpeech(); clampFloats(); });
 
+// 置き場所は、近い方の端（左か右・上か下）から小窓の左上までの距離で覚える。窓の大きさが変わっても右下に置いた小窓は右下に残り、
+// 狭くして詰めた位置は覚えた位置を変えない（広げると戻る）
 function setupFloat(panel) {
   const key = "float." + panel.id;
   const board = panel.parentElement;
-  const place = (x, y) => {
-    const b = board.getBoundingClientRect();
-    const nx = Math.max(0, Math.min(x, b.width - panel.offsetWidth));
-    const ny = Math.max(0, Math.min(y, b.height - 28));
-    Object.assign(panel.style, { left: `${nx}px`, top: `${ny}px`, right: "auto", bottom: "auto" });
-    return [nx, ny];
-  };
-  let pending = null;  // 覚えた位置。盤面が描かれて大きさが決まってから当てる
+  // 画面の下に留めている間（狭い画面の操作パネル。CSS の --docked）は、位置を当てず、ドラッグもしない
+  const docked = () => getComputedStyle(panel).getPropertyValue("--docked").trim() === "1";
+  const area = () => getComputedStyle(panel).position === "fixed"
+    ? { left: 0, top: 0, width: document.documentElement.clientWidth, height: document.documentElement.clientHeight }
+    : board.getBoundingClientRect();
+  let want = null;  // ドラッグで決めた位置 { x, y, right, bottom }。無ければ CSS の既定の位置
   try {
-    pending = JSON.parse(recall(key) || "null");
-    if (pending) panel.classList.toggle("min", !!pending.min);
+    const saved = JSON.parse(recall(key) || "null");
+    if (saved) panel.classList.toggle("min", !!saved.min);
+    if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) want = { x: saved.x, y: saved.y, right: !!saved.right, bottom: !!saved.bottom };
   } catch (_) { /* 覚えた位置が無くても動く */ }
-  floatClamps.push(() => {
-    const b = board.getBoundingClientRect();
-    if (pending && !panel.hidden && panel.offsetWidth && b.width > panel.offsetWidth && b.height > 60) {
-      place(pending.x, pending.y);
-      pending = null;
-    }
-    else if (panel.style.left) place(panel.offsetLeft, panel.offsetTop);
-  });
-  const save = () => remember(key, JSON.stringify({ x: panel.offsetLeft, y: panel.offsetTop, min: panel.classList.contains("min") }));
+  const place = () => {
+    if (!want || panel.hidden || !panel.offsetWidth || docked()) return;
+    const b = area(), w = panel.offsetWidth, h = panel.offsetHeight;
+    if (b.width < 60 || b.height < 60) return;  // 盤面がまだ描かれていない
+    const x = want.right ? b.width - w - want.x : want.x;
+    const y = want.bottom ? b.height - want.y : want.y;
+    // 入りきらなければ画面の中に詰める（下にはみ出すなら上へ。それでも入らなければ見出しを見せる）
+    const nx = Math.max(0, Math.min(x, b.width - w));
+    const ny = Math.max(0, Math.min(y, b.height - h));
+    Object.assign(panel.style, { left: `${nx}px`, top: `${ny}px`, right: "auto", bottom: "auto" });
+  };
+  const anchor = (nx, ny) => {
+    const b = area(), w = panel.offsetWidth, h = panel.offsetHeight;
+    nx = Math.max(0, Math.min(nx, b.width - w));
+    ny = Math.max(0, Math.min(ny, b.height - h));
+    const right = nx + w / 2 > b.width / 2, bottom = ny + h / 2 > b.height / 2;
+    return { x: right ? b.width - w - nx : nx, y: bottom ? b.height - ny : ny, right, bottom };
+  };
+  floatClamps.push(place);
+  // 中身が変わって小窓の大きさが変わったとき・盤面の大きさが変わったときも詰め直す
+  if (typeof ResizeObserver === "function") {
+    const ro = new ResizeObserver(() => place());
+    ro.observe(panel);
+    ro.observe(board);
+  }
+  const save = () => remember(key, JSON.stringify({ ...(want || {}), min: panel.classList.contains("min") }));
   panel.querySelector(".fmin").onclick = () => { panel.classList.toggle("min"); save(); };
   const close = panel.querySelector(".fclose");
   if (close) close.onclick = () => { panel.hidden = true; };
   panel.querySelector(".fhead").addEventListener("pointerdown", (e) => {
-    if (e.target.closest("button")) return;
-    const pb = panel.getBoundingClientRect(), bb = board.getBoundingClientRect();
+    if (e.target.closest("button") || docked()) return;
+    const pb = panel.getBoundingClientRect(), bb = area();
     const start = { x: e.clientX, y: e.clientY, left: pb.left - bb.left, top: pb.top - bb.top };
-    const move = (ev) => place(start.left + ev.clientX - start.x, start.top + ev.clientY - start.y);
+    const move = (ev) => { want = anchor(start.left + ev.clientX - start.x, start.top + ev.clientY - start.y); place(); };
     const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); save(); };
     addEventListener("pointermove", move);
     addEventListener("pointerup", up);
@@ -446,7 +455,7 @@ document.addEventListener("keydown", (e) => {
   try {
     await source.init();
     config = await source.config().catch(() => ({ play: false }));
-    if (config.site) await siteSetup();
+    if (config.site) siteSetup();
     if (source.isStatic) {
       $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value === "judge"));
       $("conn").hidden = true;
@@ -463,9 +472,10 @@ document.addEventListener("keydown", (e) => {
     await loadGames();
     applySeatMode();
     if (site) {  // 対局が無ければトップから
-      const route = routeOf(location.hash) || { page: gameList.length ? "games" : "top", args: [] };
+      const route = routeOf(location.hash) || { page: gameList.length || guest() ? "games" : "top", args: [] };
       const go = async (r) => {
-        if (r.page === "view") await openView(r.args[0], r.args[1] || null);
+        if (guest() && r.page !== "join") r = { page: "games", args: [] };  // ゲストは招待と自分の席の盤面だけ
+        if (r.page === "view") await openView(r.args[0]);
         else if (viewing) await closeView();
         await site.show(r.page, r.args);
       };

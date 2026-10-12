@@ -41,7 +41,7 @@ def _now() -> datetime.datetime:
 
 def invite(store: GameStore, seat: str, ttl: Optional[float] = None) -> str:
     """seat の鍵を新しく作って返す（前の鍵は使えなくなる）。保存先にはハッシュだけを残す。
-    ttl（時間）を渡すと、その時間が過ぎた鍵は使えない（公開のサーバーでは、席を取る前の招待の URL が残り続けないように）。"""
+    ttl（時間）を渡すと、その時間が過ぎた鍵は使えない（CLI の invite の URL が残り続けないように）。"""
     state = store.load()
     if seat not in state.players:
         raise ValueError("unknown seat %r (players: %s)" % (seat, ", ".join(state.player_order)))

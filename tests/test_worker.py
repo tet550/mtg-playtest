@@ -80,7 +80,7 @@ class WorkerTest(unittest.TestCase):
         self.assertFalse((self.st.root / "prompts" / "judge" / "0001-2.user.md").exists())  # 同じプロンプトを2度作らない
         time.sleep(0.5)
         self.assertEqual(len(FakeOpenAI.requests), 2)  # 人間の番の間は呼ばない
-        used = self.worker.budget.used("g", None)
+        used = self.worker.budget.used("g")
         self.assertEqual((used["game_calls"], used["game_tokens"]), (2, 200))
         self.assertIsNone(self.call("/api/games/g/timeline?seat=p1")[1].get("ai"))
 
@@ -118,25 +118,20 @@ class WorkerTest(unittest.TestCase):
 
 class BudgetTest(unittest.TestCase):
     def check_budget(self, db):
-        b = worker.Budget(worker.Limits(calls_per_game=3, tokens_per_game=1000, tokens_per_owner_day=500,
-                                        tokens_per_day=800), db)
-        b.record("a", "alice", {"total_tokens": 300})
-        b.record("b", "alice", {"total_tokens": 250})
-        b.check("c", "bob")  # 他の人・他の対局は通る
+        b = worker.Budget(worker.Limits(calls_per_game=3, tokens_per_game=1000), db)
+        b.record("a", {"total_tokens": 600})
+        b.record("b", {"total_tokens": 600})
+        b.check("a")  # 対局ごとに数える
+        b.record("a", {"total_tokens": 500})
         with self.assertRaises(worker.LimitReached) as e:
-            b.check("c", "alice")  # alice の今日の合計 550 ≥ 500
-        self.assertIn("1人の上限", str(e.exception))
-        b.record("c", "bob", {"total_tokens": 300})
-        with self.assertRaises(worker.LimitReached) as e:
-            b.check("d", "carol")  # サイト全体 850 ≥ 800
-        self.assertIn("サイト全体", str(e.exception))
-        b.limits.tokens_per_day = 10_000
-        b.limits.tokens_per_owner_day = 10_000
-        b.record("a", "alice", {"total_tokens": 1})
-        b.record("a", "alice", {"total_tokens": 1})
+            b.check("a")  # a の合計 1100 ≥ 1000
+        self.assertIn("トークン", str(e.exception))
+        b.limits.tokens_per_game = 10_000
+        b.record("b", {"total_tokens": 1})
+        b.record("b", {"total_tokens": 1})
         with self.assertRaises(worker.LimitReached):
-            b.check("a", "alice")  # a は 4 回 ≥ 3
-        self.assertEqual(b.used("a", "alice")["game_tokens"], 302)
+            b.check("b")  # b は 3 回 ≥ 3
+        self.assertEqual(b.used("b"), {"game_calls": 3, "game_tokens": 602})
 
     def test_in_memory_and_in_the_db(self):
         self.check_budget(None)
@@ -146,8 +141,8 @@ class BudgetTest(unittest.TestCase):
     def test_limits_from_the_environment(self):
         saved = dict(os.environ)
         try:
-            os.environ["MTGTABLE_AI_TOKENS_PER_DAY"] = "2_000_000"
-            self.assertEqual(worker.Limits.from_env().tokens_per_day, 2_000_000)
+            os.environ["MTGTABLE_AI_TOKENS_PER_GAME"] = "2_000_000"
+            self.assertEqual(worker.Limits.from_env().tokens_per_game, 2_000_000)
             os.environ["MTGTABLE_AI_CALLS_PER_GAME"] = "many"
             with self.assertRaises(ValueError):
                 worker.Limits.from_env()
