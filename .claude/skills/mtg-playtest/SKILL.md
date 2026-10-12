@@ -28,6 +28,8 @@ description: mtgtable（このリポジトリのデジタル卓）で MTG の対
 1. **サブエージェントを使わない。** AI 同士の対戦でも、一人回しでも、メインの会話が
    両方の Player を順に担当する。トークンを節約するため、並行させたり Player ごとに
    エージェントを分けたりしない。
+   例外は 3b（GUI の対局）で、審判と AI の席をエージェント `mtg-table` 1つに任せる
+   （大きな固定のプロンプトをメインの会話で毎回読み直さないため）
 2. **相手の非公開情報が見えることは許容する。ただし判断には極力使わない。**
    - 各 Player の判断は、その Player の `view --as pN` に出ている情報だけで行う
    - 判断のために `view --as judge`・`state.json`・`log --events` を読まない
@@ -67,7 +69,7 @@ description: mtgtable（このリポジトリのデジタル卓）で MTG の対
 
 | ゲート | 操作 |
 |---|---|
-| 🟢 そのまま実行 | `new` / `view` / `apply` / `undo` / `redo` / `log` / `replay` / `diff` / `fork` / `oracle` / `deck` / `invite` / `wait` / `next` / `answer`（すべてローカル。`playtest/` は .gitignore 済み） |
+| 🟢 そのまま実行 | `new` / `view` / `apply` / `undo` / `redo` / `log` / `replay` / `diff` / `fork` / `oracle` / `deck` / `invite` / `wait` / `next` / `answer` / `serve --play`（127.0.0.1 のまま）（すべてローカル。`playtest/` は .gitignore 済み） |
 | 🟡 ユーザーの指示があるときだけ | git の commit / push、`decklists/` や `decklists/strategy/` の書き換え、`new --force` での既存対局の上書き、`serve --host` で 127.0.0.1 以外に公開する（席の鍵があっても通信は暗号化されない）、`auto`・`serve --ai` / `--site`（対局の情報を、設定した LLM の提供元（OpenAI・Anthropic）の API に送る） |
 | 🔴 行わない | `playtest/` 外のファイルの削除、Scryfall 以外への通信 |
 
@@ -171,32 +173,59 @@ python -m mtgtable new playtest/<対局名> --deck p1=decklists/<A>.txt --deck p
 盤面を動かすのは審判だけ（`apply --as p2` は断られる）。AI（Claude Code）は**審判**と **AI の席**の2つの役割を、
 プロンプトのファイルを通して回す（design/request_play_design.md）。
 
-1. 準備: `new` の後、人間の席の URL を作り、ユーザーに渡す（鍵付き。URL は報告に出してよいが、それ以外に送らない）
+サーバーの起動・人間の番の待ち受け・審判と AI の席の応答は、すべて Claude Code が回す（ユーザーに「続けて」と打たせない）。
+待ち受けはバックグラウンドの監視スクリプトで行い、待っている間はトークンを使わない。
+
+1. GUI のサーバーを起動する。`curl -s -o /dev/null http://127.0.0.1:8765/` が通れば起動済みなのでそのまま使う。
+   通らなければ Bash の `run_in_background` で起動する（セッションの間動き続ける。終わらせない）
+
+```bash
+python -m mtgtable serve --play
+```
+
+2. `new` の後、人間の席の URL を作る（鍵付き。URL は報告に出してよいが、それ以外に送らない）。人間の席は鍵で守られ、
+   ブラウザから judge や相手の席は見えない
 
 ```bash
 python -m mtgtable invite playtest/<対局名> --seat p1
 ```
 
-   サーバーはユーザーが起動する（`python -m mtgtable serve --play`。起動済みならそのまま）。人間の席は鍵で守られ、
-   ブラウザから judge や相手の席は見えない
-2. 審判か AI の席の番まで待ち、その役割のプロンプトを書き出す（人間の番の間は待つ。時間切れは終了コード 3 で、もう一度）
+   - URL は `127.0.0.1` のまま開く（`localhost` に書き換えると、ブラウザが席の鍵を別のオリジンに置くので見えない）
+   - 鍵はハッシュでしか残らないので、URL を後から読み出せない。分からなくなったら `invite` し直す（前の URL は使えなくなる）
+   - デスクトップアプリ（ブラウザペインのツール `mcp__Claude_Browser__preview_start` がある）なら、その URL を
+     `preview_start {url}` で開く。開けるのはタブまでなので、ペインが見えていなければ「右上の地球儀のボタンで
+     ブラウザペインを出し、拡大ボタンで広げる」とユーザーに伝える。ターミナルでは URL を渡すだけ
+3. **監視スクリプト**を Bash の `run_in_background` で起動する。審判か AI の席の番が来るまで `next` を繰り返し
+   （人間の番の間は終了コード 3 で、もう一度）、番が来たらプロンプトを書き出して終わる。終わると Claude Code が
+   自動で起こされるので、その出力（`prompt for <役割>` と `system:` `user:` の場所、または `決着`）を読む
 
 ```bash
-python -m mtgtable next playtest/<対局名> --ai p2
+while :; do python -m mtgtable next playtest/<対局名> --ai p2 --timeout 3600 --claude-code; s=$?; [ $s -ne 3 ] && exit $s; done
 ```
 
-3. 書き出された `prompts/<役割>/latest.md` を読み、その役割として返答（最後に JSON のコード・ブロック）を書いて渡す。
-   続けてプロンプトが出れば、また 3。`waiting on p1（人間の番…）` と出たら 2 に戻る
-
-```bash
-python -m mtgtable answer playtest/<対局名> <返答のファイル>
-```
-
+   - `--claude-code` で、エージェントが最初に読む固定部分（`prompts/claude-code.md`）も書き出す
+   - 監視は1つだけ動かす。エージェントが応答している間（4 の途中）は起動しない
+   - 出力が `決着（待っている Player はいない）` なら監視をやめて、4. 記録と報告へ
+   - ユーザーが「止めて」と言ったら、そのバックグラウンドのタスクを止める（サーバーも止めるかは確認する）
+4. **エージェント `mtg-table` に渡す**（`.claude/agents/mtg-table.md`）。審判と AI の席を1つのエージェントが兼ねる。
+   メインの会話はプロンプトを読まず、監視の出力をエージェントに渡すだけ:
+   - 最初の1回: Agent（`subagent_type: mtg-table`）で起動し、対局のフォルダ・`system:`（`prompts/claude-code.md`）・`user:` を渡す
+   - 2回目から: SendMessage で同じエージェントに `user:` の場所だけ渡す
+   - エージェントは `claude-code.md`（両方の役割の指示・リファレンス・両者のデッキ。約 94KB）を最初に1回だけ読み、以後は毎回の状況
+     （`NNNN.user.md`。前に送った部分を省いて 1〜2KB）だけを読んで、`answer` を自分で実行する。審判の処理の後に AI の席の番が来れば（またはその逆）、
+     そのまま続けて答える。失敗したら理由を読んで自分で書き直す
+   - エージェントが返すのは、最後の `answer` の `prompt for` / `user:` / `waiting on` の行だけ。`waiting on p1（人間の番…）` なら
+     3 の監視を起動し直す
+   - エージェントの名前（ID）は対局の間覚えておく。新しい対局では新しく起動する（`claude-code.md` は対局ごとに違う）。
+     文脈が長くなって遅くなったら、新しく起動し直してよい。そのときは依頼に「引き継ぎ」と書く（毎回の状況は前に送った部分を
+     省いてあるので、エージェントが最初に `log` と相手のカードの `oracle` で補う。`claude-code.md` の「毎回の状況で省いてあるもの」）
+   - メインの会話にプロンプトが入らないので、長い会話の中で始めても1手のコストが会話の長さで増えない。
+     エージェントは審判として相手の手札も見るが、AI の席の判断には使わない（`claude-code.md` の「役割を兼ねるときの決まり」）
    - **審判**（`judge.md`）: 人間・AI の依頼（「行動: 1. …」「その後: …」）を、Act ごとに actor を付けた Batch に直して書く。
      マリガンの引き直し・キープの後に下に置くカードの質問・ゲーム開始・全員パスの後の解決も審判の番で来る
    - **AI の席**（`player_intent.md`）: `{"request": {"plan", "then"}}`・`{"declare": {"kind"}}`・`{"answer": {...}}` のどれかと `memo`
-   - 両方を自分で回すので相手の手札も見えるが、AI の席の判断には使わない（AI の席のプロンプトに出る情報だけで決める）
-   - LLM の API のキー（OpenAI か Anthropic。`secrets/README.md`）があれば `python -m mtgtable auto playtest/<対局名> --watch` で同じことを自動で回せる
+   - LLM の API のキー（OpenAI か Anthropic。`secrets/README.md`）があれば `python -m mtgtable auto playtest/<対局名> --watch` で同じことを
+     Claude Code を使わずに回せる（プロンプトは同じ）
 
 - 人間の GUI は、やることを下書きに足して送るまで盤面を変えない。送った依頼は取り消せないので、巻き戻しの請求は
   発言・依頼の文で届く。上の「巻き戻しを請求できる」に従い、審判として `undo --to N` する

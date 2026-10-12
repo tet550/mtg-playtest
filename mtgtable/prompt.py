@@ -92,7 +92,15 @@ def seat_system(store: GameStore, seat: str) -> str:
     data = _deck_data(state, seat)
     if data:
         out += ["", "# あなたのデッキ（オラクル）", carddb.format_deck(data, sideboard=False).strip()]
+    out += _strategy(state, seat)
+    return "\n".join(out) + "\n"
+
+
+def _strategy(state, seat: str) -> list:
+    """seat のデッキの戦略メモ（見出し付きの行）。無ければ空。"""
+    deck = state.meta.get("decks", {}).get(seat, {})
     name = deck.get("name")
+    out = []
     if deck.get("strategy") is not None:
         # サイトで登録したデッキ: 登録したプレイ方針だけ（同じ名前の decklists/strategy/ のファイルは別のデッキのもの）
         if deck["strategy"].strip():
@@ -101,7 +109,7 @@ def seat_system(store: GameStore, seat: str) -> str:
         for p in sorted(STRATEGY.glob("%s*.md" % name)):
             if p.stem == name or p.stem.startswith(name + "-"):
                 out += ["", "# 戦略メモ: %s" % p.name, _read(p)]
-    return "\n".join(out) + "\n"
+    return out
 
 
 def game_system(store: GameStore) -> str:
@@ -114,6 +122,34 @@ def game_system(store: GameStore) -> str:
         if data:
             out += ["", "# %s のデッキ（オラクル）" % p, carddb.format_deck(data, sideboard=False).strip()]
     return "\n".join(out) + "\n"
+
+
+def claude_code_system(store: GameStore) -> str:
+    """Claude Code のエージェント1つが審判と AI の席を兼ねるときの固定部分（最初に1回だけ読む）。
+    API の形（役割ごとに system を送る）と違い、両方の役割の指示とリファレンスを1つにまとめ、重なる rules.md を1回にする。
+    毎回の状況は役割ごとの NNNN.user.md のまま。"""
+    state = store.initial()
+    out = [_read(HERE / "claude_code.md"),
+           "---\n\n# 審判の役割（judge.md）", _read(HERE / "judge.md"),
+           "---\n\n# AI の席の役割（player_intent.md）", _read(HERE / "player_intent.md"),
+           "---\n\n# リファレンス", _cli_reference(), _read(REFERENCES / "patterns.md"), _read(REFERENCES / "rules.md"),
+           "---\n\n" + game_system(store).strip() + "\n\nPlayer の担当: " + _players_line(store, state)]
+    for seat in ai_seats(store):
+        strategy = _strategy(state, seat)
+        if strategy:
+            out.append("\n".join(["# %s（AI の席）の戦略メモ" % seat] + strategy))
+    return "\n\n".join(out) + "\n"
+
+
+def claude_code_path(store: GameStore) -> pathlib.Path:
+    return store.root / "prompts" / "claude-code.md"
+
+
+def write_claude_code(store: GameStore) -> pathlib.Path:
+    path = claude_code_path(store)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_if_changed(path, claude_code_system(store))
+    return path
 
 
 # ---------------------------------------------------------------- 毎回変わる部分
@@ -129,7 +165,7 @@ def _write_memo(store: GameStore, seat: str, memo) -> None:
         memo_path(store, seat).write_text(memo.strip()[:play.MAX_MEMO] + "\n", encoding="utf-8")
 
 
-def _entry_line(e: dict, viewer: Optional[str] = None) -> str:
+def _entry_line(e: dict, viewer: Optional[str] = None, same=()) -> str:
     """log の1件を1行に。viewer（Player）が見る行では、他の Player の依頼・回答・質問の中身を伏せる。"""
     hidden = [op for op in e["act"] if op["op"] == "declare" and op.get("kind") in play.PRIVATE_KINDS
               and viewer is not None and op.get("player", e["actor"]) != viewer]
@@ -150,19 +186,21 @@ def _entry_line(e: dict, viewer: Optional[str] = None) -> str:
     for d in decl:  # 審判とのやりとりは中身も出す（依頼・回答・質問は本人と審判だけ。ruled は公開）
         if viewer is not None and d["kind"] in play.PRIVATE_KINDS and d.get("player", e["actor"]) != viewer:
             continue
-        if d.get("text") and d["text"] not in text:
+        if d.get("text") in same:  # 同じメッセージの「処理する依頼」に文がある
+            text = "%s（上の「処理する依頼」）" % ("依頼" if d["kind"] == "intent" else d["kind"])
+        elif d.get("text") and d["text"] not in text:
             text += "  [%s %s: %s]" % (d["kind"], d.get("player", ""), d["text"])
     return "%4d %-5s %s" % (e["seq"], e["actor"] or "judge", quote(text))
 
 
-def _opponent_oracle(state, seat: str) -> str:
+def _opponent_oracle(state, seat: str, skip=()) -> str:
     """seat が知っている、自分のデッキに無いカードのオラクル（相手のカード）。トークンは view の definition で分かるので引かない
-    （名前で引くと、同名のカードに当たる）。"""
+    （名前で引くと、同名のカードに当たる）。skip の名前は出さない（前に送ったもの）。"""
     data = _deck_data(state, seat)
     own = set(data["cards"]) if data else set()
     names = sorted({c.name for cid, c in state.cards.items()
                     if state.zones[c.zone].kind != "sideboard" and c.name and c.name not in own and not c.token
-                    and info.knows_identity(state, seat, cid)})
+                    and info.knows_identity(state, seat, cid)} - set(skip))
     out = []
     for n in names:
         rec = carddb.lookup(n, offline=True)
@@ -170,10 +208,12 @@ def _opponent_oracle(state, seat: str) -> str:
     return "\n".join(out)
 
 
-def _situation(state, me: Optional[str]) -> list:
+def _situation(state, me: Optional[str], cc: bool = False) -> list:
     t = state.turn
     wait = play.waiting_on(state)
     who = "あなた" if wait == me else {None: "誰でもない（決着）", JUDGE: "審判"}.get(wait, wait)
+    if cc:  # ターン・ステップ・優先権は盤面の1行目と同じなので出さない
+        return ["# 今の状況", "待たれているのは %s。" % who]
     return ["# 今の状況", "T%d %s/%s。アクティブ %s、優先権 %s。待たれているのは %s。"
             % (t.turn, t.phase, t.step, t.active or "-", t.priority or "-", who)]
 
@@ -183,13 +223,16 @@ def _error(error: Optional[str]) -> list:
             "失敗した Act とそれより後は適用されていない。今の盤面から書き直す。"] if error else []
 
 
-def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode: str = "direct") -> str:
-    """Player（intent / direct）への今回のメッセージ。seat が見てよいものだけ。"""
+def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode: str = "direct", cc: bool = False) -> str:
+    """Player（intent / direct）への今回のメッセージ。seat が見てよいものだけ。
+
+    cc（Claude Code の同じエージェントが続けて受け取る）: 止める場所は設定があるときだけ、相手のカードのオラクルは
+    前に送っていないものだけ（送った名前は prompts/<席>/cc-seen.json）。"""
     state = store.load()
     since = play.last_own(store, seat)
     cur = store.cursor()
     wait = play.waiting_on(state)
-    out = _situation(state, seat) + _error(error)
+    out = _situation(state, seat, cc) + _error(error)
     if state.turn.turn == 0 and play.mulligans(state, seat):
         n = play.mulligans(state, seat)
         out += ["マリガン %d 回。キープすると、ゲーム開始の前に審判が、ライブラリーの一番下に置く %d 枚を聞く。" % (n, n)]
@@ -197,12 +240,18 @@ def user_message(store: GameStore, seat: str, error: Optional[str] = None, mode:
     out += [_entry_line(e, seat) for e in store.read_log()[since:cur]] or ["（なし）"]
     memo = memo_path(store, seat)
     out += ["", "# あなたの memo", _read(memo) if memo.exists() else "（なし）"]
-    out += ["", "# 止める場所（あなたの非公開の設定。変えるなら返答に stops）", _stops_text(store, seat)]
+    if not cc or play.get_stops(store, seat):
+        out += ["", "# 止める場所（あなたの非公開の設定。変えるなら返答に stops）", _stops_text(store, seat)]
     view = info.player_view(state, seat, library=True, graveyard=True)
     out += ["", "# 盤面（あなたの view）", render_view(view).rstrip()]
-    opp = _opponent_oracle(state, seat)
+    seen_path = prompt_dir(store, seat) / "cc-seen.json"
+    seen = json.loads(seen_path.read_text(encoding="utf-8")) if cc and seen_path.exists() else []
+    opp = _opponent_oracle(state, seat, seen)
     if opp:
-        out += ["", "# 相手のカードのオラクル（デッキ一覧に無いもの）", opp]
+        out += ["", "# 相手のカードのオラクル（デッキ一覧に無いもの%s）" % ("。前に送ったものは省く" if cc else ""), opp]
+        if cc:
+            seen_path.parent.mkdir(parents=True, exist_ok=True)
+            _dump(seen_path, sorted(set(seen) | {l[1:l.index(">")] for l in opp.splitlines() if l.startswith("<")}))
     back = play.resume(state, seat)
     if back:
         out += ["", "# 途中で止まったあなたの計画（依頼 #%d の残り。相手の割り込みなどで止まった。続けるなら、直して request で"
@@ -245,16 +294,18 @@ def _stops_text(store: GameStore, pid: str) -> str:
                      for c in codes)
 
 
-def judge_message(store: GameStore, error: Optional[str] = None) -> str:
-    """審判への今回のメッセージ: 処理する依頼・最近の記録・全情報の盤面。"""
+def judge_message(store: GameStore, error: Optional[str] = None, cc: bool = False) -> str:
+    """審判への今回のメッセージ: 処理する依頼・最近の記録・全情報の盤面。
+
+    cc（Claude Code の同じエージェントが続けて受け取る）: 変わらないもの（Player の人間・AI、依頼の文）は claude-code.md に
+    あるので出さない。先の指示は番号だけ（前に処理した依頼なので文は受け取っている）、止める場所は設定があるときだけ、
+    最近の記録は前回の処理の後だけで、処理する依頼と同じ文は繰り返さない。"""
     state = store.load()
     req = play.requests(state)
     decls = {d.seq: d for d in state.declarations}
-    out = _situation(state, JUDGE) + _error(error)
-    humans = play.seats(store)
-    out += ["", "# Player", ", ".join("%s: %s" % (p, "人間（GUI）" if p in humans
-                                                  else "AI（止める場所の設定と依頼の指示どおりに止める）")
-                                      for p in state.player_order)]
+    out = _situation(state, JUDGE, cc) + _error(error)
+    if not cc:
+        out += ["", "# Player", _players_line(store, state)]
     out += ["", "# 処理する依頼"]
     for d in req["pending"]:
         if d.kind == "mulligan":
@@ -293,18 +344,33 @@ def judge_message(store: GameStore, error: Optional[str] = None) -> str:
     if not play.turn_start_pending(state):  # ターンが終わった後は、終わったターンの計画を見せない
         out += _plan_section(state, {d.seq for d in req["pending"]})
     standing = standing_requests(state, req["pending"])
-    if standing:
+    if standing and cc:
+        out += ["", "# 先の指示: %s（このターンと前のターンの処理済みの依頼。前に処理したときの文に、先の選択が書いてあることがある）"
+                % " ".join("#%d" % d.seq for d in standing)]
+    elif standing:
         out += ["", "# 先の指示（このターンと前のターンの処理済みの依頼。選択を聞く前に見る）"]
         out += ["#%d T%d %s %s: %s" % (d.seq, d.turn, d.step, d.player, quote(d.text)) for d in standing]
     if req["asks"]:
         out += ["", "# 未回答の質問"] + ["#%d → %s: %s" % (d.seq, d.player, quote(d.text)) for d in req["asks"]]
-    out += ["", "# 止める場所（各 Player の非公開の設定）"] + ["%s: %s" % (p, _stops_text(store, p)) for p in state.player_order]
+    if not cc or any(play.get_stops(store, p) for p in state.player_order):
+        out += ["", "# 止める場所（各 Player の非公開の設定）"] + ["%s: %s" % (p, _stops_text(store, p)) for p in state.player_order]
     out += ["", "# 最近の記録（前回のあなたの処理から）"]
-    out += [_entry_line(e) for e in recent_entries(store)] or ["（なし）"]
+    if cc:
+        texts = {d.text for d in req["pending"] if d.text}
+        out += [_entry_line(e, same=texts) for e in recent_entries(store, pad=False)] or ["（なし）"]
+    else:
+        out += [_entry_line(e) for e in recent_entries(store)] or ["（なし）"]
     view = info.player_view(state, None, graveyard=True)
-    out += ["", "# 盤面（全情報）", render_view(view).rstrip(),
-            "", "# 依頼", "上の依頼を処理し、JSON のコード・ブロック（batch・ask・message）で返す。"]
+    out += ["", "# 盤面（全情報）", render_view(view).rstrip()]
+    if not cc:
+        out += ["", "# 依頼", "上の依頼を処理し、JSON のコード・ブロック（batch・ask・message）で返す。"]
     return "\n".join(out) + "\n"
+
+
+def _players_line(store: GameStore, state) -> str:
+    humans = play.seats(store)
+    return ", ".join("%s: %s" % (p, "人間（GUI）" if p in humans else "AI（止める場所の設定と依頼の指示どおりに止める）")
+                     for p in state.player_order)
 
 
 def _plan_section(state, pending=()) -> list:
@@ -338,13 +404,13 @@ def standing_requests(state, pending: list) -> list:
     return out[-STANDING:]
 
 
-def recent_entries(store: GameStore) -> list:
+def recent_entries(store: GameStore, pad: bool = True) -> list:
     """審判に見せる最近の記録: 前回の審判の処理の印（ruled）から後。毎回送る入力を減らすため、それより前は出さない
     （前回の処理の内容は ruled の文に要約されている）。少なくとも RECENT_MIN 件、多くても RECENT 件。"""
     log = store.read_log()[:store.cursor()]
     last = next((i for i in range(len(log) - 1, -1, -1)
                  if any(op["op"] == "declare" and op.get("kind") == "ruled" for op in log[i]["act"])), 0)
-    start = max(0, min(last, len(log) - RECENT_MIN), len(log) - RECENT)
+    start = max(0, min(last, len(log) - RECENT_MIN) if pad else last, len(log) - RECENT)
     return log[start:]
 
 
@@ -374,7 +440,8 @@ def _write_if_changed(path: pathlib.Path, text: str) -> None:
         path.write_text(text, encoding="utf-8")
 
 
-def build(store: GameStore, role: str, error: Optional[str] = None, mode: Optional[str] = None) -> dict:
+def build(store: GameStore, role: str, error: Optional[str] = None, mode: Optional[str] = None,
+          cc: Optional[bool] = None) -> dict:
     """role（Player の席か "judge"）のプロンプトを書き出す。mode は Player なら intent（既定）か direct。
 
     prompts/<role>/system-1.md・system-2.md   固定部分（変わらなければ書き直さない）
@@ -382,33 +449,57 @@ def build(store: GameStore, role: str, error: Optional[str] = None, mode: Option
     prompts/<role>/NNNN.request.json           API の本文（OpenAI の Chat Completions）
     prompts/<role>/latest.md                   手動用: system と user を1つに（そのまま貼る）
     prompts/pending.json                       返答を待っている役割と cursor（answer が使う）
+
+    cc（Claude Code。既定は prompts/claude-code.md があるとき）: 固定部分は claude-code.md を1回だけ読むので、system・
+    request.json・latest.md は書かない。user も、同じエージェントが前に受け取った部分を省く（judge_message・user_message）。
+    同じ役割・同じ cursor・同じ形のプロンプトが返答待ちで残っていれば、作り直さずにそれを返す（GUI のサーバーと next の両方が作るため）。
     """
     mode = JUDGE if role == JUDGE else (mode or "intent")
     if mode not in MODES:
         raise ValueError("unknown mode %r" % mode)
+    if cc is None:
+        cc = claude_code_path(store).exists()
     d = prompt_dir(store, role)
     d.mkdir(parents=True, exist_ok=True)
-    if role == JUDGE:
-        system, user = [role_system("judge"), game_system(store)], judge_message(store, error)
-    else:
-        system, user = [role_system(mode), seat_system(store, role)], user_message(store, role, error, mode)
-    for i, s in enumerate(system, 1):
-        _write_if_changed(d / ("system-%d.md" % i), s)
     cur = store.cursor()
+    own = _pending(store, role)
+    if error is None and own.get("cursor") == cur and own.get("mode") == mode and bool(own.get("cc")) == cc \
+            and (d / ("%s.user.md" % own.get("stem"))).exists():
+        _dump(pending_path(store), own)
+        return _built(store, d, own)
+    if role == JUDGE:
+        user = judge_message(store, error, cc=cc)
+    else:
+        user = user_message(store, role, error, mode, cc=cc)
     stem, n = "%04d" % cur, 1
     while (d / ("%s.user.md" % stem)).exists():
         n += 1
         stem = "%04d-%d" % (cur, n)
     (d / ("%s.user.md" % stem)).write_text(user, encoding="utf-8")
-    _dump(d / ("%s.request.json" % stem), request_body(system, user, role))
-    (d / "latest.md").write_text("\n\n".join(
-        ["<!-- system 1/2（固定・役割） -->", system[0], "<!-- system 2/2（固定・%s） -->" % ("対局" if role == JUDGE else "この席"),
-         system[1], "<!-- user（今回） -->", user]), encoding="utf-8")
-    pending = {"role": role, "mode": mode, "cursor": cur, "stem": stem}
+    if not cc:
+        if role == JUDGE:
+            system = [role_system("judge"), game_system(store)]
+        else:
+            system = [role_system(mode), seat_system(store, role)]
+        for i, s in enumerate(system, 1):
+            _write_if_changed(d / ("system-%d.md" % i), s)
+        _dump(d / ("%s.request.json" % stem), request_body(system, user, role))
+        (d / "latest.md").write_text("\n\n".join(
+            ["<!-- system 1/2（固定・役割） -->", system[0], "<!-- system 2/2（固定・%s） -->" % ("対局" if role == JUDGE else "この席"),
+             system[1], "<!-- user（今回） -->", user]), encoding="utf-8")
+    pending = {"role": role, "mode": mode, "cursor": cur, "stem": stem, "cc": cc}
     _dump(d / "pending.json", pending)
     _dump(pending_path(store), pending)
-    return {"dir": d, "role": role, "mode": mode, "stem": stem, "cursor": cur, "latest": d / "latest.md",
-            "request": d / ("%s.request.json" % stem), "waiting_on": play.waiting_on(store.load())}
+    return _built(store, d, pending)
+
+
+def _built(store: GameStore, d: pathlib.Path, pending: dict) -> dict:
+    stem, cc = pending["stem"], bool(pending.get("cc"))
+    return {"dir": d, "role": pending["role"], "mode": pending["mode"], "stem": stem, "cursor": pending["cursor"],
+            "cc": cc, "user": d / ("%s.user.md" % stem),
+            "system": claude_code_path(store) if cc else None,
+            "latest": None if cc else d / "latest.md",
+            "request": None if cc else d / ("%s.request.json" % stem), "waiting_on": play.waiting_on(store.load())}
 
 
 def next_role(store: GameStore, ai: list) -> Optional[str]:
@@ -498,7 +589,7 @@ def _pending(store: GameStore, role: str) -> dict:
 def _finish(store: GameStore, role: str, mode: str, result, error) -> dict:
     """適用の後: 失敗なら理由付きでプロンプトを作り直す。成功ならその役割の控えを消す（同じ返答を二度適用しない）。"""
     if error:
-        return _result(False, result, error, build(store, role, error=error, mode=mode))
+        return _result(False, result, error, build(store, role, error=error, mode=mode, cc=_pending(store, role).get("cc")))
     (prompt_dir(store, role) / "pending.json").unlink(missing_ok=True)
     pp = pending_path(store)
     if pp.exists() and json.loads(pp.read_text(encoding="utf-8")).get("role") == role:
@@ -553,7 +644,7 @@ def apply_intent(store: GameStore, seat: str, text: str) -> dict:
         batch = intent_batch(store.load(), seat, data)
         stops = play.check_stops(data["stops"]) if data.get("stops") is not None else None
     except ValueError as e:
-        return _result(False, None, str(e), build(store, seat, error=str(e), mode="intent"))
+        return _result(False, None, str(e), build(store, seat, error=str(e), mode="intent", cc=pending.get("cc")))
     _write_memo(store, seat, data.get("memo"))
     if stops is not None:  # 止める場所は非公開（卓の記録に載せず、席のファイルに置く）
         play.set_stops(store, seat, stops)
@@ -666,7 +757,7 @@ def apply_judge(store: GameStore, text: str) -> dict:
     try:
         label, acts = judge_acts(store.load(), _last_json(text))
     except ValueError as e:
-        return _result(False, None, str(e), build(store, JUDGE, error=str(e)))
+        return _result(False, None, str(e), build(store, JUDGE, error=str(e), cc=pending.get("cc")))
     label = (label or "処理").strip()
     batch = {"actor": None, "label": label if label.startswith("審判") else "審判: " + label, "acts": acts}
     result, error = _apply(store, batch, pending.get("cursor"))

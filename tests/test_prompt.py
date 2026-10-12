@@ -53,6 +53,44 @@ class PromptTest(unittest.TestCase):
         latest = second["latest"].read_text(encoding="utf-8")
         self.assertTrue(latest.endswith(req2["messages"][2]["content"]))
 
+    def test_claude_code_system_has_both_roles_once(self):
+        # Claude Code のエージェント1つが審判と AI の席を兼ねる固定部分: 両方の役割の指示、リファレンスは1回ずつ
+        path = prompt.write_claude_code(self.st)
+        text = path.read_text(encoding="utf-8")
+        self.assertEqual(path, self.st.root / "prompts" / "claude-code.md")
+        self.assertTrue(text.startswith("# Claude Code で審判と AI の席を兼ねる"))
+        self.assertIn(prompt._read(prompt.HERE / "judge.md"), text)
+        self.assertIn(prompt._read(prompt.HERE / "player_intent.md"), text)
+        self.assertEqual(text.count("# MTG 基本ルール"), 1)
+        self.assertIn(prompt.game_system(self.st).strip(), text)
+        self.st.apply({"actor": "p1", "acts": [{"proc": "turn_start", "to": "main1"}]})
+        self.assertEqual(prompt.claude_code_system(self.st), text)  # 盤面が進んでも同じ
+
+    def test_same_cursor_reuses_the_waiting_prompt(self):
+        # GUI のサーバー（auto_build）と next の両方が作っても、同じ時点のプロンプトは1つ
+        first = prompt.build(self.st, "p1")
+        again = prompt.build(self.st, "p1")
+        self.assertEqual(first["stem"], again["stem"])
+        retry = prompt.build(self.st, "p1", error="bad")  # 失敗の理由付きは作り直す
+        self.assertNotEqual(first["stem"], retry["stem"])
+
+    def test_claude_code_prompts_skip_what_the_agent_already_has(self):
+        prompt.write_claude_code(self.st)
+        built = prompt.build(self.st, play.JUDGE)  # claude-code.md があれば cc の形
+        self.assertTrue(built["cc"])
+        self.assertEqual(built["system"], prompt.claude_code_path(self.st))
+        self.assertIsNone(built["request"])
+        self.assertFalse((built["dir"] / "latest.md").exists())  # API の形のファイルは書かない
+        text = built["user"].read_text(encoding="utf-8")
+        api = prompt.judge_message(self.st)
+        for head in ("# Player", "# 依頼", "# 止める場所"):
+            self.assertIn(head, api)
+            self.assertNotIn(head, text)
+        self.assertIn("# 盤面（全情報）", text)
+        seat = prompt.build(self.st, "p2", cc=False)  # auto（API）は claude-code.md があっても API の形
+        self.assertFalse(seat["cc"])
+        self.assertTrue(seat["request"].exists())
+
     def test_user_message_shows_only_the_seat_view(self):
         s = self.st.load()
         p1_hand = {s.cards[c].name for c in s.zones["p1.hand"].cards}

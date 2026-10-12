@@ -318,7 +318,7 @@ def step(store: GameStore, ai: Optional[list] = None, guard=None) -> Optional[di
         return None
     if guard is not None:
         guard.check()
-    built = prompt.build(store, role)
+    built = prompt.build(store, role, cc=False)  # API の形（Claude Code 用の claude-code.md があっても）
     started = time.time()
     try:
         res = complete(json.loads(built["request"].read_text(encoding="utf-8")))

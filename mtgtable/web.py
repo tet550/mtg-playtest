@@ -59,7 +59,7 @@ def _announce(built) -> None:
     """プロンプトを作ったら、サーバーのコンソールに出す（手動でモデルに渡す人が見る）。"""
     if built:
         who = "審判" if built["role"] == "judge" else built["role"]
-        print("[%s] prompt for %s: %s" % (built["dir"].parent.parent.name, who, built["latest"]), flush=True)
+        print("[%s] prompt for %s: %s" % (built["dir"].parent.parent.name, who, built["latest"] or built["user"]), flush=True)
 
 
 class Forbidden(Exception):

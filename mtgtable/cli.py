@@ -481,7 +481,13 @@ def _prompt_build(store, role, error=None, mode=None):
 
 def _print_prompt(built):
     who = "審判" if built["role"] == "judge" else "%s（%s）" % (built["role"], built["mode"])
-    print("prompt for %s: %s  (request: %s)" % (who, built["latest"], built["request"].name))
+    if built["cc"]:
+        # Claude Code のエージェント: 固定部分（claude-code.md）は最初に1回だけ読み、毎回は user だけ読む
+        print("prompt for %s" % who)
+        print("  system: %s" % built["system"])
+        print("  user:   %s" % built["user"])
+    else:
+        print("prompt for %s: %s  (request: %s)" % (who, built["latest"], built["request"].name))
 
 
 def cmd_prompt(a):
@@ -502,6 +508,8 @@ def cmd_next(a):
     from . import play, prompt
     store = _existing(a.game)
     ai = a.ai or []
+    if a.claude_code:
+        prompt.write_claude_code(store)
     deadline = time.monotonic() + a.timeout
     while True:
         role = prompt.next_role(store, ai)
@@ -537,6 +545,9 @@ def cmd_answer(a):
         if not out["ok"]:
             print("失敗の理由を付けてプロンプトを作り直した")
         _print_prompt(nxt)
+        if nxt["cc"]:  # Claude Code のエージェントは続けて答える: ファイルを読み直す1回を省くため、本文もここに出す
+            print("----- %s の本文（Read しない）-----" % nxt["user"].name)
+            print(nxt["user"].read_text(encoding="utf-8").rstrip())
     else:
         print("waiting on %s（人間の番。GUI で操作する）" % (play.waiting_on(store.load()) or "-"))
     if not out["ok"]:
@@ -757,6 +768,8 @@ def build_parser():
     p.add_argument("--ai", action="append", help="AI の席（複数可）。審判の番は常にプロンプトを作る")
     p.add_argument("--timeout", type=float, default=540, help="秒（時間切れは終了コード 3）")
     p.add_argument("--direct", action="store_true", help="AI の席は審判を通さず Batch を直接書く（前の形。鍵の対局では使えない）")
+    p.add_argument("--claude-code", action="store_true",
+                   help="Claude Code のエージェント1つが審判と AI の席を兼ねる固定部分を prompts/claude-code.md に書き出す")
     p.set_defaults(fn=cmd_next)
 
     p = sub.add_parser("auto", help="審判と AI の席を LLM の API で回す（提供元・キーは secrets/README.md）")
