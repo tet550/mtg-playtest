@@ -58,6 +58,23 @@ class ClaudeCodeTest(unittest.TestCase):
         self.assertIsNotNone(prompt.turn_start_reason(self.st, self.st.load()))
         self.assertEqual(prompt.advance(self.st), [])
 
+    def test_turn_start_reads_the_oracle_of_deck_cards(self):
+        """デッキのカードは definition に名前だけ持つ。それでもオラクルのアップキープの誘発を見て審判に回す。"""
+        self.to_cleanup()
+        s = self.st.load()
+        card = s.cards[s.zones["p2.hand"].cards[0]]
+        self.assertEqual(card.definition, {"name": card.name})
+        self.st.apply({"actor": None, "acts": [{"actor": "p2", "act": [
+            {"op": "move", "card": card.id, "to": "battlefield"}]}]})
+        oracle = {"cards": {card.name: {"oracle_text": "At the beginning of your upkeep, you lose 1 life."}}}
+        old = prompt._deck_data
+        prompt._deck_data = lambda state, seat: oracle
+        try:
+            self.assertIn(card.id, prompt.turn_start_reason(self.st, self.st.load()) or "")
+            self.assertEqual(prompt.advance(self.st), [])
+        finally:
+            prompt._deck_data = old
+
     def test_board_is_sent_as_a_diff_after_delivery(self):
         prompt.write_claude_code(self.st)
         first = prompt.build(self.st, play.JUDGE)
@@ -107,6 +124,47 @@ class ClaudeCodeTest(unittest.TestCase):
                            stdin='```json\n{"declare": {"kind": "concede"}}\n```')
         self.assertIn("決着", out)
         self.assertNotIn("waiting on -", out)
+
+    def test_judge_asks_from_the_hand_after_a_draw(self):
+        """引いて捨てる: 引いたカードの id を知らなくても、"cards": "hand" でその時点の手札全部を候補にできる。"""
+        self.to_cleanup()
+        play.set_stops(self.st, "p2", ["own:upkeep"])
+        prompt.build(self.st, play.JUDGE)
+        body = ('```json\n{"batch": {"acts": [{"actor": "p2", "proc": "turn_start", "to": "main1"}, '
+                '{"actor": "p2", "act": [{"op": "draw", "count": 1}], "cont": true}]}, '
+                '"ask": {"to": "p2", "text": "1枚捨てる", "cards": "hand"}}\n```')
+        out = prompt.apply_response(self.st, body, play.JUDGE)
+        self.assertTrue(out["ok"], out["error"])
+        s = self.st.load()
+        ask = s.declarations[-1]
+        self.assertEqual((ask.kind, ask.cards), ("ask", s.zones["p2.hand"].cards))
+        self.assertEqual(len(ask.cards), 9)  # 7 + T2 のドロー + 誘発で引いた1枚
+
+    def test_judge_ask_with_a_placeholder_card_writes_nothing(self):
+        """id でない候補は、batch を書く前に断る（batch と処理の印だけ書けて質問が残らないのを防ぐ）。"""
+        self.to_cleanup()
+        play.set_stops(self.st, "p2", ["own:upkeep"])
+        prompt.build(self.st, play.JUDGE)
+        cur = self.st.cursor()
+        body = ('```json\n{"batch": {"acts": [{"actor": "p2", "proc": "turn_start", "to": "main1"}]}, '
+                '"ask": {"to": "p2", "text": "1枚捨てる", "cards": ["HAND_DRAWN"]}}\n```')
+        out = prompt.apply_response(self.st, body, play.JUDGE)
+        self.assertFalse(out["ok"])
+        self.assertIn('"hand"', out["error"])
+        self.assertEqual(self.st.cursor(), cur)
+
+    @unittest.skipIf(STORE == "sqlite", "対局フォルダの指し方で CLI を呼ぶ")
+    def test_answer_wait_waits_through_the_human_turn(self):
+        game_dir = str(self.st.root)
+        self.to_cleanup()
+        self.st.write_doc("seats", {"p2": {"hash": "x"}})  # p2 は GUI の人間。p1 が AI の席
+        prompt.write_claude_code(self.st)
+        play.set_stops(self.st, "p1", ["opp:upkeep"])  # 審判に p2 のターンを始めさせる
+        self.run_cli("next", game_dir, "--ai", "p1", "--timeout", "0", "--claude-code", "--body")
+        body = '```json\n{"batch": {"acts": [{"actor": "p2", "proc": "turn_start", "to": "main1"}]}}\n```'
+        with self.assertRaises(SystemExit) as e:  # 人間（p2）の番のまま時間切れ: next と同じ終了コード 3
+            self.run_cli("answer", game_dir, "-", "--judge", "--wait", "0", stdin=body)
+        self.assertEqual(e.exception.code, 3)
 
 
 if __name__ == "__main__":

@@ -1192,8 +1192,10 @@ def op_declare(ctx: Context, p: dict) -> dict:
     if not isinstance(choices, list):
         raise OperationError("choices must be a list")
     cards = p.get("cards") or []
+    if kind == "ask" and cards == "hand":  # 聞く Player のその時点の手札（同じ Batch で引いた、まだ id の分からないカードも入る）
+        cards = list(s.zones[zone_name(pid, "hand")].cards)
     if not isinstance(cards, list):
-        raise OperationError("cards must be a list of card ids")
+        raise OperationError('cards must be a list of card ids (or "hand" in an ask)')
     cards = [normalize_refs(s, str(c)) for c in cards]
     for c in cards:
         if c not in s.cards:

@@ -564,8 +564,7 @@ def _next_any(a):
 
 def cmd_next(a):
     """審判か AI の席の番が来るまで待ち、その役割のプロンプトを書き出す（人間の番の間は待つ）。"""
-    import time
-    from . import play, prompt
+    from . import prompt
     if not a.game:
         return _next_any(a)
     store = _existing(a.game)
@@ -574,10 +573,17 @@ def cmd_next(a):
         prompt.write_claude_code(store)
     if a.full:
         prompt.forget_delivered(store)
-    deadline = time.monotonic() + a.timeout
+    _wait_role(store, ai, a.timeout, body=a.body, direct=a.direct)
+
+
+def _wait_role(store, ai, timeout, body=False, direct=False):
+    """審判か AI の席の番が来るまで待ち、そのプロンプトを書き出す（next と answer --wait）。時間切れは終了コード 3。"""
+    import time
+    from . import play, prompt
+    deadline = time.monotonic() + timeout
     touched = 0.0
     while True:
-        if a.body and time.monotonic() - touched > 30:  # 待っているエージェントがこの対局を受け持っている印
+        if body and time.monotonic() - touched > 30:  # 待っているエージェントがこの対局を受け持っている印
             prompt.touch_lease(store)
             touched = time.monotonic()
         role = prompt.next_role(store, ai)
@@ -591,9 +597,9 @@ def cmd_next(a):
             print("timeout: %s を待っている" % wait)
             sys.exit(3)
         time.sleep(0.5)
-    built = _prompt_build(store, role, mode="direct" if a.direct and role != "judge" else None)
+    built = _prompt_build(store, role, mode="direct" if direct and role != "judge" else None)
     _print_prompt(built)
-    if a.body and built["cc"]:
+    if body and built["cc"]:
         _print_body(built)
 
 
@@ -623,6 +629,9 @@ def cmd_answer(a):
             _print_body(nxt)
     elif play.waiting_on(store.load()) is None:
         print("決着（待っている Player はいない）")
+    elif a.wait is not None and out["ok"]:  # 人間の番: next を呼び直す1回を省き、ここで待つ
+        print("waiting on %s（人間の番。GUI で操作する）" % play.waiting_on(store.load()))
+        _wait_role(store, prompt.ai_seats(store), a.wait, body=cc)
     else:
         print("waiting on %s（人間の番。GUI で操作する）" % play.waiting_on(store.load()))
     if not out["ok"]:
@@ -872,6 +881,8 @@ def build_parser():
     p.add_argument("file", nargs="?", help="返答のテキスト（省略か - で標準入力）")
     p.add_argument("--as", dest="as_", help="役割を指定する（既定は最後に作ったプロンプトの役割）")
     p.add_argument("--judge", action="store_true", help="審判の返答として")
+    p.add_argument("--wait", type=float, metavar="SECONDS",
+                   help="人間の番になったら、審判か AI の席（鍵の無い席）の番まで待ってプロンプトを出す（next を呼び直す1回を省く。時間切れは終了コード 3）")
     p.set_defaults(fn=cmd_answer)
 
     p = sub.add_parser("deck", help="デッキリストを読んで枚数を確かめる")

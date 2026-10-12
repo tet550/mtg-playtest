@@ -27,7 +27,7 @@ python -m mtgtable next playtest/<対局名> --ai p2 --claude-code --body --time
    `latest.md`・`system-*.md`・`request.json` は API 用（このファイルと同じ内容を含む）なので読まない
 
 ~~~bash
-python -m mtgtable answer playtest/<対局名> - --judge <<'EOF'
+python -m mtgtable answer playtest/<対局名> - --judge --wait 240 <<'EOF'
 ```json
 {"batch": {...}, "ask": null, "message": "..."}
 ```
@@ -35,11 +35,14 @@ EOF
 ~~~
 
    AI の席なら `--judge` の代わりに `--as p2`。`-`（標準入力）は `--judge` / `--as` より前に書く（後ろに書くと引数の誤りになる）。
+   `--wait 240` を付けると、人間の番になったときそのまま次の番まで待つ（`next` を呼び直さなくてよい）。Bash の `timeout` は
+   `next` と同じく **300000** にする
 3. `answer` の出力を見る。全部書けたら1行目は `applied N acts (vX)` だけ（Act ごとの結果は出ない。盤面は次の本文で見る）:
    - `failed: ...` → Act ごとの結果・理由と、続けて出る新しい状況の本文を読んで書き直し、2 へ（同じ役割で 3 回失敗したら
      止めて、理由を返す）
    - `prompt for 審判` / `prompt for p2（intent）`（AI の席）→ その役割で 2 へ。次の状況の本文は出力に出ている
-   - `waiting on p1（人間の番…）` → 1 へ（自分で待つ）
+   - `waiting on p1（人間の番…）` の後に `prompt for …` が続く → 人間の番が済んだ。その役割で 2 へ
+   - `waiting on p1（人間の番…）` の後に `timeout: p1 を待っている`（終了コード 3）→ 1 へ（`next` で待つ）
    - `決着（待っている Player はいない）` → 終わる。`決着` とだけ返す
 
 毎回の本文の盤面は、前に届いた盤面と中身が同じ領域を見出しだけにしてある（`hand (4)  （前回と同じ）`）。中身は前に届いた

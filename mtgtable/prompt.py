@@ -635,7 +635,8 @@ FROM_HAND = re.compile(r"forecast|in your hand|from your hand|手札にある|�
 
 
 def _card_texts(state, card, decks: dict) -> str:
-    if card.token or card.definition:
+    # デッキのカードも definition に名前だけ持つ（setup）。テキストを持つのはトークンや定義を書いたカードだけ
+    if card.token or set(card.definition or {}) - {"name"}:
         return json.dumps(card.definition, ensure_ascii=False)
     if card.owner not in decks:
         decks[card.owner] = (_deck_data(state, card.owner) or {}).get("cards", {})
@@ -916,7 +917,11 @@ def judge_acts(state, data: dict) -> list:
                              "player (op priority), then stop. The player sends blocks as a request")
         op = {"op": "declare", "player": ask["to"], "kind": "ask", "text": str(ask["text"]),
               "choices": list(ask.get("choices") or [])}
-        if ask.get("cards"):  # カードを選ばせる質問（GUI では候補のカードを押して選ぶ）
+        cards = ask.get("cards")
+        if isinstance(cards, list) and any(not str(c).startswith(("#", "$")) for c in cards):
+            # 書いてから断られると、batch と処理の印だけ書けて質問が残らない。書く前に断る
+            raise ValueError('ask.cards must be card ids. For a card drawn in this batch, use "cards": "hand"')
+        if cards:  # カードを選ばせる質問（GUI では候補のカードを押して選ぶ）
             op.update({k: ask[k] for k in ("cards", "min", "max") if k in ask})
         acts.append({"act": [op], "label": "審判の質問 → %s" % ask["to"]})
     return [batch.get("label") if batch else None, acts]
