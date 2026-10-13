@@ -3,6 +3,12 @@
 mtgtable を「インストールして起動すると、ブラウザで卓が開く」アプリとして配る。公開のサーバー（`serve --site`）を
 運営者が持つ代わりに、各自の手元で同じ画面を動かし、AI の料金は各自のキー（BYOK）か Claude Code で払う。
 
+> 2026-10-13: 配布に向けて機能を絞った。起動は手元のサイト（`serve`。DB は既定で `data/site.sqlite`）だけにし、
+> 観戦だけのビューア・`serve --play`（CLI で `invite` した対局）・`--site` の旗を外した。審判と AI の席は Claude Code だけが回す
+> （LLM の API で回す `auto`・`serve --ai`・`llm.py`・`worker.py`・`secrets/` は外した。段階 4 で作り直す）。静的書き出し（`export`・`docs/`）は
+> 外し、対局の公開は再設計する。CLI からは `replay`・`diff`・`fork`・`policy`・`ops`・`--direct`・`db-backup`・`db-import`・`invite`・
+> `revoke`・`wait` を外した。
+
 ## 前提（決定済み）
 
 - **手元で動くことを主にする**。AI の料金は各自が提供元に直接払う（運営者は受け取らない。Fan Content Policy の範囲）。

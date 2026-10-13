@@ -1,7 +1,7 @@
 """対局を作る（手元のサイト）: 登録したデッキで、AI と・招待した人と。
 
 使うのは手元の1人（ホスト）。ホストの席は、卓の外の文書 "seats" に鍵の無い席として置く（host_seats）。
-審判と AI の席は既定では Claude Code が回す（`next` の監視と mtg-table エージェント。`serve --ai` ならサーバーの中で）。
+審判と AI の席は Claude Code が回す（`next` の監視と mtg-table エージェント）。
 
 - AI と: すぐに対局を作る。ホストは p1、p2 は "seats" に無い席（AI）。AI のデッキは登録したデッキか、同梱のデッキ
 - 招待した人と: まず招待（表 invites）だけを作り、URL を返す。招待された人（ゲスト）は、デッキリストを貼るか同梱のデッキを
@@ -93,8 +93,7 @@ def _hash(token: str) -> str:
 
 
 def host_seats(store) -> list:
-    """ホスト（手元の1人）の席: "seats" にあって鍵の無い席（対局を作るときに置く）。鍵のある席は招待のゲストか、
-    CLI の invite で作った席（URL の鍵で入る）。"""
+    """ホスト（手元の1人）の席: "seats" にあって鍵の無い席（対局を作るときに置く）。鍵のある席は招待のゲスト（URL の鍵で入る）。"""
     return sorted(s for s, rec in play.seats(store).items() if "claimed" in rec and not rec.get("token_sha256"))
 
 

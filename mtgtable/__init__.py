@@ -9,7 +9,7 @@ from .info import player_view
 from .model import GameState
 from .operations import OperationError
 from .setup import load_decklist, new_game, parse_decklist
-from .store import GameStore, state_diff
+from .store import GameStore
 
 __all__ = ["__version__", "Engine", "GameState", "GameStore", "OperationError", "load_decklist", "new_game",
-           "normalize_batch", "parse_decklist", "player_view", "public_result", "state_diff"]
+           "normalize_batch", "parse_decklist", "player_view", "public_result"]

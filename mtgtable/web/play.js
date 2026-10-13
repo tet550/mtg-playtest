@@ -1475,7 +1475,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (sent && !mySent && ui.cursor > sentFrom) sent = null;
     const body = $("playbody");
     const wait = t.waiting_on;
-    const waiting = ui.live && (busy || (!!wait && wait !== seat && !(ui.ai && ui.ai.status === "suspended")));
+    const waiting = ui.live && (busy || (!!wait && wait !== seat));
     const status = el("div", "pstatus" + (wait === seat ? " mine" : "") + (waiting ? " waiting" : ""));
     status.textContent = !ui.live ? tr(ui.playing ? "play.status.replaying" : "play.status.past")
       : busy ? tr("play.status.sending")
@@ -1485,12 +1485,6 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     $("playTitle").textContent = tr("play.panelTitle", { seat });
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };
-    if (ui.live && ui.ai && ui.ai.status === "suspended") {  // 審判・AI の席が止まった（上限・API の失敗など）
-      rows.push(el("div", "pask", tr("play.ai.stopped", { reason: ui.ai.reason })));
-      row(button(tr("play.ai.resume"), async () => {
-        try { await source.post(ui.game, "resume", { seat }); toast(tr("play.ai.resumed")); reload(); } catch (e) { toast(e.message, true); }
-      }, { title: tr("play.ai.resume.title") }));
-    }
     const idle = ui.live && idleState(ui.idle, wait, seat, Date.now());
     if (idle) {
       rows.push(el("div", "phint", tr("play.idle.notice", { who: idle.who, minutes: idle.minutes })));

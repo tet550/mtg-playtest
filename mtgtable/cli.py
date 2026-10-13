@@ -13,11 +13,10 @@ import sys
 from . import __version__, carddb, info, paths, play
 from .engine import public_result
 from .model import INFO_POLICIES
-from .operations import OperationError, describe_operations, summarize_op
-from .procedures import describe_procedures
+from .operations import OperationError, summarize_op
 from .render import card_name, render_view, strip_names
 from .setup import check_deck, load_decklist, new_game
-from .store import GameStore, state_diff
+from .store import GameStore
 
 DB = None  # --db / 環境変数 MTGTABLE_DB: 対局を SQLite の DB に置く（GAME はパスの最後の名前を対局の id にする）
 
@@ -233,35 +232,12 @@ def cmd_log(a):
                     print("            " + (strip_names(ev) if a.no_names else ev))
 
 
-def cmd_replay(a):
-    state = _store(a.game).replay(a.to)
-    if a.json:
-        _emit(state.to_dict())
-    else:
-        _view(state, _actor(a.as_), False, names=not a.no_names, **_zone_flags(a))
 
 
-def cmd_diff(a):
-    store = _store(a.game)
-    before = store.replay(a.from_)
-    after = store.replay(a.to if a.to is not None else store.cursor())
-    for path, x, y in state_diff(before, after):
-        if path.startswith("knowledge") and not a.all:
-            continue
-        print("%s: %s -> %s" % (path, json.dumps(x, ensure_ascii=False), json.dumps(y, ensure_ascii=False)))
 
 
-def cmd_fork(a):
-    _store(a.game).fork(a.dest, a.at, overwrite=a.force)
-    print("forked %s -> %s" % (a.game, a.dest))
 
 
-def cmd_policy(a):
-    try:
-        policies = _store(a.game).set_policies(_pairs(a.set, "policy"))
-    except ValueError as e:
-        raise SystemExit(str(e))
-    print(", ".join("%s=%s" % kv for kv in policies.items()))
 
 
 def cmd_ids(a):
@@ -286,12 +262,6 @@ def cmd_ids(a):
             print("%s ? (not known to %s)" % (cid, viewer or "judge"))
 
 
-def cmd_ops(a):
-    for name, doc in describe_operations():
-        print("%-15s %s" % (name, doc))
-    print("\n# 手順（複数の Act になる。acts に {\"proc\": 名前, ...} で書く）")
-    for name, doc in describe_procedures():
-        print("%-15s %s" % (name, doc))
 
 
 def _known_card_names(state, viewer, ids):
@@ -346,94 +316,24 @@ def cmd_oracle(a):
     sys.exit(status)
 
 
-def cmd_export(a):
-    from .web import export_site
-    games = export_site(a.root, a.dest, a.game or None, offline=a.offline, db=DB)
-    print("exported %d game(s) to %s: %s" % (len(games), a.dest, ", ".join(games)))
 
 
 def cmd_serve(a):
     from .web import serve
-    from . import llm
-    if a.site and not DB:
-        raise SystemExit("serve --site needs --db PATH (or MTGTABLE_DB)")
-    if a.ai:
-        if not (a.play or a.site):
-            raise SystemExit("serve --ai needs --play or --site")
-        try:
-            llm.check_ready()  # キー・SDK が足りなければ、対局を中断させる前にここで止める
-        except llm.LLMError as e:
-            raise SystemExit("%s（Claude Code で回すなら --ai を付けない）" % e)
+    db = _site_db()
     if a.host not in ("127.0.0.1", "localhost", "::1"):
         print("注意: %s で待ち受けている。通信は暗号化されない。ホスト（デッキ・対局を作る・履歴）は手元のブラウザ"
               "（127.0.0.1）からだけで、外からは招待の URL・席の鍵でその席だけ" % a.host, file=sys.stderr)
-    serve(a.root, a.host, a.port, offline=a.offline, play=a.play, db=DB, site=a.site, ai=a.ai)
+    serve(db, a.host, a.port, offline=a.offline)
 
 
-def cmd_db_backup(a):
-    """DB を、書き込みを止めずに一貫した形で写す（sqlite3 の backup）。dest がフォルダなら日時の名前で置き、--keep 個を残す。"""
-    import datetime
-    import sqlite3
-    if not DB:
-        raise SystemExit("db-backup needs --db PATH (or MTGTABLE_DB)")
-    dest = pathlib.Path(a.dest)
-    if dest.is_dir() or a.dest.endswith(("/", "\\")):
-        dest.mkdir(parents=True, exist_ok=True)
-        dest = dest / ("%s-%s.sqlite" % (pathlib.Path(DB).stem, datetime.datetime.now().strftime("%Y%m%d-%H%M%S")))
-    src = sqlite3.connect(DB)
-    out = sqlite3.connect(dest)
-    try:
-        src.backup(out)
-    finally:
-        out.close()
-        src.close()
-    print("backup: %s (%d bytes)" % (dest, dest.stat().st_size))
-    if a.keep:
-        old = sorted(dest.parent.glob("%s-*.sqlite" % pathlib.Path(DB).stem))[:-a.keep]
-        for p in old:
-            p.unlink()
-            print("removed old backup: %s" % p)
-
-
-def cmd_db_import(a):
-    """対局フォルダを --db の DB へ移す（初期状態・log・現在状態・席の鍵・非公開の設定・プロンプト）。"""
-    if not DB:
-        raise SystemExit("db-import needs --db PATH (or MTGTABLE_DB)")
-    from .sqlstore import SqliteGameStore
-    for game in a.games:
-        src = GameStore(game)
-        if not src.exists():
-            raise SystemExit("no game at %s" % game)
-        try:
-            SqliteGameStore(DB, src.name).import_from(src, overwrite=a.force)
-        except (ValueError, FileExistsError) as e:
-            raise SystemExit(str(e))
-        print("imported %s -> %s#%s" % (game, DB, src.name))
-
-
-def cmd_invite(a):
-    """GUI で席を持つ人の URL を作る（鍵は URL の # の後ろ。サーバーには送られず、ページが読んで消す）。"""
-    from urllib.parse import quote
-    from . import play
-    store = _store(a.game)
-    if not store.exists():
-        raise SystemExit("no game at %s" % a.game)
-    try:
-        token = play.invite(store, a.seat, ttl=a.ttl or None)
-    except ValueError as e:
-        raise SystemExit(str(e))
-    where = "--db %s" % DB if DB else "--root %s" % store.root.resolve().parent
-    base = a.base or "http://127.0.0.1:%d/" % a.port
-    print("%s?game=%s&seat=%s#key=%s" % (base, quote(store.name), a.seat, token))
-    print("(serve --play %s で開く。鍵を作り直すと前の URL は使えなくなる)" % where, file=sys.stderr)
-
-
-def cmd_revoke(a):
-    from . import play
-    store = _existing(a.game)
-    if not play.revoke(store, a.seat):
-        raise SystemExit("%s has no key for %s" % (a.game, a.seat))
-    print("revoked the key of %s in %s (invite で作り直すまで、その席は誰も使えない)" % (a.seat, a.game))
+def _site_db() -> str:
+    """サイトの DB（--db か環境変数 MTGTABLE_DB。無ければデータ用フォルダの data/site.sqlite）。"""
+    if DB:
+        return DB
+    path = paths.site_db()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return str(path)
 
 
 def _existing(game):
@@ -443,32 +343,12 @@ def _existing(game):
     return store
 
 
-def cmd_wait(a):
-    """相手（GUI の人間など）が書いて、自分の番が来るまで待つ。来た Act を log と同じ形で出す。"""
-    from . import play
-    store = _existing(a.game)
-    got = play.wait(store, a.as_, since=a.since, timeout=a.timeout, any_change=a.any)
-    if got is None:
-        print("timeout (cursor %d)" % store.cursor())
-        sys.exit(3)
-    if got["undone"]:
-        print("undone: cursor %d -> %d（巻き戻された）" % (got["from"], got["cursor"]))
-    for e in got["entries"]:
-        if e.get("batch_label"):
-            print("     B%-4d %s" % (e["batch"], e["batch_label"]))
-        print(" %4d v%-4d %-5s %s" % (e["seq"], e["version"], e["actor"] or "judge", _entry_text(e)))
-    state = store.load()
-    t = state.turn
-    print("cursor %d  T%d %s/%s  active %s  priority %s  waiting on %s"
-          % (got["cursor"], t.turn, t.phase, t.step, t.active, t.priority or "-", play.waiting_on(state) or "-"))
-    if a.prompt and play.waiting_on(state) == a.as_:
-        _print_prompt(_prompt_build(store, a.as_))
 
 
-def _prompt_build(store, role, error=None, mode=None):
+def _prompt_build(store, role, error=None):
     from . import prompt
     try:
-        return prompt.build(store, role, error=error, mode=mode)
+        return prompt.build(store, role, error=error)
     except ValueError as e:
         raise SystemExit(str(e))
 
@@ -481,7 +361,7 @@ def _print_prompt(built):
         print("  system: %s" % built["system"])
         print("  user:   %s" % built["user"])
     else:
-        print("prompt for %s: %s  (request: %s)" % (who, built["latest"], built["request"].name))
+        print("prompt for %s: %s" % (who, built["latest"]))
 
 
 def _print_body(built):
@@ -501,25 +381,21 @@ def _print_compact(res):
 
 
 def cmd_prompt(a):
-    """プロンプトをファイルに書き出す（手動でモデルに渡す。request.json は API の本文）。"""
+    """プロンプトをファイルに書き出す（手動でモデルに渡す。latest.md をそのまま貼る）。"""
     store = _existing(a.game)
     role = "judge" if a.judge else a.as_
     if not role:
         raise SystemExit("give --as pN or --judge")
-    built = _prompt_build(store, role, mode="direct" if a.direct else None)
+    built = _prompt_build(store, role)
     if built["waiting_on"] != role:
         print("note: 今待たれているのは %s（%s の番ではない）" % (built["waiting_on"] or "-", role))
     _print_prompt(built)
 
 
 def _gui_games():
-    """GUI の人間がいる（席の文書 "seats" がある）、決着していない対局。--db なら DB の、無ければ playtest/ の。"""
-    from .store import FileGames
-    if DB:
-        from .sqlstore import SqliteGames
-        source = SqliteGames(DB)
-    else:
-        source = FileGames(paths.games_dir())
+    """サイトの DB の、GUI の人間がいる（席の文書 "seats" がある）、決着していない対局。"""
+    from .sqlstore import SqliteGames
+    source = SqliteGames(_site_db())
     for gid in source.ids():
         st = source.open(gid)
         try:
@@ -544,14 +420,14 @@ def _next_any(a):
             if role:
                 if a.claude_code:
                     prompt.write_claude_code(store)
-                # CLI で対局を指す形（answer・log・oracle などに使う）: --db なら id、無ければ対局フォルダ
-                head, target = "python -m mtgtable%s" % (" --db %s" % DB if DB else ""), store.name if DB else store.root
+                # CLI で対局を指す形（answer・log・oracle などに使う）: サイトの DB と対局の id
+                head, target = "python -m mtgtable --db %s" % _site_db(), store.name
                 print("game: %s <コマンド> %s" % (head, target))
                 # この対局を受け持つエージェントが、自分で待つコマンド（起動するまでの間にほかの監視が拾わないよう、印も付ける）
                 print("wait: %s next %s %s --claude-code --body --timeout 240"
                       % (head, target, " ".join("--ai %s" % p for p in prompt.ai_seats(store))))
                 prompt.touch_lease(store)
-                built = _prompt_build(store, role, mode="direct" if a.direct and role != "judge" else None)
+                built = _prompt_build(store, role)
                 _print_prompt(built)
                 if a.body and built["cc"]:
                     _print_body(built)
@@ -573,10 +449,10 @@ def cmd_next(a):
         prompt.write_claude_code(store)
     if a.full:
         prompt.forget_delivered(store)
-    _wait_role(store, ai, a.timeout, body=a.body, direct=a.direct)
+    _wait_role(store, ai, a.timeout, body=a.body)
 
 
-def _wait_role(store, ai, timeout, body=False, direct=False):
+def _wait_role(store, ai, timeout, body=False):
     """審判か AI の席の番が来るまで待ち、そのプロンプトを書き出す（next と answer --wait）。時間切れは終了コード 3。"""
     import time
     from . import play, prompt
@@ -597,7 +473,7 @@ def _wait_role(store, ai, timeout, body=False, direct=False):
             print("timeout: %s を待っている" % wait)
             sys.exit(3)
         time.sleep(0.5)
-    built = _prompt_build(store, role, mode="direct" if direct and role != "judge" else None)
+    built = _prompt_build(store, role)
     _print_prompt(built)
     if body and built["cc"]:
         _print_body(built)
@@ -638,28 +514,6 @@ def cmd_answer(a):
         sys.exit(2)
 
 
-def cmd_auto(a):
-    """審判と AI の席を LLM の API で回す（人間の番になるまで。--watch なら人間の操作を待ちながら決着まで）。"""
-    import os
-    from . import llm, prompt
-    store = _existing(a.game)
-    if a.model:
-        os.environ["MTGTABLE_MODEL"] = a.model
-    if a.provider:
-        os.environ["MTGTABLE_LLM_PROVIDER"] = a.provider
-    try:
-        llm.check_ready()
-        print("審判 %s/%s、AI の席 %s/%s。AI の席: %s（鍵の無い席）"
-              % (llm.provider(prompt.JUDGE), llm.model(prompt.JUDGE), llm.provider("p"), llm.model("p"),
-                 ", ".join(a.ai or prompt.ai_seats(store)) or "なし"))
-    except llm.LLMError as e:
-        raise SystemExit(str(e))
-    try:
-        print(llm.run(store, a.ai, watch=a.watch, max_failures=a.max_failures, server=a.server or None))
-    except llm.LLMError as e:
-        raise SystemExit("止めた: %s" % e)
-    except KeyboardInterrupt:
-        print("止めた（Ctrl+C）")
 
 
 def cmd_deck(a):
@@ -683,7 +537,8 @@ def build_parser():
     ap.add_argument("--version", action="version", version="mtgtable %s" % __version__)
     ap.add_argument("--db", default=os.environ.get("MTGTABLE_DB") or None,
                     help="対局を SQLite の DB に置く（既定は環境変数 MTGTABLE_DB。無ければ対局フォルダ）。"
-                         "GAME はパスの最後の名前を対局の id にする")
+                         "GAME はパスの最後の名前を対局の id にする。serve・対局を省いた next は、無ければサイトの DB "
+                         "（データ用フォルダの data/site.sqlite）")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("new", help="対局を作る")
@@ -741,42 +596,11 @@ def build_parser():
     p.add_argument("--no-names", action="store_true", help="イベントにカード名を出さない")
     p.set_defaults(fn=cmd_log)
 
-    p = sub.add_parser("replay", help="log の途中時点の状態を再現する")
-    p.add_argument("game")
-    p.add_argument("--to", type=int)
-    p.add_argument("--as", dest="as_", default="judge")
-    p.add_argument("--json", action="store_true")
-    p.add_argument("--no-names", action="store_true")
-    p.add_argument("--full", action="store_true", help="サイドボード・ライブラリー・墓地も出す")
-    p.set_defaults(fn=cmd_replay)
-
-    p = sub.add_parser("diff", help="log の2時点間の State Diff")
-    p.add_argument("game")
-    p.add_argument("--from", dest="from_", type=int, required=True)
-    p.add_argument("--to", type=int)
-    p.add_argument("--all", action="store_true", help="knowledge の差分も出す")
-    p.set_defaults(fn=cmd_diff)
-
-    p = sub.add_parser("fork", help="途中時点から別の対局を作る")
-    p.add_argument("game")
-    p.add_argument("dest")
-    p.add_argument("--at", type=int)
-    p.add_argument("--force", action="store_true")
-    p.set_defaults(fn=cmd_fork)
-
-    p = sub.add_parser("policy", help="Information Policy を変える（一人回し・テスト用）")
-    p.add_argument("game")
-    p.add_argument("set", nargs="+", help="p1=omniscient など")
-    p.set_defaults(fn=cmd_policy)
-
     p = sub.add_parser("ids", help="id とカード名の対応（知っているカードだけ）")
     p.add_argument("game")
     p.add_argument("ids", nargs="*", help="#c12 など。省略で手札・戦場・スタック・墓地・追放の知っているカード全部")
     p.add_argument("--as", dest="as_", default="judge")
     p.set_defaults(fn=cmd_ids)
-
-    p = sub.add_parser("ops", help="Operation と手順の一覧")
-    p.set_defaults(fn=cmd_ops)
 
     p = sub.add_parser("oracle", help="カードのオラクル・テキスト（Scryfall キャッシュ）")
     p.add_argument("names", nargs="*", help="カード名（英語）")
@@ -791,65 +615,18 @@ def build_parser():
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_oracle)
 
-    p = sub.add_parser("export", help="観戦ビューアを静的サイトに書き出す（GitHub Pages 用。judge の席だけ）")
-    p.add_argument("dest", help="書き出し先のフォルダ")
-    p.add_argument("--root", default=str(paths.games_dir()), help="対局フォルダを置く場所（既定 %(default)s）")
-    p.add_argument("--game", action="append", help="書き出す対局（複数可。省略で全部）")
-    p.add_argument("--offline", action="store_true", help="キャッシュに無いカード情報を取りに行かない")
-    p.set_defaults(fn=cmd_export)
-
-    p = sub.add_parser("serve", help="観戦ビューア（ブラウザで対局を見る。読み取り専用）")
-    p.add_argument("--root", default=str(paths.games_dir()), help="対局フォルダを置く場所（既定 %(default)s）")
-    p.add_argument("--host", default="127.0.0.1")
+    p = sub.add_parser("serve", help="手元のサイトを立てる（デッキの登録・対局を作る（AI と・招待した人と）・対局・履歴）。"
+                                     "審判と AI の席は Claude Code が回す（next の監視と mtg-table エージェント）")
+    p.add_argument("--host", default="127.0.0.1", help="待ち受けるアドレス（別の PC のゲストを招くなら 0.0.0.0。通信は暗号化されない）")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--offline", action="store_true", help="キャッシュに無いカード画像を取りに行かない")
-    p.add_argument("--play", action="store_true", help="席の操作（GUI の対局）を受ける。invite した対局は席の鍵で守る")
-    p.add_argument("--site", action="store_true",
-                   help="手元の1人用のサイト（--db が要る。--play を含む）: デッキの登録・対局を作る（AI と・招待した人と）・履歴。"
-                        "審判と AI の席は Claude Code が回す（next の監視と mtg-table エージェント）")
-    p.add_argument("--ai", action="store_true",
-                   help="審判と AI の席をサーバーの中で LLM の API で回す（--play か --site と。Claude Code の代わり）")
     p.set_defaults(fn=cmd_serve)
 
-    p = sub.add_parser("db-backup", help="--db の DB を、動かしたまま写す（バックアップ）")
-    p.add_argument("dest", help="写す先（ファイルか、フォルダ。フォルダなら日時の名前で置く）")
-    p.add_argument("--keep", type=int, default=0, help="フォルダに置くとき、新しいものからこの数だけ残す（0 で全部）")
-    p.set_defaults(fn=cmd_db_backup)
-
-    p = sub.add_parser("db-import", help="対局フォルダを --db の DB へ移す")
-    p.add_argument("games", nargs="+", help="対局フォルダ")
-    p.add_argument("--force", action="store_true", help="DB に同じ名前の対局があれば置き換える")
-    p.set_defaults(fn=cmd_db_import)
-
-    p = sub.add_parser("invite", help="GUI で席を持つための URL（鍵付き）を作る")
-    p.add_argument("game")
-    p.add_argument("--seat", required=True, help="人間が持つ席（p1 など）")
-    p.add_argument("--port", type=int, default=8765)
-    p.add_argument("--base", help="サーバーの URL（既定 http://127.0.0.1:PORT/）")
-    p.add_argument("--ttl", type=float, default=168,
-                   help="鍵の有効期限（時間。既定 168 = 7日。0 で期限なし）")
-    p.set_defaults(fn=cmd_invite)
-
-    p = sub.add_parser("revoke", help="席の鍵を失効させる（invite で作り直すまで、その席は誰も使えない）")
-    p.add_argument("game")
-    p.add_argument("--seat", required=True)
-    p.set_defaults(fn=cmd_revoke)
-
-    p = sub.add_parser("wait", help="相手が書いて自分の番が来るまで待つ（GUI の人間との対局で AI が使う）")
-    p.add_argument("game")
-    p.add_argument("--as", dest="as_", required=True, help="待つ Player（AI の席）")
-    p.add_argument("--since", type=int, help="この件数より後を待つ（省略で今の cursor）")
-    p.add_argument("--timeout", type=float, default=540, help="秒（既定 540。時間切れは終了コード 3）")
-    p.add_argument("--any", action="store_true", help="相手が1件書くごとに返す（既定は自分の番・宣言・決着まで待つ）")
-    p.add_argument("--prompt", action="store_true", help="自分の番が来たら、プロンプトも書き出す")
-    p.set_defaults(fn=cmd_wait)
-
-    p = sub.add_parser("next", help="審判か AI の席の番まで待ち、そのプロンプトを書き出す（手動でモデルに渡す）")
+    p = sub.add_parser("next", help="審判か AI の席の番まで待ち、そのプロンプトを書き出す")
     p.add_argument("game", nargs="?",
-                   help="対局（省略で、GUI の人間がいる対局のどれか。AI の席は鍵の無い席。サイトで作った対局を拾う）")
+                   help="対局（省略で、サイトの DB の対局のどれか。AI の席は鍵の無い席）")
     p.add_argument("--ai", action="append", help="AI の席（複数可）。審判の番は常にプロンプトを作る")
     p.add_argument("--timeout", type=float, default=540, help="秒（時間切れは終了コード 3）")
-    p.add_argument("--direct", action="store_true", help="AI の席は審判を通さず Batch を直接書く（前の形。鍵の対局では使えない）")
     p.add_argument("--claude-code", action="store_true",
                    help="Claude Code のエージェント1つが審判と AI の席を兼ねる固定部分を prompts/claude-code.md に書き出す")
     p.add_argument("--body", action="store_true",
@@ -858,22 +635,10 @@ def build_parser():
                    help="前に届けた盤面・オラクルの控えを消し、全部を送る（エージェントを起動し直したとき）")
     p.set_defaults(fn=cmd_next)
 
-    p = sub.add_parser("auto", help="審判と AI の席を LLM の API で回す（提供元・キーは secrets/README.md）")
-    p.add_argument("game")
-    p.add_argument("--ai", action="append", help="AI の席（省略で鍵の無い席）")
-    p.add_argument("--watch", action="store_true", help="人間の番になっても終わらず、操作を待って決着まで回す")
-    p.add_argument("--model", help="モデル（全部の役割。省略で secrets/llm.json → 提供元の既定）")
-    p.add_argument("--provider", choices=("openai", "anthropic"), help="提供元（全部の役割。省略で secrets/llm.json → openai）")
-    p.add_argument("--max-failures", type=int, default=3, help="返答を続けて適用できなかったら止める回数")
-    p.add_argument("--server", default="http://127.0.0.1:8765",
-                   help="--watch で更新通知を受けるサーバー（serve の URL）。つながらなければ1秒ごとに見る。空で通知を使わない")
-    p.set_defaults(fn=cmd_auto)
-
-    p = sub.add_parser("prompt", help="プロンプト（API に送る形）を今すぐ書き出す")
+    p = sub.add_parser("prompt", help="プロンプトを今すぐ書き出す")
     p.add_argument("game")
     p.add_argument("--as", dest="as_", help="AI の席")
     p.add_argument("--judge", action="store_true", help="審判のプロンプト")
-    p.add_argument("--direct", action="store_true", help="AI の席が Batch を直接書く形（審判を通さない。鍵の対局では使えない）")
     p.set_defaults(fn=cmd_prompt)
 
     p = sub.add_parser("answer", help="Claude の返答を、最後に作ったプロンプトの役割として卓に書く")
@@ -889,7 +654,7 @@ def build_parser():
     p.add_argument("file")
     p.add_argument("--fetch", action="store_true", help="キャッシュに無いカードを Scryfall から取得する")
     p.add_argument("--refresh", action="store_true", help="キャッシュを無視して取り直す")
-    p.add_argument("--images", action="store_true", help="カード画像も取っておく（観戦ビューア用）")
+    p.add_argument("--images", action="store_true", help="カード画像も取っておく（画面用）")
     p.set_defaults(fn=cmd_deck)
     return ap
 

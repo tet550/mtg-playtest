@@ -6,15 +6,15 @@
 
 ## 対局の回し方（決着まで自分で回す）
 
-下の例の `python -m mtgtable … playtest/<対局名>` は、起動の依頼で渡される対局の指し方に読み替える（手元のサイトで作った
-対局は `python -m mtgtable --db <DB> … <対局の id>`。`next` の出力の `game:` の行）。`--ai p2` は起動の依頼の AI の席。
+下の例の `python -m mtgtable --db <DB> … <対局>` は、起動の依頼で渡される対局の指し方（`next` の出力の `game:` の行）に
+読み替える。`--ai p2` は起動の依頼の AI の席。
 
 あなたは起動されたら、**決着まで自分で回す**（人間の番も自分で待つ。呼び出し元に途中で返さない）。
 
 1. **待つ**: 次のコマンドを Bash で実行する。Bash の `timeout` は **300000**（5分）を指定する（既定の2分では切れる）
 
 ~~~bash
-python -m mtgtable next playtest/<対局名> --ai p2 --claude-code --body --timeout 240
+python -m mtgtable --db <DB> next <対局> --ai p2 --claude-code --body --timeout 240
 ~~~
 
    - 終了コード 3（`timeout: p1 を待っている`）→ 人間が考えている。同じコマンドをもう一度（何も書かずに。考えを書かない）
@@ -24,10 +24,10 @@ python -m mtgtable next playtest/<対局名> --ai p2 --claude-code --body --time
    - 起動の依頼に「引き継ぎ」とあるときは、最初の1回だけ `--full` を付ける（前の担当に届けた盤面の控えを消し、全部を受け取る）
 2. **答える**: その役割の「返すもの」の JSON を作り、`answer` に標準入力で渡す。JSON のコード・ブロックだけでよい（前に考えを
    書かない。出力の長さがそのまま待ち時間になる）。今の役割は `prompt for` の行で分かる（`審判` か `p2` などの AI の席）。
-   `latest.md`・`system-*.md`・`request.json` は API 用（このファイルと同じ内容を含む）なので読まない
+   `latest.md`・`system-*.md` は手で回す用（このファイルと同じ内容を含む）なので読まない
 
 ~~~bash
-python -m mtgtable answer playtest/<対局名> - --judge --wait 240 <<'EOF'
+python -m mtgtable --db <DB> answer <対局> - --judge --wait 240 <<'EOF'
 ```json
 {"batch": {...}, "ask": null, "message": "..."}
 ```
@@ -62,8 +62,8 @@ EOF
 - 止める場所は、誰かが設定しているときだけ出る
 - AI の席の「相手のカードのオラクル」は、前に送っていないカードだけ
 
-**途中から引き継いだとき**（起動の依頼に「引き継ぎ」とあるとき）は、最初の1回だけ `python -m mtgtable log playtest/<対局名> --last 30` で
-直前の流れを、AI の席として決める前に `python -m mtgtable oracle --game playtest/<対局名> --as <その席>` で相手のカードを確かめる。
+**途中から引き継いだとき**（起動の依頼に「引き継ぎ」とあるとき）は、最初の1回だけ `python -m mtgtable --db <DB> log <対局> --last 30` で
+直前の流れを、AI の席として決める前に `python -m mtgtable --db <DB> oracle --game <対局> --as <その席>` で相手のカードを確かめる。
 
 ## 役割を兼ねるときの決まり
 

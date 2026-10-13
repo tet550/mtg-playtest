@@ -1,6 +1,6 @@
 # mtgtable スクリプト・リファレンス
 
-`python -m mtgtable <コマンド>`。リポジトリ直下で実行する。Operation の一覧は `python -m mtgtable ops` でも出る。
+`python -m mtgtable <コマンド>`。リポジトリ直下で実行する。
 このファイルが Operation・Batch・参照・Precondition の正本（README は概要だけ）。
 
 ## 目次
@@ -25,24 +25,16 @@
 | `ids GAME --as pN [#c12 ...]` | id とカード名の対応（知っているカードだけ。省略で手札・戦場・スタック・墓地・追放） | |
 | `undo GAME [n]` / `redo GAME [n]` | Act 単位で戻す／やり直す | `undo --to N`（log の N 件目の直後まで。割り込みの巻き戻しに。Act の途中なら、その Act の始まりまで） |
 | `log GAME` | Operation Log。1行 `番号 v版 actor ラベル`（`~` は Undo 済み、代理の宣言は `[proxy by pX]`、手順から展開した Act は `[turn_start to=main1 2/4]`、`cont` で続く Act のパートは `…` でつながる。ラベルの無い Act は Operation の要約。Batch のラベルは `B番号` の行） | `--last N` `--batches [N]`（Batch ごとに1行。報告用） `--steps`（実際に適用した基本の op） `--events`（全情報。判断には使わない） `--no-names` |
-| `replay GAME --to N` | log の N 件目時点 | `--as` `--json` `--no-names` `--full` |
-| `diff GAME --from A [--to B]` | 2時点の状態差分 | `--all`（knowledge も） |
-| `fork GAME DEST [--at N]` | 途中時点から別の対局 | `--force` |
-| `policy GAME p1=omniscient` | Information Policy を変える | |
-| `ops` | Operation と手順の一覧 | |
-| `export DEST` | 観戦ビューアを静的サイトに書き出す（judge の席だけ。カードの画像・文は見る人のブラウザが Scryfall から取る） | `--game ID`（複数可。省略で全部） `--offline` |
-| `serve` | 観戦ビューア（ブラウザ）。http://127.0.0.1:8765/。カード画像は初めて表示するときに Scryfall から取って `cards/images/` に保存する。`--play` で GUI の対局（席の鍵を持つ人の依頼・宣言・回答。席は卓に書けない）も受ける | `--root playtest` `--port 8765` `--offline`（画像を取りに行かない） `--play` `--host` |
-| `invite GAME --seat p1` | GUI で席を持つための URL（`?game=...&seat=p1#key=...`）。鍵は対局フォルダの `seats.json`（`--db` なら DB）にハッシュで残る。作り直すと前の URL は使えない。既定で7日で切れる | `--port` `--base URL` `--ttl 時間`（0 で期限なし） |
-| `wait GAME --as p2` | 相手（GUI の人間）が書いて自分の番が来るまで待ち、来た Act を `log` の形で出す。最後の行は `waiting on pN`。待つのは自分が最後に書いた件より後 | `--timeout 540`（時間切れは終了コード 3） `--since N` `--any`（相手が1件書くごとに返す） `--prompt`（番が来たらプロンプトも書き出す） |
-| `next GAME --ai p2` | 審判か AI の席の番まで待ち、その役割のプロンプト（Claude API の本文の形）を `playtest/<対局>/prompts/<役割>/` に書き出す。`latest.md` は手動で貼る用 | `--timeout 540` `--direct`（AI の席が Batch を直接書く） |
-| `prompt GAME --as p2` / `--judge` | プロンプトを今すぐ書き出す | `--direct` |
+| `serve` | 手元のサイト（ブラウザ）。http://127.0.0.1:8765/。デッキの登録・対局を作る（AI と・招待した人と）・対局・履歴。対局はサイトの DB（既定は `data/site.sqlite`。`--db` で変える）に置く。カード画像は初めて表示するときに Scryfall から取って `cards/images/` に保存する | `--port 8765` `--host`（別の PC のゲストを招くなら `0.0.0.0`。通信は暗号化されない） `--offline`（画像を取りに行かない） |
+| `next GAME --ai p2` | 審判か AI の席の番まで待ち、その役割のプロンプトを `<対局の作業フォルダ>/prompts/<役割>/` に書き出す。GAME を省くと、サイトの DB の対局のどれか。`latest.md` は手動で貼る用 | `--timeout 540` `--claude-code`（エージェント用の固定部分 `claude-code.md`） `--body` `--full` |
+| `prompt GAME --as p2` / `--judge` | プロンプトを今すぐ書き出す | |
 | `answer GAME [FILE]` | Claude の返答の最後の JSON ブロックを、最後に作ったプロンプトの役割として卓に書く（Player: 意図 → `declare intent` など、審判: Batch → ruled → 質問）。失敗・盤面が進んでいたら理由付きでプロンプトを作り直す | `--as pN` `--judge`（役割の指定） |
 | `oracle NAME...` | カードのオラクル（初回は Scryfall から取得してキャッシュ） | `--offline` `--refresh` `--brief` `--json` |
 | `oracle --deck FILE` | デッキの全カードを1枚の一覧で（デッキ・キャッシュから） | `--no-sideboard` `--brief` `--offline` |
 | `oracle --game GAME --as pN [--card #c12 ...]` | 対局の中で pN が知っているカード（`--card` 省略でサイドボード以外の全部） | `--brief` |
 | `deck FILE` | 枚数の確認とデッキ・キャッシュの作成 | `--fetch`（無いカードを取得） `--refresh` `--images`（カード画像も取っておく） |
 
-- `--as` は `p1` / `p2` / `judge`（全知）。Player の判断に `judge` を使わない。`view` `replay` `ids` `oracle --game` は
+- `--as` は `p1` / `p2` / `judge`（全知）。Player の判断に `judge` を使わない。`view` `ids` `oracle --game` は
   **省略すると judge**（全部見える）なので、Player として見るときは必ず `--as pN` を付ける
 - `--no-names` はカード名を出さず id だけにする。`apply` の `learned` は `--no-names` でも名前を出す
   （新しく知ったカードの id と名前はここで分かる）。後で名前が要るときは `ids` か `oracle --game ... --card` で引く
@@ -57,7 +49,7 @@
 |---|---|
 | `cards/<名前>-<hash>.json` | 1枚ごと。Scryfall から取った名前・コスト・タイプ・本文・P/T など |
 | `cards/decks/<デッキ名>-<hash>.json` | デッキの全カードを束ねたもの。hash はデッキリストの中身から作る（リストを直すと別ファイル） |
-| `cards/images/<名前>-<hash>.jpg` | カード画像（Scryfall の normal）。観戦ビューアが使う |
+| `cards/images/<名前>-<hash>.jpg` | カード画像（Scryfall の normal）。サイトの画面が使う |
 
 `new` は各デッキのキャッシュを作って `initial.json` の `meta.decks.<pN>.oracle` に記録する。
 キャッシュに無いカードだけ Scryfall に取りに行く（`--offline` で取りに行かない）。

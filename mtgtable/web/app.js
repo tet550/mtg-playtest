@@ -1,4 +1,4 @@
-// 観戦ビューア（と GUI の対局）の起動・画面操作・更新を調停する。
+// 手元のサイト（対局の盤面と、トップ・デッキ・対局を作る・履歴の画面）の起動・画面操作・更新を調停する。
 import { $, el } from "./dom.js";
 import { createSource, latestLoader } from "./source.js";
 import { Timeline } from "./timeline.js";
@@ -13,8 +13,8 @@ applyDom();  // 今の言語の文言を HTML の印に入れる（描く前に�
 const ui = { game: null, seat: "judge", live: true, pos: 0, cursor: 0, view: null, log: [], names: {},
   images: true, motion: true, open: new Set(), attacking: new Set(), blocking: new Set(), sides: {}, timer: null,
   play: null, marks: new Map() };
-let config = { play: false };
-const source = createSource(document.documentElement.dataset.static === "1");
+let config = { host: false };
+const source = createSource();
 const loadLatest = latestLoader(source);
 let timeline = null;
 let unsubscribe = () => {};
@@ -58,7 +58,7 @@ let gameList = [];
 let viewing = null;  // 再生（#/view/<対局>）: {game, finished, views}
 const VIEW_LABEL = (v) => (v === "judge" ? t("seat.all") : v);
 let site = null;  // 手元のサイトの画面の切り替え（トップ・デッキ・対局）
-const guest = () => !!(config.site && !config.host);  // 招待で着いたゲスト（外のブラウザ。席の鍵だけで入る）
+const guest = () => !config.host;  // 招待で着いたゲスト（外のブラウザ。席の鍵だけで入る）
 
 // ゲストの対局: 一覧は見せないので、このブラウザが鍵を覚えている対局
 function rememberedGames() {
@@ -81,7 +81,7 @@ function keyOf(game) {
 // 選んだ対局の鍵を持っていれば、その席で対局する（席は固定）。無ければ観戦
 function applySeatMode() {
   // 再生・観戦（#/view）では、自分の席でも対局が終わっていれば操作しない（どの視点でも見られる）
-  const k = config.play && ui.game && !(viewing && viewing.finished) ? keyOf(ui.game) : null;
+  const k = ui.game && !(viewing && viewing.finished) ? keyOf(ui.game) : null;
   ui.play = k ? { seat: k.seat } : null;
   source.setKey(k ? { game: ui.game, seat: k.seat, token: k.token } : null);
   for (const name of ["card", "drop", "mana", "stack", "player", "pile", "after", "preview", "retarget"]) delete hooks[name];
@@ -146,7 +146,6 @@ async function load() {
   if (timeline && ui.live && added === 1) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
   ui.idle = result.timeline.idle ? { ...result.timeline.idle, at: Date.now() } : null;  // 時間切れの知らせ（手元のサイト）
-  ui.ai = result.timeline.ai || null;  // サーバーの中で回す AI の状態（中断していれば理由）
   ui.log = result.log;
   ui.cursor = timeline.cursor;
   if (follow) return startPlay(from);
@@ -453,14 +452,8 @@ document.addEventListener("keydown", (e) => {
 
 (async () => {
   try {
-    await source.init();
-    config = await source.config().catch(() => ({ play: false }));
-    if (config.site) siteSetup();
-    if (source.isStatic) {
-      $("seat").replaceChildren(...[...$("seat").options].filter((o) => o.value === "judge"));
-      $("conn").hidden = true;
-      remember("seat", "judge");
-    }
+    config = await source.config().catch(() => ({ host: false }));
+    siteSetup();
     ui.seat = recall("seat") || "judge";
     $("seat").value = ui.seat;
     ui.images = recall("images") !== "0";

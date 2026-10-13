@@ -1,21 +1,15 @@
-"""観戦ビューアと GUI の対局（24〜26節）: 対局フォルダを読んでブラウザに表示し、`--play` なら席の操作も受ける。
+"""手元のサイト（24〜26節）: デッキの登録・対局を作る（AI と・招待した人と）・対局・履歴。
 
-`python -m mtgtable serve [--root playtest] [--port 8765] [--play]` で起動し、http://127.0.0.1:8765/ を開く。
-対局フォルダ（initial.json・log.jsonl・state.json）が正本で、AI が CLI で書いた変更も SSE で画面に届く。
-`--db data/mtg.sqlite`（か環境変数 MTGTABLE_DB）なら、対局フォルダの代わりに SQLite の DB から読む（sqlstore）。
+`python -m mtgtable serve [--port 8765]` で起動し、http://127.0.0.1:8765/ を開く。対局は SQLite の DB（sqlstore）に置き、
+Claude Code が CLI で書いた変更も SSE で画面に届く。
 
-席（seat）ごとに、その Player が知り得る情報だけを返す（info.player_view）。log は AI のラベルに非公開の
-情報が入りうるので、全知の judge の席にだけ返す。画面上の配置・選択などは画面の側だけで持つ（25節）。
+使うのは手元のブラウザ（ホスト）で、アカウントや Cookie は無い。ホストかどうかは、要求が手元から直接来たか（_host）で決める。
+招待のゲストは、席に着いたときに受け取る席の鍵で自分の席だけを読み書きする。審判と AI の席は Claude Code が回す
+（`next` の監視と mtg-table エージェント）。
 
-`--play` では、`invite` で鍵を作った対局（席の鍵がある対局）を席の鍵で守る: 読むのも書くのも、
-鍵を持つ席だけ（judge の席・他の席は見せない）。席が書けるのは依頼（request）・宣言（declare）・回答（answer）
-だけで、卓の op は書けない（盤面は審判が動かす。play.seat_batch）。見ていた cursor（expect）と違えば 409 で断る
-（CLI の AI・審判と同時に書いても、古い盤面のまま書かない）。
-
-`--site`（`--db` が要る）は手元の1人用のサイト: デッキの登録・対局を作る（AI と・招待した人と）・履歴。使うのは手元の
-ブラウザ（ホスト）で、アカウントや Cookie は無い。ホストかどうかは、要求が手元から直接来たか（_host）で決める。
-招待のゲストは、席に着いたときに受け取る席の鍵で自分の席だけを読み書きする。審判と AI の席は既定では Claude Code が
-回し（`next` の監視と mtg-table エージェント）、`--ai` ならサーバーの中で API を呼んで回す。
+席（seat）ごとに、その Player が知り得る情報だけを返す（info.player_view）。席が書けるのは依頼（request）・宣言（declare）・
+回答（answer）だけで、卓の op は書けない（盤面は審判が動かす。play.seat_batch）。見ていた cursor（expect）と違えば 409 で断る
+（CLI の審判・AI と同時に書いても、古い盤面のまま書かない）。画面上の配置・選択などは画面の側だけで持つ（25節）。
 """
 from __future__ import annotations
 
@@ -34,11 +28,11 @@ from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
 from .decks import Decks, Invalid, check as check_deck_text
-from . import history as history_mod, llm, worker
+from . import history as history_mod
 from .history import History, Refused as HistoryRefused
 from .lobby import IDLE_LIMIT, IDLE_NOTICE, Lobby, Refused as LobbyRefused, host_seats, repo_decks
 from .sqlstore import SqliteGames
-from .store import BaseStore, FileGames, StaleCursor
+from .store import BaseStore, StaleCursor
 
 STATIC = pathlib.Path(__file__).with_name("web")
 _TYPES = {".svg": "image/svg+xml", ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -97,19 +91,14 @@ def _saved_timeline(st: BaseStore, seat: Optional[str]):
 
 
 class Viewer:
-    """対局の読み取りと、途中の時点の状態のキャッシュ。対局は root（対局フォルダの親）か db（SQLite）から開く。"""
+    """対局の読み取りと、途中の時点の状態のキャッシュ。対局・デッキ・招待・履歴は db（SQLite）に置く。"""
 
-    def __init__(self, root, offline: bool = False, play: bool = False, db=None, site: bool = False):
-        if site and not db:
-            raise ValueError("serve --site needs --db (the site keeps decks and games in the database)")
-        self.source = SqliteGames(db) if db else FileGames(root)
+    def __init__(self, db, offline: bool = False):
+        self.source = SqliteGames(db)
         self.offline = offline
-        self.site = site  # 手元の1人用のサイト: デッキ・対局を作る・履歴（ホストだけ）
-        self.play = play or site  # 席の操作（書き込み）を受けるか
-        self.decks = Decks(db) if site else None
-        self.lobby = Lobby(db, self.source, self.decks, offline) if site else None
-        self.worker = None  # serve --ai のとき（審判と AI の席をサーバーの中で回す）。無ければ Claude Code が回す
-        self.history = History(db, self.source) if site else None
+        self.decks = Decks(db)
+        self.lobby = Lobby(db, self.source, self.decks, offline)
+        self.history = History(db, self.source)
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._ja_lock = threading.Lock()  # 日本語版を Scryfall から引くのは1度に1つ（同時に聞かれても重ねて引かない）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
@@ -133,70 +122,43 @@ class Viewer:
         return st
 
     def games(self, host: bool = True) -> list:
-        """対局の一覧。サイトでは、ホストにだけ全部を見せ（ゲストには空）、my_seat にホストの席（鍵が無くても対局できる）。"""
-        if self.site and not host:
+        """対局の一覧。ホストにだけ全部を見せ（ゲストには空）、my_seat にホストの席（鍵が無くても対局できる）。"""
+        if not host:
             return []
         out = []
         for gid in self.source.ids():
             st = self.source.open(gid)
             g = st.summary()
             row = {"id": gid, "version": g["version"], "turn": g["turn"], "players": g["players"],
-                   "seats": sorted(play.seats(st)) if self.play else []}
-            if self.site:
-                mine = host_seats(st)
-                row["my_seat"] = mine[0] if mine else None
+                   "seats": sorted(play.seats(st))}
+            mine = host_seats(st)
+            row["my_seat"] = mine[0] if mine else None
             out.append(row)
         return out
 
-    def guarded(self, st: BaseStore) -> bool:
-        """席の鍵で守る対局か（--play で、invite した対局）。"""
-        return self.play and bool(play.seats(st))
-
-    def authorize(self, game: str, seat: Optional[str], token: Optional[str], write: bool = False,
-                  host: bool = False) -> BaseStore:
-        """seat として読む・書くことを許すか。書くには --play と、その席の鍵が要る。
-        サイト（site）では、ホストの席（鍵の無い人間の席）はホストなら鍵なしで、ほかの席は鍵で。judge の席は
-        ここでは見せない（終わった対局の履歴は read が通す）。"""
+    def authorize(self, game: str, seat: Optional[str], token: Optional[str], host: bool = False) -> BaseStore:
+        """seat として読む・書くことを許すか。ホストの席（鍵の無い人間の席）はホストなら鍵なしで、ほかの席は鍵で。
+        judge の席はここでは見せない（終わった対局の履歴は read が通す）。"""
         st = self.store(game)
-        if write and not self.play:
-            raise Forbidden("this server is read-only (start it with serve --play)")
-        if self.site:
-            if seat is None:
-                raise Forbidden("the judge seat is shown only for finished games")
-            if host and seat in host_seats(st):
-                return st
-            if play.check_token(st, seat, token):
-                return st
-            raise Forbidden("this seat needs its key (the invite URL)")
-        if (write or self.guarded(st)) and (seat is None or not play.check_token(st, seat, token)):
-            raise Forbidden("this seat needs its key (python -m mtgtable invite %s --seat pN)" % game)
-        return st
-
-    def resume_ai(self, game: str, seat: str, token: Optional[str], host: bool = False) -> dict:
-        """中断した対局の AI を再開する（席を持つ人だけ）。"""
-        st = self.authorize(game, seat, token, write=True, host=host)
-        if not worker.suspended(st):
-            raise Forbidden("the AI of this game is not suspended")
-        worker.resume(st)
-        if self.worker is not None:
-            self.worker.forget(game)  # 盤面は変わっていないので、見直すように言う
-        self.notify()
-        return {"ok": True}
-
-    def ai_status(self, game: str) -> Optional[dict]:
-        return worker.status(self.store(game)) if self.worker is not None else None
+        if seat is None:
+            raise Forbidden("the judge seat is shown only for finished games")
+        if host and seat in host_seats(st):
+            return st
+        if play.check_token(st, seat, token):
+            return st
+        raise Forbidden("this seat needs its key (the invite URL)")
 
     def read(self, game: str, seat: Optional[str], token: Optional[str], host: bool = False) -> BaseStore:
-        """seat（None は全体の視点）として読むことを許すか。サイトでは、ホストは見える範囲（history.access: 自分の席・
+        """seat（None は全体の視点）として読むことを許すか。ホストは見える範囲（history.access: 自分の席・
         終わった対局のどの視点も）に入っていれば通す。入っていなければ席の鍵。"""
-        if self.site and host and self.history.can_view(game, seat or history_mod.JUDGE):
+        if host and self.history.can_view(game, seat or history_mod.JUDGE):
             return self.store(game)
         return self.authorize(game, seat, token, host=host)
 
     def seat_write(self, game: str, seat: str, token: Optional[str], what: str, body: dict,
                    host: bool = False) -> dict:
         """席の Player の書き込み（request / declare / answer）。卓の op は受けない（play.seat_batch が宣言に変える）。"""
-        st = self.authorize(game, seat, token, write=True, host=host)
+        st = self.authorize(game, seat, token, host=host)
         with st.lock():
             cur = st._check(body.get("expect"))
             try:
@@ -205,18 +167,17 @@ class Viewer:
                 raise Forbidden(str(e))
             result = st._apply(batch, cur)
         result.pop("_state", None)
-        if self.worker is None:  # 手で回すとき: 依頼・マリガンで審判の番になったら、審判のプロンプトをすぐ作る
-            _announce(prompt.auto_build(st))
+        _announce(prompt.auto_build(st))  # 依頼・マリガンで審判の番になったら、審判のプロンプトをすぐ作る
         self.notify()
         return {"result": public_result(result), "cursor": st.cursor()}
 
     def get_stops(self, game: str, seat: str, token: Optional[str], host: bool = False) -> dict:
-        st = self.authorize(game, seat, token, write=True, host=host)
+        st = self.authorize(game, seat, token, host=host)
         return {"stops": play.get_stops(st, seat)}
 
     def set_stops(self, game: str, seat: str, token: Optional[str], body: dict, host: bool = False) -> dict:
         """止める場所（非公開。卓の記録には載せず、本人と審判のプロンプトにだけ出る）。"""
-        st = self.authorize(game, seat, token, write=True, host=host)
+        st = self.authorize(game, seat, token, host=host)
         if play.waiting_on(st.load()) == play.JUDGE:  # 審判が今の止める場所で処理している間は変えない
             raise Forbidden("the judge is processing; change the stops after the ruling")
         return {"stops": play.set_stops(st, seat, body.get("stops"))}
@@ -427,8 +388,6 @@ class Handler(BaseHTTPRequestHandler):
     def _host(self) -> bool:
         """サイトのホスト（手元の1人）からの要求か: 手元のアドレスから、手元の名前（Host）で、プロキシを通らずに来たもの。
         --host で外に開いたときの招待のゲスト・トンネル越しの要求はホストにならない（席の鍵だけで入る）。"""
-        if not self.viewer.site:
-            return False
         addr = self.client_address[0] if self.client_address else ""
         return addr in LOOPBACK and self._local() and not any(self.headers.get(h) for h in PROXY_HEADERS)
 
@@ -475,18 +434,18 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise ValueError("body must be a JSON object")
-            if self.viewer.site and not self._same_origin():
+            if not self._same_origin():
                 raise Forbidden("writes must come from this site (Origin)")
             host = self._host()
-            if parts[:2] == ["api", "decks"] and self.viewer.site:
+            if parts[:2] == ["api", "decks"]:
                 return self._decks(method, parts[2:], body)
-            if self.viewer.site and method == "DELETE" and parts[:2] == ["api", "games"] and len(parts) == 3:
+            if method == "DELETE" and parts[:2] == ["api", "games"] and len(parts) == 3:
                 self._need_host()
                 out = self.viewer.history.delete(parts[2])
                 self.viewer.notify()
                 return self._json(out)
-            if self.viewer.site and (parts[:2] == ["api", "invites"] or parts == ["api", "games"]
-                                     or parts[:2] == ["api", "games"] and parts[3:] == ["timeout"]):
+            if (parts[:2] == ["api", "invites"] or parts == ["api", "games"]
+                    or parts[:2] == ["api", "games"] and parts[3:] == ["timeout"]):
                 return self._lobby(method, parts, body, host)
             if method != "POST":
                 return self._json({"error": "not found"}, 404)
@@ -541,7 +500,7 @@ class Handler(BaseHTTPRequestHandler):
             self.viewer.notify()
             return self._json(out, 201)
         if method == "POST" and parts[3:] == ["timeout"]:
-            self.viewer.authorize(parts[2], body.get("seat"), self._token(), write=True, host=host)
+            self.viewer.authorize(parts[2], body.get("seat"), self._token(), host=host)
             out = lobby.timeout(parts[2], body.get("seat"))
             self.viewer.notify()
             return self._json(out)
@@ -558,14 +517,12 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def _post(self, parts: list, body: dict, host: bool) -> None:
-        """POST /api/games/<対局>/request・declare・answer・stops・resume。"""
+        """POST /api/games/<対局>/request・declare・answer・stops。"""
         if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] in play.SEAT_WRITES:
             return self._json(self.viewer.seat_write(parts[2], body.get("seat"), self._token(), parts[3], body,
                                                      host=host))
         if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "stops":
             return self._json(self.viewer.set_stops(parts[2], body.get("seat"), self._token(), body, host=host))
-        if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "resume" and self.viewer.play:
-            return self._json(self.viewer.resume_ai(parts[2], body.get("seat"), self._token(), host=host))
         self._json({"error": "not found"}, 404)
 
     def do_HEAD(self):  # noqa: N802
@@ -586,30 +543,28 @@ class Handler(BaseHTTPRequestHandler):
             host = self._host()
             if parts[:2] == ["api", "games"] and len(parts) == 2:
                 return self._json(self.viewer.games(host))
-            if parts[:2] == ["api", "decks"] and self.viewer.site and len(parts) <= 3:
+            if parts[:2] == ["api", "decks"] and len(parts) <= 3:
                 self._need_host()
                 return self._json(self.viewer.decks.get(parts[2]) if len(parts) == 3 else self.viewer.decks.list())
-            if parts == ["api", "history"] and self.viewer.site:
+            if parts == ["api", "history"]:
                 self._need_host()
                 return self._json(self.viewer.history.mine())
-            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "access" and self.viewer.site:
+            if parts[:2] == ["api", "games"] and len(parts) == 4 and parts[3] == "access":
                 self._need_host()
                 a = self.viewer.history.access(parts[2])
                 if not a["views"]:
                     raise Forbidden("この対局は見られません（対局中は自分の席だけ。終わった対局はどの視点も）")
                 return self._json(a)
-            if parts == ["api", "ai-decks"] and self.viewer.site:
+            if parts == ["api", "ai-decks"]:
                 self._need_host()
                 return self._json(repo_decks())
-            if parts[:2] == ["api", "invites"] and self.viewer.site and len(parts) == 3:
+            if parts[:2] == ["api", "invites"] and len(parts) == 3:
                 return self._json(self.viewer.lobby.invite_info(parts[2], q.get("token")))  # 招待の鍵で（ゲスト）
-            if parts == ["api", "invites"] and self.viewer.site:
+            if parts == ["api", "invites"]:
                 self._need_host()
                 return self._json(self.viewer.lobby.invites())
             if parts[:2] == ["api", "config"]:
-                return self._json({"play": self.viewer.play, "site": self.viewer.site,
-                                   **({"host": host, "ai": "server" if self.viewer.worker is not None else "claude-code"}
-                                      if self.viewer.site else {})})
+                return self._json({"host": host})
             if parts[:2] == ["api", "image"]:
                 p = self.viewer.image(q.get("name", ""), int(q.get("face", 0)), q.get("lang", "en"))
                 if p is None:
@@ -629,25 +584,21 @@ class Handler(BaseHTTPRequestHandler):
             if parts[:2] == ["api", "games"] and len(parts) == 4:
                 game, what = parts[2], parts[3]
                 seat = None if q.get("seat", "judge") == "judge" else q["seat"]
-                if what != "events":  # 通知は version・cursor だけ（auto の審判・ゲストは鍵を付けずにつなぐ）
+                if what != "events":  # 通知は version・cursor だけ（ゲストは鍵を付けずにつなぐ）
                     self.viewer.read(game, seat, self._token(), host=host)
                 if what == "stops" and seat is not None:
                     return self._json(self.viewer.get_stops(game, seat, self._token(), host=host))
-                if what == "log" and seat is not None and self.viewer.play:
+                if what == "log" and seat is not None:
                     return self._json(play.player_log(self.viewer.store(game), seat))
                 if what == "view":
                     at = int(q["at"]) if q.get("at") not in (None, "") else None
                     return self._json(self.viewer.view(game, seat, at, library=q.get("library") == "1"))
                 if what == "timeline":
                     tl = self.viewer.timeline(game, seat)
-                    ai = self.viewer.ai_status(game)
-                    if ai:  # AI の状態（中断しているか・理由）。取るたびに変わりうるので、写しに足す
-                        tl = dict(tl, ai=ai)
-                    if self.viewer.site:  # 相手の番がどれだけ続いているか（時間切れの知らせ。取るたびに変わるので、写しに足す）
-                        st = self.viewer.store(game)
-                        tl = dict(tl, idle={"seconds": self.viewer.lobby.idle_seconds(st),
-                                            "notice": IDLE_NOTICE, "limit": IDLE_LIMIT,
-                                            "humans": sorted(play.seats(st))})
+                    st = self.viewer.store(game)  # 相手の番がどれだけ続いているか（時間切れの知らせ。取るたびに変わるので、写しに足す）
+                    tl = dict(tl, idle={"seconds": self.viewer.lobby.idle_seconds(st),
+                                        "notice": IDLE_NOTICE, "limit": IDLE_LIMIT,
+                                        "humans": sorted(play.seats(st))})
                     return self._json(tl)
                 if what == "log":
                     if seat is not None:  # ラベルに非公開の情報が入りうるので judge の席だけ
@@ -670,8 +621,8 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, path.read_bytes(), _TYPES.get(path.suffix, "application/octet-stream"))
 
     def _events(self, game: str) -> None:
-        """SSE: 対局フォルダが変わったら {version, cursor} を送る。サーバー自身の書き込みはすぐ、別のプロセス（CLI・auto）の
-        書き込みは 0.5 秒ごとの見張りで拾う。GUI の自動更新と、auto --watch の待ち合わせに使う。"""
+        """SSE: 対局が変わったら {version, cursor} を送る。サーバー自身の書き込みはすぐ、別のプロセス（CLI）の
+        書き込みは 0.5 秒ごとの見張りで拾う。GUI の自動更新に使う。"""
         st = self.viewer.store(game)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -696,88 +647,13 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
-# ---------------------------------------------------------------- 静的サイト
-
-def _card_names(value, out: set) -> None:
-    """view（JSON）の中のカード名を集める。"""
-    if isinstance(value, dict):
-        if isinstance(value.get("name"), str) and isinstance(value.get("id"), str) and value["id"].startswith("#"):
-            out.add(value["name"])
-        for v in value.values():
-            _card_names(v, out)
-    elif isinstance(value, list):
-        for v in value:
-            _card_names(v, out)
-
-
-def export_site(root, dest, games=None, offline: bool = False, db=None) -> list:
-    """観戦ビューアを静的サイトとして書き出す（GitHub Pages などに置く用）。judge の席だけ。
-
-    dest/index.html・static/・data/games.json・data/<対局>/{timeline,log}.json・data/cards.json を作る。
-    カードの画像・文（オラクル）・マナ・シンボルは含めず、見る人のブラウザが Scryfall から取る
-    （cards.json は画像の URL だけ）。書き出した対局の一覧を返す。"""
-    viewer = Viewer(root, offline, db=db)
-    dest = pathlib.Path(dest)
-    available = {g["id"]: g for g in viewer.games()}
-    ids = games or list(available)
-    (dest / "data").mkdir(parents=True, exist_ok=True)
-    listed, names = [], set()
-    for gid in ids:
-        tl = viewer.timeline(gid, None)
-        for f in tl["frames"]:
-            _card_names(f, names)
-        d = dest / "data" / gid
-        d.mkdir(parents=True, exist_ok=True)
-        (d / "timeline.json").write_text(json.dumps(tl, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-        (d / "log.json").write_text(json.dumps(viewer.log(gid), ensure_ascii=False, separators=(",", ":")),
-                                    encoding="utf-8")
-        listed.append(available[gid])
-    cards = {}
-    for name in sorted(names):
-        try:
-            cards[name] = {"image": carddb.image_url(name, offline=offline)}
-            ja = carddb.ja_name(name, offline=offline)  # 日本語の画面のための名前・画像（無ければ英語）
-            if ja:
-                cards[name]["ja"] = {"name": ja, "image": carddb.image_url_ja(name, offline=offline)}
-        except (LookupError, OSError):
-            cards[name] = {"image": ""}
-    (dest / "data" / "games.json").write_text(json.dumps(listed, ensure_ascii=False), encoding="utf-8")
-    (dest / "data" / "cards.json").write_text(json.dumps(cards, ensure_ascii=False, separators=(",", ":")),
-                                              encoding="utf-8")
-    (dest / "static").mkdir(parents=True, exist_ok=True)
-    for asset in STATIC.iterdir():
-        if asset.suffix in (".js", ".css", ".svg"):
-            (dest / "static" / asset.name).write_bytes(asset.read_bytes())
-    index = (STATIC / "index.html").read_text(encoding="utf-8").replace('<html lang="ja">', '<html lang="ja" data-static="1">')
-    (dest / "index.html").write_text(index, encoding="utf-8")
-    (dest / ".nojekyll").write_text("", encoding="utf-8")  # GitHub Pages に、そのまま配らせる
-    return [g["id"] for g in listed]
-
-
-def start_worker(viewer: Viewer, db=None, limits=None, report=print) -> "worker.Worker":
-    """AI のワーカーを動かす（審判と AI の席をサーバーの中で回す）。利用は db があれば DB に数える。"""
-    budget = worker.Budget(limits or worker.Limits.from_env(), db)
-    viewer.worker = worker.Worker(viewer, budget, report=report).start()
-    return viewer.worker
-
-
-def serve(root="playtest", host: str = "127.0.0.1", port: int = 8765, offline: bool = False,
-          play: bool = False, db=None, site: bool = False, ai: bool = False) -> None:
-    Handler.viewer = Viewer(root, offline, play, db=db, site=site)
-    if ai:
-        start_worker(Handler.viewer, db)
+def serve(db, host: str = "127.0.0.1", port: int = 8765, offline: bool = False) -> None:
+    Handler.viewer = Viewer(db, offline)
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
-    if ai:
-        print("  審判と AI の席はサーバーの中で回す（%s/%s、AI の席 %s/%s）"
-              % (llm.provider(prompt.JUDGE), llm.model(prompt.JUDGE), llm.provider("p"), llm.model("p")))
-    print("mtgtable %s: http://%s:%d/  (%s, Ctrl+C で終了)"
-          % ("site" if site else "play" if play else "viewer", host, port, "db: %s" % db if db else "root: %s" % root))
-    if site and not ai:
-        print("  審判と AI の席は Claude Code が回す（python -m mtgtable --db %s next --claude-code の監視と、"
-              "エージェント mtg-table）" % db)
-    elif play and not site:
-        print("  席の URL は python -m mtgtable invite <対局> --seat p1 --port %d で作る" % port)
+    print("mtgtable: http://%s:%d/  (db: %s, Ctrl+C で終了)" % (host, port, db))
+    print("  審判と AI の席は Claude Code が回す（python -m mtgtable --db %s next --claude-code の監視と、"
+          "エージェント mtg-table）" % db)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

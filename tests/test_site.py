@@ -1,7 +1,5 @@
-"""手元のサイト（serve --site）: ホスト（手元のブラウザ）とゲスト（外から・席の鍵だけ）・Origin・鍵の期限と失効。"""
+"""手元のサイトの不変の仕様: ホストとゲストの区別・席の鍵・席が書けるもの・対局を作る・デッキの検査。"""
 import json
-import pathlib
-import sys
 import tempfile
 import threading
 import unittest
@@ -9,35 +7,44 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from helpers import game, site_db
+from mtgtable import decks, play, prompt
+from mtgtable.sqlstore import SqliteGameStore
+from mtgtable.web import Handler, Viewer
 
-from mtgtable import play  # noqa: E402
-from mtgtable.sqlstore import SqliteGameStore  # noqa: E402
-from mtgtable.web import Handler, Viewer  # noqa: E402
-from helpers import game  # noqa: E402
+LEGAL = {"standard": "legal"}
+CARDS = {"Forest": {"name": "Forest", "type_line": "Basic Land — Forest", "legalities": LEGAL},
+         "Grizzly Bears": {"name": "Grizzly Bears", "type_line": "Creature — Bear", "legalities": LEGAL},
+         "Lightning Bolt": {"name": "Lightning Bolt", "type_line": "Instant", "legalities": {"standard": "not_legal"}}}
 
-GUEST_HOST = "192.168.0.10"  # 外から（LAN のアドレス）で来た要求に見せる Host
+
+def fake_resolve(names, need_legalities=False):
+    return {"found": {n: CARDS[n] for n in names if n in CARDS},
+            "missing": [n for n in dict.fromkeys(names) if n not in CARDS]}
+
+
+def deck(*lines):
+    return "Deck\n" + "\n".join(lines) + "\n"
 
 
 class Browser:
-    """小さなクライアント（ブラウザの代わり）。guest なら外のアドレスの Host で送る（ホストにならない）。"""
+    """ブラウザの代わり。guest なら外のアドレスの Host で送る（ホストにならない）。書き込みには同じサイトの Origin を付ける。"""
 
     def __init__(self, base, guest=False):
         self.base = base
-        port = base.rsplit(":", 1)[1]
-        self.host = "%s:%s" % (GUEST_HOST, port) if guest else base.split("//", 1)[1]
+        self.host = ("192.168.0.10:" + base.rsplit(":", 1)[1]) if guest else base.split("//", 1)[1]
         self.guest = guest
 
-    def call(self, path, body=None, token=None, origin="same", host=None, method=None, headers=None):
+    def call(self, path, body=None, token=None, origin="same", headers=None, method=None):
         h = {"Content-Type": "application/json", **(headers or {})}
         if token:
             h["Authorization"] = "Bearer " + token
         if body is not None and origin:
             h["Origin"] = "http://" + self.host if origin == "same" else origin
-        if host or self.guest:
-            h["Host"] = host or self.host
-        data = json.dumps(body).encode() if body is not None else None
-        req = urllib.request.Request(self.base + path, data=data, headers=h, method=method)
+        if self.guest:
+            h["Host"] = self.host
+        req = urllib.request.Request(self.base + path, data=json.dumps(body).encode() if body is not None else None,
+                                     headers=h, method=method)
         try:
             with urllib.request.urlopen(req) as r:
                 return r.status, json.loads(r.read())
@@ -46,92 +53,81 @@ class Browser:
                 return e.code, json.loads(e.read())
 
 
-def start_site(tmp, db, **viewer):
-    v = Viewer(tmp, offline=True, db=db, site=True, **viewer)
-    handler = type("SiteHandler", (Handler,), {"viewer": v})
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    httpd.daemon_threads = True
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    return httpd, v, "http://127.0.0.1:%d" % httpd.server_address[1]
-
-
 class SiteTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.db = pathlib.Path(self.tmp.name) / "mtg.sqlite"
+        self.db = site_db(self.tmp.name)
         self.st = SqliteGameStore(self.db, "g")
         self.st.create(game().state)
-        self.st.write_doc("seats", {"p1": {"claimed": "2026-01-01T00:00:00"}})  # ホストの席（サイトで作った対局）
+        self.st.write_doc("seats", {"p1": {"claimed": "2026-01-01T00:00:00"}})  # ホストの席
         self.key = play.invite(self.st, "p2")  # ゲストの席
-        SqliteGameStore(self.db, "other").create(game().state)  # 席の文書の無い対局（CLI の AI 同士など）
-        self.httpd, self.viewer, self.base = start_site(self.tmp.name, self.db)
+        viewer = Viewer(self.db, offline=True)
+        viewer.decks.resolve = fake_resolve
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), type("H", (Handler,), {"viewer": viewer}))
+        self.httpd.daemon_threads = True
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.base = "http://127.0.0.1:%d" % self.httpd.server_address[1]
+        self.host, self.guest = Browser(self.base), Browser(self.base, guest=True)
 
     def tearDown(self):
         self.httpd.shutdown()
         self.httpd.server_close()
         self.tmp.cleanup()
 
-    def test_site_needs_a_db(self):
-        with self.assertRaises(ValueError):
-            Viewer(self.tmp.name, site=True)
+    def test_the_host_is_only_the_browser_on_this_machine(self):
+        self.assertEqual(self.host.call("/api/config"), (200, {"host": True}))
+        self.assertFalse(self.guest.call("/api/config")[1]["host"])
+        for h in ({"X-Forwarded-For": "203.0.113.5"}, {"Forwarded": "for=203.0.113.5"}, {"Host": "mtg.example.com"}):
+            self.assertFalse(self.host.call("/api/config", headers=h)[1]["host"], h)  # トンネル・プロキシ越しはホストにしない
 
-    def test_config_tells_host_from_guest(self):
-        self.assertEqual(Browser(self.base).call("/api/config"),
-                         (200, {"play": True, "site": True, "host": True, "ai": "claude-code"}))
-        self.assertFalse(Browser(self.base, guest=True).call("/api/config")[1]["host"])
-        # トンネル・プロキシ越し（手元のアドレスから来ても）はホストにしない
-        for h in ({"X-Forwarded-For": "203.0.113.5"}, {"Forwarded": "for=203.0.113.5"}):
-            self.assertFalse(Browser(self.base).call("/api/config", headers=h)[1]["host"])
-        self.assertFalse(Browser(self.base).call("/api/config", host="mtg.example.com")[1]["host"])
-        # Cookie は使わない
-        with urllib.request.urlopen(self.base + "/api/config") as r:
-            self.assertIsNone(r.headers.get("Set-Cookie"))
-
-    def test_the_host_sees_every_game_and_plays_its_own_seat(self):
-        b = Browser(self.base)
-        games = {g["id"]: g["my_seat"] for g in b.call("/api/games")[1]}
-        self.assertEqual(games, {"g": "p1", "other": None})
-        # ホストの席は鍵なしで読み書きできる
-        self.assertEqual(b.call("/api/games/g/timeline?seat=p1")[0], 200)
-        self.assertEqual(b.call("/api/games/g/stops", {"seat": "p1", "stops": ["opp:end"]})[0], 200)
-        self.assertEqual(b.call("/api/games/g/stops?seat=p1")[1], {"stops": ["opp:end"]})
-        self.assertEqual(b.call("/api/games/g/declare", {"seat": "p1", "kind": "keep", "expect": 0})[0], 200)
-        # 対局中は、相手（ゲスト）の席・全体の視点は見せない
-        self.assertEqual(b.call("/api/games/g/timeline?seat=p2")[0], 403)
-        self.assertEqual(b.call("/api/games/g/timeline?seat=judge")[0], 403)
-        self.assertEqual(b.call("/api/games/g/log")[0], 403)
-        self.assertEqual(b.call("/api/games/g/declare", {"seat": "p2", "kind": "keep", "expect": 1})[0], 403)
-
-    def test_the_guest_only_has_its_seat_key(self):
-        g = Browser(self.base, guest=True)
-        self.assertEqual(g.call("/api/games"), (200, []))  # 一覧は見せない
-        self.assertEqual(g.call("/api/games/g/timeline?seat=p1")[0], 403)  # ホストの席は鍵が無いと
-        self.assertEqual(g.call("/api/games/g/timeline?seat=p2")[0], 403)
-        self.assertEqual(g.call("/api/games/g/timeline?seat=p2", token=self.key)[0], 200)
-        self.assertEqual(g.call("/api/games/g/timeline?seat=judge", token=self.key)[0], 403)
-        for path in ("/api/decks", "/api/history", "/api/invites", "/api/ai-decks", "/api/games/g/access"):
+    def test_each_seat_reads_only_with_its_right(self):
+        h, g = self.host, self.guest
+        self.assertEqual(h.call("/api/games/g/timeline?seat=p1")[0], 200)  # ホストの席は鍵なしで
+        self.assertEqual(g.call("/api/games/g/timeline?seat=p2", token=self.key)[0], 200)  # ゲストは自分の席の鍵で
+        for who, seat, token in ((h, "p2", None), (h, "judge", None), (g, "p1", self.key), (g, "judge", self.key)):
+            self.assertEqual(who.call("/api/games/g/timeline?seat=" + seat, token=token)[0], 403, (who.guest, seat))
+        self.assertEqual(g.call("/api/games"), (200, []))  # ゲストに一覧・デッキ・履歴は見せない
+        for path in ("/api/decks", "/api/history", "/api/invites"):
             self.assertEqual(g.call(path)[0], 403, path)
-        self.assertEqual(g.call("/api/decks", {"name": "x", "text": "1 Forest"})[0], 403)
-        self.assertEqual(g.call("/api/games", {"deck": "x", "opponent": "ai"})[0], 403)
+        self.st.apply({"actor": "p2", "acts": [{"act": [{"op": "declare", "kind": "concede"}]}]})
+        self.assertEqual(h.call("/api/games/g/timeline?seat=judge")[0], 200)  # 終わった対局は全体の視点も再生できる
 
-    def test_writes_need_the_same_origin(self):
-        b = Browser(self.base)
-        body = {"seat": "p1", "kind": "keep", "expect": 0}
-        self.assertEqual(b.call("/api/games/g/declare", body, origin=None)[0], 403)
-        self.assertEqual(b.call("/api/games/g/declare", body, origin="https://evil.example")[0], 403)
-        self.assertEqual(self.st.cursor(), 0)
-        self.assertEqual(b.call("/api/games/g/declare", body)[0], 200)
+    def test_seats_write_only_requests_and_declarations(self):
+        h = self.host
+        keep = {"seat": "p1", "kind": "keep", "expect": 0}
+        self.assertEqual(h.call("/api/games/g/declare", keep, origin=None)[0], 403)  # 書き込みは同じサイトのページから
+        self.assertEqual(h.call("/api/games/g/declare", keep, origin="https://evil.example")[0], 403)
+        self.assertEqual(h.call("/api/games/g/declare", keep)[0], 200)
+        self.assertEqual(h.call("/api/games/g/declare", dict(keep, kind="say", text="hi"))[0], 409)  # 見ていた盤面より進んでいる
+        self.assertEqual(h.call("/api/games/g/declare", {"seat": "p1", "kind": "ruled", "text": "x"})[0], 400)  # 審判の宣言は書けない
+        self.assertEqual(h.call("/api/games/g/apply", {"seat": "p1", "batch": {"acts": [{"act": [{"op": "draw"}]}]}})[0],
+                         404)  # 卓の op を書く入口は無い
+        self.assertEqual(h.call("/api/games/g/declare", {"seat": "p2", "kind": "keep"})[0], 403)  # 他の席
+        self.assertEqual(self.st.cursor(), 1)
 
-    def test_seat_keys_expire_and_can_be_revoked(self):
-        g = Browser(self.base, guest=True)
-        old = play.invite(self.st, "p2", ttl=-1)  # もう切れている
-        self.assertEqual(g.call("/api/games/g/timeline?seat=p2", token=old)[0], 403)
-        fresh = play.invite(self.st, "p2", ttl=1)
-        self.assertTrue(play.check_token(self.st, "p2", fresh))
-        self.assertTrue(play.revoke(self.st, "p2"))
-        self.assertFalse(play.check_token(self.st, "p2", fresh))
-        self.assertIn("p2", play.seats(self.st))  # 失効しても人間の席のまま（AI に替わらない）
-        self.assertFalse(play.revoke(self.st, "p9"))
+    def test_games_are_made_against_the_ai_or_by_a_one_time_invite(self):
+        h = self.host
+        code, d = h.call("/api/decks", {"name": "green", "format": "standard",
+                                        "text": deck("56 Forest", "4 Grizzly Bears")})
+        self.assertEqual(code, 201, d)
+        code, r = h.call("/api/games", {"deck": d["id"], "opponent": "ai", "ai_deck": "repo:piza"})
+        self.assertEqual((code, r["seat"]), (201, "p1"))
+        self.assertEqual(prompt.ai_seats(SqliteGameStore(self.db, r["game"])), ["p2"])  # 相手は AI の席（鍵の無い席）
+        code, inv = h.call("/api/games", {"deck": d["id"], "opponent": "human"})
+        join = lambda: Browser(self.base, guest=True).call(  # noqa: E731
+            "/api/invites/%s/join" % inv["invite"], {"token": inv["token"], "text": deck("60 Forest"), "name": "lands"})
+        code, j = join()
+        self.assertEqual((code, j["seat"]), (201, "p2"))
+        self.assertEqual(prompt.ai_seats(SqliteGameStore(self.db, j["game"])), [])  # 両方とも人間の席
+        self.assertEqual(join()[0], 403)  # 招待は1回だけ
+
+    def test_deck_check(self):
+        ok = decks.check(deck("56 Forest", "4 Grizzly Bears"), "standard", fake_resolve)
+        self.assertTrue(ok["ok"], ok["errors"])
+        bad = decks.check(deck("50 Forest", "5 Grizzly Bears", "4 Lightning Bolt", "1 Nope"), "standard", fake_resolve)
+        self.assertFalse(bad["ok"])
+        lines = {e["line"] for e in bad["errors"]}
+        self.assertTrue({3, 4, 5} <= lines, bad["errors"])  # 5 枚目・フォーマット外・見つからない名前は、行番号つき
 
 
 if __name__ == "__main__":

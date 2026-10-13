@@ -912,9 +912,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     ui.blocking = new Set(v.combat.blocks.map((b) => b.blocker));
     const t = v.turn;
     $("turn").textContent = t.turn === 0 ? tr("turn.pregame") : `T${t.turn}`;
-    // 最新で、自分以外（審判・AI・相手）の番を待っている間は、動く印を出す（止まっている AI は除く）
-    const thinker = ui.live && t.waiting_on && !(ui.play && t.waiting_on === ui.play.seat)
-      && !(ui.ai && ui.ai.status === "suspended") ? t.waiting_on : null;
+    // 最新で、自分以外（審判・AI・相手）の番を待っている間は、動く印を出す
+    const thinker = ui.live && t.waiting_on && !(ui.play && t.waiting_on === ui.play.seat) ? t.waiting_on : null;
     ui.thinker = thinker;
     const thinking = $("thinking");
     thinking.hidden = !thinker;

@@ -65,8 +65,3 @@ def expand(ctx: Context, proc: dict) -> list:
     if proc.get("proc") not in PROCEDURES:
         raise OperationError("unknown proc %r (one of %s)" % (proc.get("proc"), ", ".join(PROCEDURES)))
     return PROCEDURES[proc["proc"]](ctx, {k: v for k, v in proc.items() if k != "proc"})
-
-
-def describe_procedures() -> list:
-    """`ops` コマンド用の一覧（名前と docstring の1行目）。"""
-    return [(name, (fn.__doc__ or "").strip().splitlines()[0]) for name, fn in PROCEDURES.items()]

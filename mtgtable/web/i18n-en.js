@@ -18,7 +18,7 @@ export default {
   "game.option.replay": "{id} (replay)",
   "game.option.seat": "{id} (your seat)",
   "game.option.watch": "{id} (watching)",
-  "title.watch": "mtgtable viewer",
+  "title.watch": "mtgtable",
   "title.play": "mtgtable game {game}",
 
   // Replay
@@ -77,7 +77,6 @@ export default {
   "top.step.history.link": "History",
   "top.cta.history": "See history",
   "top.ai.claudeCode": "Claude Code runs the judge and the AI seats. After creating a game, ask Claude Code to run the GUI game (mtg-playtest skill).",
-  "top.ai.server": "This server runs the judge and the AI seats through an LLM API (serve --ai).",
 
   // Notices
   "error.prefix": "Error: {message}",
@@ -494,10 +493,6 @@ export default {
   "play.status.waiting": "Waiting for {who}",
   "play.status.over": "Game over",
   "play.panelTitle": "Playing as {seat}",
-  "play.ai.stopped": "The AI (judge / AI seat) has stopped: {reason}",
-  "play.ai.resume": "Resume",
-  "play.ai.resumed": "Resumed",
-  "play.ai.resume.title": "Run the AI again once the cause is gone (the next day, the API is back, etc.)",
   "play.idle.notice": "{who} has been acting for {minutes} min",
   "play.idle.claim": "Win on time",
   "play.idle.confirm": "Declare {who} out of time (as a concession)?",

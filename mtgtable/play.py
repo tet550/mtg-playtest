@@ -1,14 +1,13 @@
 """GUI からの対局（Human vs AI）: 席の鍵、手番の受け渡し、相手を待つ。
 
-人間はブラウザ（`serve --play`）から、AI は CLI（`answer`）から、同じ対局フォルダに書く。席の Player が書けるのは
+人間はブラウザ（`serve`）から、審判と AI の席は CLI（`answer`）から、同じ対局に書く。席の Player が書けるのは
 審判への依頼・回答と、盤面を変えない宣言だけで、盤面は審判が動かす（request_play_design）。
-書き込みの排他は GameStore（.lock と expect）が受け持ち、ここでは次の4つを持つ:
+書き込みの排他は GameStore（.lock と expect）が受け持ち、ここでは次の3つを持つ:
 
-- 席の鍵: `invite` が席ごとの鍵を作り、保存先（対局フォルダの seats.json か DB）にはハッシュだけを置く。
+- 席の鍵: `invite` が席ごとの鍵を作り（サイトの招待）、保存先（対局フォルダの seats.json か DB）にはハッシュだけを置く。
   サーバーは鍵を持つ人にだけ、その席としての書き込みを許す（席を名乗るだけでは書けない）
 - 待たれている Player（waiting_on）: 優先権・スタック・ステップから「今、誰が動く番か」を決める。
-  GUI の表示と `wait` の両方がこれを使う。エンジンの優先権の記録（pass）と同じ約束事で、ルールの判定はしない
-- 待つ: AI が相手（人間）の番の間に止まっておき、自分の番が来たら新しい Act を受け取る（`wait`）
+  GUI の表示と `next` の両方がこれを使う。エンジンの優先権の記録（pass）と同じ約束事で、ルールの判定はしない
 - 席の書き込み: 依頼（request）・宣言（declare）・回答（answer）を卓の宣言に変え、出せる場面かを確かめる（`seat_batch`）
 """
 from __future__ import annotations
@@ -17,7 +16,6 @@ import datetime
 import hashlib
 import re
 import secrets
-import time
 from typing import Optional
 
 from . import carddb, info
@@ -41,7 +39,7 @@ def _now() -> datetime.datetime:
 
 def invite(store: GameStore, seat: str, ttl: Optional[float] = None) -> str:
     """seat の鍵を新しく作って返す（前の鍵は使えなくなる）。保存先にはハッシュだけを残す。
-    ttl（時間）を渡すと、その時間が過ぎた鍵は使えない（CLI の invite の URL が残り続けないように）。"""
+    ttl（時間）を渡すと、その時間が過ぎた鍵は使えない。"""
     state = store.load()
     if seat not in state.players:
         raise ValueError("unknown seat %r (players: %s)" % (seat, ", ".join(state.player_order)))
@@ -54,18 +52,6 @@ def invite(store: GameStore, seat: str, ttl: Optional[float] = None) -> str:
         data[seat] = rec
         store.write_doc("seats", data)
     return token
-
-
-def revoke(store: GameStore, seat: str) -> bool:
-    """seat の鍵を失効させる。席は人間の席のまま（AI に替わらない）で、invite で作り直すまで誰も使えない。
-    鍵があったかを返す。"""
-    with store.lock():
-        data = seats(store)
-        if seat not in data:
-            return False
-        data[seat] = {"revoked": _now().isoformat(timespec="seconds")}
-        store.write_doc("seats", data)
-    return True
 
 
 def check_token(store: GameStore, seat: str, token: Optional[str]) -> bool:
@@ -841,44 +827,17 @@ def _mine(entry: dict, me: str) -> bool:
     return entry.get("proxy_by") == me if entry.get("proxy_by") else entry["actor"] == me
 
 
-def _declares(entry: dict) -> bool:
-    return any(s["op"]["op"] in ("declare", "player_set") for s in entry["steps"])
-
-
 def _rules(e: dict) -> bool:
     """審判が依頼を処理した印（ruled）を書いた件か。"""
     return any(s["op"]["op"] == "declare" and s["op"].get("kind") == "ruled" for s in e["steps"])
 
 
 def last_own(store: GameStore, me: str) -> int:
-    """me が最後に書いた件の番号（無ければ 0）。wait はここより後を見るので、apply と wait の間に
-    相手が書いても取りこぼさない。"""
+    """me が最後に書いた件の番号（無ければ 0）。"""
     for e in reversed(store.read_log()[:store.cursor()]):
         if _mine(e, me):
             return e["seq"]
     return 0
-
-
-def wait(store: GameStore, me: str, since: Optional[int] = None, timeout: float = 600,
-         interval: float = 0.5, any_change: bool = False) -> Optional[dict]:
-    """自分（me）の番が来るまで待ち、since（省略で me が最後に書いた件）より後の件を返す。時間切れは None。
-
-    相手の操作が1件ずつ届いても（人間がタップや土地を1つずつ書く）、待たれているのが自分になるか、
-    相手の宣言（キープ・マリガン・ブロックなし・投了など）があるか、決着するまでは返さない。
-    巻き戻された（cursor が since より前に戻った）ときも返す。any_change なら相手の書き込みごとに返す。"""
-    start = last_own(store, me) if since is None else since
-    deadline = time.monotonic() + timeout
-    while True:
-        cur = store.cursor()
-        if cur < start:
-            return {"from": start, "cursor": cur, "entries": [], "undone": True}
-        theirs = [e for e in store.read_log()[start:cur] if not _mine(e, me)]
-        if theirs and (any_change or waiting_on(store.load()) in (me, None) or any(map(_declares, theirs))):
-            cur = store.cursor()  # 判定の間に相手がさらに書いていても、返すのは今の時点まで
-            return {"from": start, "cursor": cur, "entries": store.read_log()[start:cur], "undone": False}
-        if time.monotonic() > deadline:
-            return None
-        time.sleep(interval)
 
 
 # ---------------------------------------------------------------- Player に見せる log

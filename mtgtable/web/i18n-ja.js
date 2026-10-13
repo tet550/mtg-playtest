@@ -18,7 +18,7 @@ export default {
   "game.option.replay": "{id}（再生）",
   "game.option.seat": "{id}（自分の席）",
   "game.option.watch": "{id}（観戦）",
-  "title.watch": "mtgtable 観戦",
+  "title.watch": "mtgtable",
   "title.play": "mtgtable 対局 {game}",
 
   // 再生
@@ -77,7 +77,6 @@ export default {
   "top.step.history.link": "履歴へ",
   "top.cta.history": "履歴を見る",
   "top.ai.claudeCode": "審判と AI の席は Claude Code が回します。対局を作ったら、Claude Code に「GUI の対局を回して」と頼みます（mtg-playtest スキル）。",
-  "top.ai.server": "審判と AI の席は、このサーバーが LLM の API で回します（serve --ai）。",
 
   // 知らせ
   "error.prefix": "エラー: {message}",
@@ -494,10 +493,6 @@ export default {
   "play.status.waiting": "{who} を待っています",
   "play.status.over": "決着",
   "play.panelTitle": "{seat} として操作",
-  "play.ai.stopped": "AI（審判・AI の席）が止まっています: {reason}",
-  "play.ai.resume": "再開する",
-  "play.ai.resumed": "再開した",
-  "play.ai.resume.title": "原因が解消したら（翌日・API の復旧など）、AI をもう一度動かす",
   "play.idle.notice": "{who} の番が {minutes} 分続いています",
   "play.idle.claim": "時間切れで勝ちにする",
   "play.idle.confirm": "{who} の時間切れ（投了）にしますか？",

@@ -1,15 +1,15 @@
-"""Infrastructure（29節）: Operation Log / Undo / Redo / Replay / Snapshot / State Diff。
+"""Infrastructure（29節）: Operation Log / Undo / Redo / Replay。
 
 ゲームモデルとは分けて持つ。AI はこれらを管理しない。
 
-保存の仕方は2つ。共通の処理（apply・undo・redo・replay・fork）は BaseStore が持ち、保存先ごとの読み書きだけを
+保存の仕方は2つ。共通の処理（apply・undo・redo・replay）は BaseStore が持ち、保存先ごとの読み書きだけを
 実装が持つ（GameStore はフォルダ、sqlstore.SqliteGameStore は SQLite）。
 
 対局フォルダ（GameStore）の中身:
     initial.json   初期状態
     log.jsonl      適用した Act を1行1件（actor・AI が書いた act・実際に適用した基本の op と event（steps）・Batch の番号・手順）
     state.json     現在状態のキャッシュと、log のどこまでが有効か（cursor）
-    seats.json     GUI から操作する席の鍵（`invite` が作る。鍵そのものではなくハッシュ）。卓の外の文書（doc）の1つ
+    seats.json     GUI から操作する席の鍵（鍵そのものではなくハッシュ）。卓の外の文書（doc）の1つ
     private/       席ごとの非公開の設定（止める場所）。卓の外の文書
     .lock          書き込み中の印（CLI の AI と GUI の人間が同時に書いても壊さない）
     prompts/       AI のプロンプトと返答（作業ファイル。どちらの保存先でも root の下のファイル）
@@ -28,7 +28,6 @@ import threading
 import time
 from typing import Optional
 
-from . import info
 from .engine import Engine
 from .model import GameState
 
@@ -57,7 +56,7 @@ def _read(path: pathlib.Path) -> str:
 
 
 def _dump(path: pathlib.Path, data) -> None:
-    # 一時ファイルは書き手（プロセス・スレッド）ごとに別の名前にする。サーバーと auto が同じプロンプトを同時に作ると、
+    # 一時ファイルは書き手（プロセス・スレッド）ごとに別の名前にする。サーバーと CLI が同じプロンプトを同時に作ると、
     # 同じ名前では Windows で片方が開けない（PermissionError）
     tmp = path.with_suffix("%s.%d-%d.tmp" % (path.suffix, os.getpid(), threading.get_ident()))
     try:
@@ -91,7 +90,7 @@ class BaseStore:
     """対局1つの保存。共通の処理をここに置き、保存先ごとの実装は次を持つ:
 
     name・root（作業ファイルの置き場所）・exists・create・read_log・_write_log・lock・_save_state・cursor・load・
-    initial・_save_initial・read_doc・write_doc・stamp・summary・_sibling"""
+    initial・_save_initial・read_doc・write_doc・stamp・summary"""
 
     name: str
     root: pathlib.Path
@@ -141,22 +140,6 @@ class BaseStore:
         result["_state"] = engine.state
         return result
 
-    def set_policies(self, policies: dict) -> dict:
-        """Information Policy を変える。卓の設定なので log には載せず、
-        初期状態と現在状態の両方へ反映する（Replay しても同じ Policy になる）。"""
-        with self.lock():
-            return self._set_policies(policies)
-
-    def _set_policies(self, policies: dict) -> dict:
-        state, init = self.load(), self.initial()
-        for pid, pol in policies.items():
-            if pid not in state.players:
-                raise ValueError("unknown player %r" % pid)
-            info.set_policy(state, pid, pol)
-            info.set_policy(init, pid, pol)
-        self._save_initial(init)
-        self._save_state(state, self.cursor())
-        return dict(state.info_policy)
 
     # ---- replay / undo / redo
 
@@ -229,13 +212,6 @@ class BaseStore:
                     cur += 1
         self._save_state(self.replay(cur), cur)
         return cur
-
-    def fork(self, dest, upto: Optional[int] = None, overwrite: bool = False) -> "BaseStore":
-        """log の途中時点の状態を新しい対局の初期状態にする（Snapshot からの分岐）。同じ保存先に作る。"""
-        state = self.replay(upto)
-        other = self._sibling(dest)
-        other.create(state, overwrite=overwrite)
-        return other
 
 
 class GameStore(BaseStore):
@@ -357,57 +333,7 @@ class GameStore(BaseStore):
         return dict(summary_of(state), id=self.name, created=iso(self.initial_path), updated=iso(self.state_path),
                     ended=iso(self.state_path) if finished(state) else None)
 
-    def _sibling(self, dest) -> "GameStore":
-        return GameStore(dest)
-
-
-class FileGames:
-    """フォルダの下の対局フォルダ（serve --root）。"""
-
-    def __init__(self, root):
-        self.root = pathlib.Path(root)
-
-    def open(self, game: str) -> GameStore:
-        if not valid_id(game):
-            raise LookupError("unknown game %r" % game)
-        return GameStore(self.root / game)
-
-    def ids(self) -> list:
-        """対局の id（新しく書かれた順）。"""
-        if not self.root.is_dir():
-            return []
-        dirs = [d for d in self.root.iterdir() if d.is_dir() and GameStore(d).exists()]
-        return [d.name for d in sorted(dirs, key=lambda d: (d / "state.json").stat().st_mtime, reverse=True)]
-
 
 def valid_id(game: str) -> bool:
     """対局の id として使える名前（パスの区切り・隠しファイル・空を受けない）。"""
     return bool(game) and not game.startswith(".") and all(c.isalnum() or c in "-_." for c in game)
-
-
-# ---------------------------------------------------------------- diff
-
-def state_diff(a, b, path: str = "") -> list:
-    """2つの状態（dict）の差分を [(path, before, after)] で返す。"""
-    if isinstance(a, GameState):
-        a = a.to_dict()
-    if isinstance(b, GameState):
-        b = b.to_dict()
-    out = []
-    if isinstance(a, dict) and isinstance(b, dict):
-        for k in sorted(set(a) | set(b), key=str):
-            p = "%s.%s" % (path, k) if path else str(k)
-            if k not in a:
-                out.append((p, None, b[k]))
-            elif k not in b:
-                out.append((p, a[k], None))
-            else:
-                out.extend(state_diff(a[k], b[k], p))
-    elif isinstance(a, list) and isinstance(b, list) and len(a) == len(b) and \
-            all(isinstance(x, dict) for x in a + b):
-        for i, (x, y) in enumerate(zip(a, b)):
-            out.extend(state_diff(x, y, "%s[%d]" % (path, i)))
-    elif a != b:
-        out.append((path, a, b))
-    return out
-

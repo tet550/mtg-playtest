@@ -78,8 +78,8 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
       mine.length ? "#/games" : null, t("top.step.play.link"));
     item(t("top.step.history"), "#/history", t("top.step.history.link"));
     root.append(steps);
-    // 審判と AI の席を回すもの（既定は Claude Code）
-    root.append(el("p", "muted", t(config().ai === "server" ? "top.ai.server" : "top.ai.claudeCode")));
+    // 審判と AI の席は Claude Code が回す
+    root.append(el("p", "muted", t("top.ai.claudeCode")));
   }
 
   async function show(page, args = []) {

@@ -3,9 +3,9 @@
 - 読むだけのもの（同梱のデッキ・プレイ方針・審判のリファレンス）: リポジトリから動いている時はリポジトリの中の今の場所
   （`decklists/`・`.claude/skills/mtg-playtest/references/`）。パッケージとして入れた時はパッケージの中の `assets/`
   （ビルドで写す。段階 2）
-- 書くもの（カードのキャッシュ・API キー・対局フォルダ）: data_home() の下
+- 書くもの（カードのキャッシュ・対局フォルダ・サイトの DB）: data_home() の下
   1. 環境変数 MTGTABLE_HOME
-  2. リポジトリから動いている時はリポジトリ直下（今までと同じ `cards/`・`secrets/`・`playtest/`）
+  2. リポジトリから動いている時はリポジトリ直下（今までと同じ `cards/`・`playtest/`・`data/`）
   3. OS のデータ用フォルダ（macOS ~/Library/Application Support/mtgtable、Windows %APPDATA%\\mtgtable、
      それ以外 $XDG_DATA_HOME/mtgtable か ~/.local/share/mtgtable）
 
@@ -53,14 +53,10 @@ def cards_dir() -> pathlib.Path:
     return pathlib.Path(env).expanduser() if env else data_home() / "cards"
 
 
-def secrets_dir() -> pathlib.Path:
-    """API キーと AI の設定。"""
-    return data_home() / "secrets"
 
-
-def games_dir() -> pathlib.Path:
-    """対局フォルダの既定の置き場所（serve の --root）。"""
-    return data_home() / "playtest"
+def site_db() -> pathlib.Path:
+    """手元のサイト（serve）の DB の既定の場所。プロンプトなどの作業ファイルは隣の site-files/ に置く（sqlstore）。"""
+    return data_home() / "data" / "site.sqlite"
 
 
 # ---------------------------------------------------------------- 読むだけのもの

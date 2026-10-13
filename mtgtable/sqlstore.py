@@ -1,6 +1,6 @@
-"""SQLite に保存する対局（サーバーで動かすとき）。標準ライブラリの sqlite3 だけを使う。
+"""SQLite に保存する対局（手元のサイト）。標準ライブラリの sqlite3 だけを使う。
 
-共通の処理（apply・undo・redo・replay・fork）は store.BaseStore。ここは読み書きだけを持つ。
+共通の処理（apply・undo・redo・replay）は store.BaseStore。ここは読み書きだけを持つ。
 
     games  対局ごとに1行: 初期状態・現在状態・cursor・変化の印（stamp）・一覧に出す要約・作った／更新した／終わった日時
     log    Operation Log を1件1行（対局の id と seq）
@@ -15,13 +15,12 @@ import contextlib
 import datetime
 import json
 import pathlib
-import shutil
 import sqlite3
 import threading
 from typing import Optional
 
 from .model import GameState
-from .store import (LOCK_TIMEOUT, BaseStore, GameStore, finished, summary_of, valid_id)
+from .store import LOCK_TIMEOUT, BaseStore, finished, summary_of, valid_id
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS games (
@@ -216,28 +215,9 @@ class SqliteGameStore(BaseStore):
         summary, created, updated, ended = self._row("summary, created_at, updated_at, ended_at")
         return dict(json.loads(summary), id=self.name, created=created, updated=updated, ended=ended)
 
-    def _sibling(self, dest) -> "SqliteGameStore":
-        return SqliteGameStore(self.db, pathlib.Path(str(dest)).name, self.root.parent)
-
-    # ---- 移行
-
-    def import_from(self, src: GameStore, overwrite: bool = False) -> None:
-        """対局フォルダ（GameStore）の中身（初期状態・log・現在状態・席の鍵・非公開の設定）をそのまま移す。"""
-        self.create(src.initial(), overwrite=overwrite)
-        entries = src.read_log()
-        with self.lock():
-            self._write_log(entries, keep=0)
-            self._save_state(src.load(), src.cursor())
-            for p in sorted(src.root.glob("*.json")) + sorted(src.root.glob("private/*.json")):
-                name = p.relative_to(src.root).with_suffix("").as_posix()
-                if name not in ("initial", "state"):
-                    self.write_doc(name, src.read_doc(name))
-        if (src.root / "prompts").is_dir():  # AI のプロンプトと返答（作業ファイル）も続きから使えるように
-            shutil.copytree(src.root / "prompts", self.root / "prompts", dirs_exist_ok=True)
-
 
 class SqliteGames:
-    """SQLite の DB の中の対局（serve --db）。"""
+    """SQLite の DB の中の対局（serve）。"""
 
     def __init__(self, db, files=None):
         self.db = pathlib.Path(db)

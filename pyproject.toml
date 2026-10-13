@@ -11,10 +11,7 @@ license = "MIT"
 license-files = ["LICENSE", "NOTICE.md"]
 authors = [{ name = "Tetsuya Iwaki" }]
 requires-python = ">=3.10"
-dependencies = []  # 標準ライブラリだけで動く（提供元に openai を使う時も）
-
-[project.optional-dependencies]
-anthropic = ["anthropic"]  # 提供元に anthropic（Claude）を使う時だけ
+dependencies = []  # 標準ライブラリだけで動く
 
 [project.scripts]
 mtgtable = "mtgtable.cli:main"

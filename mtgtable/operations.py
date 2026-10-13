@@ -1466,12 +1466,3 @@ def summarize_op(op: dict) -> str:
             parts.append(_short(op[k]) if k in ("card", "cards", "attacker", "attackers", "item")
                          else "%s=%s" % (k, _short(op[k])))
     return " ".join(parts)
-
-
-def describe_operations() -> list:
-    """`ops` コマンド用の一覧（名前と docstring の1行目）。"""
-    out = []
-    for name, fn in OPERATIONS.items():
-        doc = (fn.__doc__ or "").strip().splitlines()
-        out.append((name, doc[0] if doc else ""))
-    return out
