@@ -1,6 +1,6 @@
 {
-  "name": "mtgtable",
-  "description": "mtgtable: 紙の MTG を手元のブラウザの卓で遊ぶための Claude Code のプラグイン",
+  "name": "tcg-table",
+  "description": "紙のカードゲームを手元のブラウザの卓で遊ぶための Claude Code のプラグイン（審判と AI の席を Claude Code が回す）",
   "owner": { "name": "Tetsuya Iwaki" },
   "plugins": [
     {

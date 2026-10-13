@@ -10,7 +10,7 @@ Python 3.10 以上、標準ライブラリのみ。
 
 ## はじめに（Claude Code のプラグインで入れる）
 
-審判と AI の席は Claude Code が回すので、Claude Code のプラグイン `mtgtable` として配る（このリポジトリがマーケットプレイス）。
+審判と AI の席は Claude Code が回すので、Claude Code のプラグイン `mtgtable` として配る（このリポジトリがマーケットプレイス `tcg-table`。ほかのカードゲームの卓も、プラグインを分けてここに並べる）。
 mtgtable 本体（Python）は、プラグインの `mtgtable` コマンドが初回にプラグインと同じ版を GitHub のタグから入れる（PyPI には出していない）。
 
 1. 用意するもの: Claude Code・git・[uv](https://docs.astral.sh/uv/) か Python 3.10 以上
@@ -21,7 +21,7 @@ claude plugin marketplace add tet550/mtg-playtest
 ```
 
 ```bash
-claude plugin install mtgtable@mtgtable
+claude plugin install mtgtable@tcg-table
 ```
 
    `claude` が無いとき（デスクトップアプリだけを入れた Windows）は、アプリに同梱の
@@ -30,7 +30,7 @@ claude plugin install mtgtable@mtgtable
    「チュートリアル」で操作を覚える（約10分。Claude Code は要らない）
 4. 「デッキ」でデッキを登録 →「対局を作る」で AI と対局を作り、Claude Code に「GUI の対局を回して」と頼む
 
-更新は `claude plugin marketplace update mtgtable` の後 `claude plugin update mtgtable@mtgtable`。新しい版の mtgtable は、
+更新は `claude plugin marketplace update tcg-table` の後 `claude plugin update mtgtable@tcg-table`。新しい版の mtgtable は、
 次に `mtgtable` を使ったときに入る。
 
 ### プラグインの構成
@@ -50,7 +50,7 @@ claude plugin install mtgtable@mtgtable
 戻すときは同じ手順で `tet550/mtg-playtest` を足す。
 
 ```bash
-claude plugin marketplace remove mtgtable && claude plugin marketplace add ./ && claude plugin install mtgtable@mtgtable
+claude plugin marketplace remove tcg-table && claude plugin marketplace add ./ && claude plugin install mtgtable@tcg-table
 ```
 
 版を上げて配るとき: 次の2か所の版をそろえてコミットし、タグ `v<版>` を付けて push する（利用者の mtgtable はこのタグから入る）。
