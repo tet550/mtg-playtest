@@ -30,6 +30,7 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
   const lobby = createLobby(source, { toast, openGame, active: () => current === "new" });
   const history = createHistory(source, { toast, openGame });
 
+  let tutorialBusy = false;  // チュートリアルを作っている間（初回はカードの情報を引くので時間がかかる）
   const host = () => !!config().host;  // ゲスト（招待で着いた外のブラウザ）にはメニューを出さない
 
   function nav() {
@@ -54,14 +55,22 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
       return a;
     };
     const cta = el("div", "cta");
-    const tutorial = link(null, t("top.cta.tutorial"), "#/games");
+    const tutorial = link(tutorialBusy ? "busy" : null, t(tutorialBusy ? "top.cta.tutorial.busy" : "top.cta.tutorial"), "#/games");
+    tutorial.setAttribute("aria-busy", String(tutorialBusy));
     tutorial.onclick = async (ev) => {  // 決まった台本で1局（AI は使わない）
       ev.preventDefault();
+      if (tutorialBusy) return;  // 準備の途中で押しても、重ねて作らない
+      tutorialBusy = true;
+      if (current === "top") renderTop(root);
+      toast(t("top.cta.tutorial.wait"));
       try {
         const r = await source.startTutorial();
         try { localStorage.removeItem(`draft.${r.game}.${r.seat}`); } catch (_) { /* 保存できない */ }  // 前の回の下書きを持ち越さない
         await openGame(r.game);
-      } catch (e) { toast(e.message, true); }
+      } catch (e) { toast(e.message, true); } finally {
+        tutorialBusy = false;
+        if (current === "top") renderTop($("page"));
+      }
     };
     cta.append(tutorial, mine.length ? link("primary", t("top.cta.games"), "#/games") : link("primary", t("top.cta.decks"), "#/decks"),
       link(null, t("top.cta.new"), "#/new"), link(null, t("top.cta.history"), "#/history"));

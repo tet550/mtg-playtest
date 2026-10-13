@@ -65,6 +65,8 @@ export default {
   "top.lead": "Play paper Magic: The Gathering on a browser table on your machine, against an AI or someone you invite. The judge (Claude Code) handles the cards.",
   "top.cta.games": "Go to your games",
   "top.cta.tutorial": "Tutorial",
+  "top.cta.tutorial.busy": "Preparing the tutorial…",
+  "top.cta.tutorial.wait": "Preparing the tutorial. The first time, card data is fetched from Scryfall, so it takes a little while",
   "tutorial.title": "Tutorial {step} / {total}",
   "tutorial.done": "Tutorial complete",
   "tutorial.wait": "Waiting for the judge and the opponent",

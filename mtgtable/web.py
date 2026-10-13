@@ -101,6 +101,7 @@ class Viewer:
         self.history = History(db, self.source)
         self._no_image: set = set()  # 画像が無かった・取れなかったカード（何度も取りに行かない）
         self._ja_lock = threading.Lock()  # 日本語版を Scryfall から引くのは1度に1つ（同時に聞かれても重ねて引かない）
+        self._tutorial_lock = threading.Lock()  # チュートリアルを作るのは1度に1つ（作っている間に押されたら、それを待つ）
         self._timelines: "OrderedDict[tuple, dict]" = OrderedDict()
         self._cache: "OrderedDict[tuple, object]" = OrderedDict()
         self._lock = threading.Lock()
@@ -456,7 +457,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(out)
             if parts == ["api", "tutorial"] and method == "POST":  # チュートリアルを（作り直して）始める
                 self._need_host()
-                out = {"game": tutorial.create(self.viewer.source, self.viewer.offline), "seat": "p1"}
+                lock = self.viewer._tutorial_lock
+                if not lock.acquire(blocking=False):  # 作っている途中（初回はカードの情報を引くので時間がかかる）: 作り直さず、それを待つ
+                    with lock:
+                        return self._json({"game": tutorial.GAME, "seat": "p1"}, 201)
+                try:
+                    out = {"game": tutorial.create(self.viewer.source, self.viewer.offline), "seat": "p1"}
+                finally:
+                    lock.release()
                 self.viewer.notify()
                 return self._json(out, 201)
             if parts == ["api", "tutorial", "finish"] and method == "POST":  # 台本の後: このまま続ける・終える

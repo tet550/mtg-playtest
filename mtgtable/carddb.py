@@ -17,6 +17,7 @@ import hashlib
 import json
 import pathlib
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -30,6 +31,7 @@ COLLECTION_MAX = 75  # Scryfall の /cards/collection が1回に受ける名前�
 USER_AGENT = "mtgtable/%s (personal playtest tool)" % __version__
 MIN_INTERVAL = 0.5  # Scryfall のレート制限に余裕を持たせる（429 が出たら待って再試行）
 _last = [0.0]
+_pace = threading.Lock()  # サーバーのスレッドが同時に引いても、Scryfall へは1度に1つ（間隔と 429 の待ちを皆で守る）
 _UNSAFE = re.compile(r'[\\/:*?"<>|\x00-\x1f\s]+')
 
 FIELDS = ("name", "mana_cost", "cmc", "type_line", "oracle_text", "power", "toughness",
@@ -93,23 +95,24 @@ def _post_collection(names: list) -> dict:
     req = urllib.request.Request(COLLECTION_API, data=body, method="POST",
                                  headers={"User-Agent": USER_AGENT, "Accept": "application/json",
                                           "Content-Type": "application/json"})
-    for attempt in range(6):
-        wait = MIN_INTERVAL - (time.time() - _last[0])
-        if wait > 0:
-            time.sleep(wait)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt < 5:
-                time.sleep(max(float(e.headers.get("Retry-After") or 0), 1.0 * 2 ** attempt))
-                continue
-            raise LookupError("Scryfall collection request failed (HTTP %s)" % e.code)
-        except (urllib.error.URLError, OSError) as e:
-            raise LookupError("Scryfall collection request failed (%s)" % e)
-        finally:
-            _last[0] = time.time()
-    raise LookupError("Scryfall collection request failed")
+    with _pace:
+        for attempt in range(6):
+            wait = MIN_INTERVAL - (time.time() - _last[0])
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt < 5:
+                    time.sleep(max(float(e.headers.get("Retry-After") or 0), 1.0 * 2 ** attempt))
+                    continue
+                raise LookupError("Scryfall collection request failed (HTTP %s)" % e.code)
+            except (urllib.error.URLError, OSError) as e:
+                raise LookupError("Scryfall collection request failed (%s)" % e)
+            finally:
+                _last[0] = time.time()
+        raise LookupError("Scryfall collection request failed")
 
 
 def resolve_names(names, need_legalities: bool = False) -> dict:
@@ -145,28 +148,29 @@ class NotFound(LookupError):
 def _get_json(url: str, what: str, retries: int = 5) -> dict:
     """Scryfall の API を GET する（間隔を空け、429 は待ってやり直す）。404 は NotFound。"""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
-    for attempt in range(retries + 1):
-        wait = MIN_INTERVAL - (time.time() - _last[0])
-        if wait > 0:
-            time.sleep(wait)
-        try:
-            with urllib.request.urlopen(req, timeout=20) as r:
-                return json.loads(r.read().decode("utf-8"))
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                raise NotFound("Scryfall has no %s" % what)
-            if e.code == 429 and attempt < retries:
-                # レート制限。Retry-After があれば従い、無ければ指数的に待つ
-                try:
-                    delay = float(e.headers.get("Retry-After") or 0)
-                except ValueError:
-                    delay = 0
-                time.sleep(max(delay, 1.0 * 2 ** attempt))
-                continue
-            raise LookupError("Scryfall request for %s failed (HTTP %s)" % (what, e.code))
-        finally:
-            _last[0] = time.time()
-    raise LookupError("Scryfall request for %s failed" % what)
+    with _pace:
+        for attempt in range(retries + 1):
+            wait = MIN_INTERVAL - (time.time() - _last[0])
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return json.loads(r.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                if e.code == 404:
+                    raise NotFound("Scryfall has no %s" % what)
+                if e.code == 429 and attempt < retries:
+                    # レート制限。Retry-After があれば従い、無ければ指数的に待つ
+                    try:
+                        delay = float(e.headers.get("Retry-After") or 0)
+                    except ValueError:
+                        delay = 0
+                    time.sleep(max(delay, 1.0 * 2 ** attempt))
+                    continue
+                raise LookupError("Scryfall request for %s failed (HTTP %s)" % (what, e.code))
+            finally:
+                _last[0] = time.time()
+        raise LookupError("Scryfall request for %s failed" % what)
 
 
 def fetch(name: str, retries: int = 5) -> dict:
@@ -491,6 +495,11 @@ def build_deck_cache(deck, fetch: bool = True, refresh: bool = False) -> dict:
     if cached and not cached["missing"]:
         return cached
     cards, missing, errors = {}, [], {}
+    if fetch:
+        try:  # キャッシュに無いカードは /cards/collection でまとめて引く（1枚ずつだと、数十回の問い合わせになる）
+            resolve_names([n for _, _, n in _entries(deck) if lookup(n, offline=True) is None])
+        except (LookupError, OSError):
+            pass  # 引けなかった分は、下で1枚ずつ引き直す
     for _, _, name in _entries(deck):
         if name in cards or name in missing:
             continue

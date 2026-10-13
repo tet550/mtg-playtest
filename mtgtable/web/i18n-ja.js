@@ -65,6 +65,8 @@ export default {
   "top.lead": "紙の Magic: The Gathering を、手元のブラウザの卓で AI か招待した人と遊びます。カードの処理は審判（Claude Code）が行います。",
   "top.cta.games": "対局へ",
   "top.cta.tutorial": "チュートリアル",
+  "top.cta.tutorial.busy": "チュートリアルを準備中…",
+  "top.cta.tutorial.wait": "チュートリアルを準備しています。初回はカードの情報を Scryfall から取るので、少し時間がかかります",
   "tutorial.title": "チュートリアル {step} / {total}",
   "tutorial.done": "チュートリアル完了",
   "tutorial.wait": "審判と相手の処理を待っています",
