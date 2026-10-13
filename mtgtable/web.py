@@ -28,7 +28,7 @@ from . import carddb, info, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
 from .decks import Decks, Invalid, check as check_deck_text
-from . import history as history_mod
+from . import history as history_mod, tutorial
 from .history import History, Refused as HistoryRefused
 from .lobby import IDLE_LIMIT, IDLE_NOTICE, Lobby, Refused as LobbyRefused, host_seats, repo_decks
 from .sqlstore import SqliteGames
@@ -159,15 +159,23 @@ class Viewer:
                    host: bool = False) -> dict:
         """席の Player の書き込み（request / declare / answer）。卓の op は受けない（play.seat_batch が宣言に変える）。"""
         st = self.authorize(game, seat, token, host=host)
+        guided = tutorial.active(st)
         with st.lock():
             cur = st._check(body.get("expect"))
             try:
+                if guided:  # チュートリアル: 台本の今の段と合う操作だけ
+                    tutorial.check(st, seat, what, body)
                 batch = play.seat_batch(st.load(), seat, what, body)
             except play.Refused as e:
                 raise Forbidden(str(e))
             result = st._apply(batch, cur)
         result.pop("_state", None)
-        _announce(prompt.auto_build(st))  # 依頼・マリガンで審判の番になったら、審判のプロンプトをすぐ作る
+        if guided:
+            if not (what == "declare" and body.get("kind") == "say"):
+                tutorial.accepted(st)
+            tutorial.run(st)  # 審判と相手の段を、次のホストの段まで台本で書く
+        else:
+            _announce(prompt.auto_build(st))  # 依頼・マリガンで審判の番になったら、審判のプロンプトをすぐ作る
         self.notify()
         return {"result": public_result(result), "cursor": st.cursor()}
 
@@ -178,6 +186,8 @@ class Viewer:
     def set_stops(self, game: str, seat: str, token: Optional[str], body: dict, host: bool = False) -> dict:
         """止める場所（非公開。卓の記録には載せず、本人と審判のプロンプトにだけ出る）。"""
         st = self.authorize(game, seat, token, host=host)
+        if tutorial.active(st):  # チュートリアルの台本は決まった止める場所で進む
+            raise Forbidden("tutorial: the stops are fixed in the tutorial")
         if play.waiting_on(st.load()) == play.JUDGE:  # 審判が今の止める場所で処理している間は変えない
             raise Forbidden("the judge is processing; change the stops after the ruling")
         return {"stops": play.set_stops(st, seat, body.get("stops"))}
@@ -444,6 +454,30 @@ class Handler(BaseHTTPRequestHandler):
                 out = self.viewer.history.delete(parts[2])
                 self.viewer.notify()
                 return self._json(out)
+            if parts == ["api", "tutorial"] and method == "POST":  # チュートリアルを（作り直して）始める
+                self._need_host()
+                out = {"game": tutorial.create(self.viewer.source, self.viewer.offline), "seat": "p1"}
+                self.viewer.notify()
+                return self._json(out, 201)
+            if parts == ["api", "tutorial", "finish"] and method == "POST":  # 台本の後: このまま続ける・終える
+                self._need_host()
+                st = self.viewer.source.open(tutorial.GAME)
+                try:
+                    tutorial.finish(st, bool(body.get("continue")))
+                except play.Refused as e:
+                    raise Forbidden(str(e))
+                if body.get("continue"):
+                    _announce(prompt.auto_build(st))  # ここからは Claude Code が審判と相手を回す
+                self.viewer.notify()
+                return self._json({"ok": True})
+            if parts == ["api", "tutorial", "next"] and method == "POST":  # チュートリアルの説明の段を読んで「次へ」
+                self._need_host()
+                try:
+                    tutorial.next_step(self.viewer.source.open(tutorial.GAME))
+                except play.Refused as e:
+                    raise Forbidden(str(e))
+                self.viewer.notify()
+                return self._json({"ok": True})
             if (parts[:2] == ["api", "invites"] or parts == ["api", "games"]
                     or parts[:2] == ["api", "games"] and parts[3:] == ["timeout"]):
                 return self._lobby(method, parts, body, host)
@@ -599,6 +633,8 @@ class Handler(BaseHTTPRequestHandler):
                     tl = dict(tl, idle={"seconds": self.viewer.lobby.idle_seconds(st),
                                         "notice": IDLE_NOTICE, "limit": IDLE_LIMIT,
                                         "humans": sorted(play.seats(st))})
+                    if tutorial.active(st):  # チュートリアルの今の段の案内（取るたびに変わるので、写しに足す）
+                        tl = dict(tl, tutorial=tutorial.status(st))
                     return self._json(tl)
                 if what == "log":
                     if seat is not None:  # ラベルに非公開の情報が入りうるので judge の席だけ

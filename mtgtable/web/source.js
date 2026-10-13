@@ -69,6 +69,9 @@ export function createSource() {
     // 対局を作る・招待（手元のサイト）。招待に着くのはゲスト（デッキを貼るか同梱のデッキ）
     aiDecks: () => getJSON("/api/ai-decks"),
     createGame: (body) => postJSON("/api/games", body),
+    startTutorial: () => postJSON("/api/tutorial", {}),  // チュートリアルを（作り直して）始める
+    tutorialNext: () => postJSON("/api/tutorial/next", {}),  // チュートリアルの説明の段を読んだ
+    tutorialFinish: (keep) => postJSON("/api/tutorial/finish", { continue: keep }),  // 台本の後: このまま続ける・終える
     invites: () => getJSON("/api/invites"),
     invite: (id, token) => getJSON(`/api/invites/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`),
     joinInvite: (id, token, deck) => postJSON(`/api/invites/${encodeURIComponent(id)}/join`, { token, ...deck }),

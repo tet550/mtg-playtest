@@ -315,7 +315,8 @@ def fetch_ja(name: str, retries: int = 5) -> dict:
         data = _get_json(SEARCH_API + q, "Japanese printing of %r" % name, retries)
     except NotFound:
         return {"none": True}
-    return _merge_ja(data.get("data") or [])
+    # !"名前" は面の名前が同じ別のカード（<Studious First-Year // Rampant Growth> など）も返すので、名前が同じ印刷だけ使う
+    return _merge_ja([c for c in data.get("data") or [] if c.get("name") == name])
 
 
 def lookup_ja(name: str, offline: bool = False, retries: int = 5):

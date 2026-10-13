@@ -146,6 +146,7 @@ async function load() {
   if (timeline && ui.live && added === 1) ui.animate = { duration: STEP_MS };
   timeline = new Timeline(result.timeline);
   ui.idle = result.timeline.idle ? { ...result.timeline.idle, at: Date.now() } : null;  // 時間切れの知らせ（手元のサイト）
+  ui.tutorial = result.timeline.tutorial || null;  // チュートリアルの今の段の案内
   ui.log = result.log;
   ui.cursor = timeline.cursor;
   if (follow) return startPlay(from);
@@ -288,6 +289,8 @@ function startPlay(from = null) {
   ui.playing = true;
   $("play").textContent = t("replay.stop");
   $("play").classList.add("on");
+  // チュートリアルで更新を追いかけるときは速く（審判と相手の処理をはさむと数十件になり、普通の速さでは長く待たせる）
+  const interval = () => (from !== null && ui.tutorial ? Math.min(250, Number($("speed").value)) : Number($("speed").value));
   const step = () => {
     if (ui.pos >= ui.cursor) {  // 最後まで来たら止めて Live に戻る
       stopPlay();
@@ -298,9 +301,9 @@ function startPlay(from = null) {
     ui.pos = Math.min(nextPos(), ui.cursor);
     ui.deltaBase = { pos: ui.pos, from };  // 自動再生では、ライフの差を1回前に表示した位置から数える
     ui.live = false;
-    ui.animate = { duration: Math.min(450, Number($("speed").value) * 0.7) };
+    ui.animate = { duration: Math.min(450, interval() * 0.7) };
     show();
-    if (ui.timer !== null) ui.timer = setTimeout(step, Number($("speed").value));
+    if (ui.timer !== null) ui.timer = setTimeout(step, interval());
   };
   ui.timer = setTimeout(step, 0);
 }

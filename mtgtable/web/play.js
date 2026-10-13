@@ -3,7 +3,7 @@
 // 「審判に依頼」で下書きを1つの依頼として審判に送り（「その後」は下書きの最後の行で決まる）、審判がルールに沿って卓に書く。
 // 引く・見るなど隠れた情報の行は、手札・束に「？」の予定を出すだけ（中身は審判の処理の後に、席の view として届く）。
 import { $, dots, el } from "./dom.js";
-import { t as tr } from "./i18n.js";  // t はターンなどの変数名に使っているので tr
+import { lang, t as tr } from "./i18n.js";  // t はターンなどの変数名に使っているので tr
 import { displayName, localize } from "./cardnames.js";
 
 // ---------------------------------------------------------------- 純粋な部品（node のテストでも使う）
@@ -375,7 +375,7 @@ function openMenu(ev, title, items) {
   for (const it of items) {
     if (it === "-") { box.append(el("div", "msep")); continue; }
     if (!it) continue;
-    const b = el("button", "mitem", it.nodes ? null : it.label);
+    const b = el("button", "mitem" + (it.guide ? " guide" : ""), it.nodes ? null : it.label);
     if (it.nodes) { b.append(...it.nodes); b.setAttribute("aria-label", it.label); }
     if (it.hint) b.title = it.hint;
     b.onclick = () => { closeMenu(); it.fn(); };
@@ -549,6 +549,14 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       || (["play_land", "cast"].includes(l.kind) && zoneOf(ui.view, id) !== hand));
   }
 
+  // 送った依頼を審判が処理した（本物の盤面になった）ら sent を外す。送った後の再読込が別の更新と重なり、まだ依頼の前の
+  // 盤面のことがあるので、依頼より後の盤面で確かめる。盤面の印（marks）もパネルも、描く前にこれを通す
+  function settleSent() {
+    if (!sent || !ui.view) return;
+    const mine = ((ui.view.requests || {}).pending || []).some((r) => r.player === me());
+    if (!mine && ui.cursor > sentFrom) sent = null;
+  }
+
   function plannedLines() {
     if (!ui.play || !ui.view || !ui.live) return [];
     return [...(sent || []), ...loadDraft().lines];
@@ -608,16 +616,18 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     let ok = false;
     try {
       const r = await source.post(ui.game, what, { ...body, seat: me(), expect: ui.cursor });
+      wroteTo = r.cursor;
       const stopped = r.result.stopped;
       if (stopped) toast(tr("play.post.stopped", { reason: stopped.reason, error: stopped.error || "" }), true);
       else if (okText) toast(okText);
       ok = !stopped;
     } catch (e) {
-      toast(e.stale ? tr("play.post.stale") : tr("play.post.failed", { message: e.message }), true);
+      toast(e.stale ? tr("play.post.stale") : /^tutorial:/.test(e.message) ? tr("tutorial.refused")
+        : tr("play.post.failed", { message: e.message }), true);
     } finally {
+      await reload().catch(() => {});  // 書いた後の盤面を読み終えるまで送信中のまま（前の盤面で同じボタンを押させない）
       busy = false;
-      await reload().catch(() => {});
-      renderPanel();
+      refresh();  // 盤面の印（チュートリアルの次に押す所など）も送信中でなくなった所で描き直す
     }
     return ok;
   }
@@ -683,12 +693,54 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (blocker && blocking()) m.set(blocker, "m-casting");
     const q = cardAsk();
     for (const id of q ? q.cards : []) m.set(id, chosen.cards.includes(id) ? "m-target" : "m-option");
-    if (!compose) return m;
-    if (compose.card) m.set(compose.card, "m-casting");
-    if (compose.source) m.set(compose.source, "m-casting");
-    for (const t of compose.targets || []) m.set(t, "m-target");
+    if (compose) {
+      if (compose.card) m.set(compose.card, "m-casting");
+      if (compose.source) m.set(compose.source, "m-casting");
+      for (const t of compose.targets || []) m.set(t, "m-target");
+    }
+    for (const id of (guide() || {}).cards || []) m.set(id, "m-guide");
     return m;
   }
+
+  // ---- チュートリアル: 今の段で受け付ける操作（goal）と、下書き・組み立て中の行から、次に押す所を決めて光らせる。
+  // {cards, menu, btn}: cards は盤面・手札のカード、menu はカードを押して開くメニューの項目（文言のキー）、btn はパネルのボタン
+  function guide() {
+    settleSent();
+    const g = ui.tutorial && ui.tutorial.goal;
+    // 送った後・追いかけの再生の間（見ている盤面が今の段より前）は出さない
+    if (!g || !ui.play || !ui.view || !ui.live || busy || sent || ui.pos !== ui.cursor || ui.cursor < wroteTo
+      || ui.view.turn.waiting_on !== me()) return null;
+    const v = ui.view;
+    const name = (id) => ui.names[id] || (findCard(v, id) || {}).name;
+    const find = (zone, n, ok = () => true) => ((v.zones[zone] || {}).cards || []).find((c) => name(c.id) === n && ok(c));
+    const mine = (n) => find("battlefield", n, (c) => (c.controller || c.owner) === me());
+    const one = (c, menu) => (c ? { cards: [c.id], menu } : null);
+    if (g.what === "next") return { btn: "next" };
+    if (g.what === "declare") return { btn: g.kind };
+    if (g.what === "answer") {
+      const q = cardAsk();
+      return q && !chosen.cards.length ? { cards: q.cards } : { btn: "askOk" };
+    }
+    if (compose) {
+      const t = g.targets && !compose.targets.some((id) => name(id) === g.targets) && mine(g.targets);
+      return t ? one(t) : { btn: "castResolve" };
+    }
+    const lines = loadDraft().lines;
+    const todo = g.cards.find(([k, n]) => !lines.some((l) => l.kind === k && name((l.cards || [])[0]) === n));
+    if (todo) {
+      const [k, n] = todo;
+      if (k === "play_land") return one(find(`${me()}.hand`, n), "play.item.playLand");
+      if (k === "cast") return one(find(`${me()}.hand`, n), "play.item.cast");
+      if (k === "attack") return one(mine(n), "play.attack");
+      if (k === "block") return blocker ? { cards: v.combat.attacks.map((a) => a.attacker) } : one(mine(n));
+    }
+    const then = g.then.find((x) => x !== "continue");
+    const last = lines[lines.length - 1];
+    if (then && !(last && last.kind === "then" && last.then === then)) return { btn: then };
+    return { btn: "send" };
+  }
+  let guided = null;  // パネルを描くときの guide()（ボタンが読む）
+  let wroteTo = 0;    // 最後に書いた後の cursor。再読込が書く前の盤面を返すことがあるので、それに追いつくまで印を出さない
 
   function start(c) {
     if (judging()) return toast(tr("play.toast.judging"), true);
@@ -711,6 +763,29 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     refresh();
   }
 
+  const aimText = (targets) => (targets.length ? tr("play.line.aim", { targets: targets.map(ref).join(", ") }) : "");
+  // 対象の短い名前: スタックの項目はその呪文・能力の発生源で
+  function aimName(id) {
+    const s = ui.view.stack.find((x) => x.id === id);
+    if (!s) return nm(id);
+    return s.card ? nm(s.card) : tr("play.abilityOf", { card: nm(s.source) });
+  }
+
+  // 下書きの唱える・起動の行（スタックに仮に積んだ項目 item）の対象を選び直す。今の対象を入れて組み立てを始め、
+  // 決めたら行を書き直す（文の補足は行の文から取り出す。取り出せなければ空）
+  function editTargets(at, item) {
+    const l = loadDraft().lines[at];
+    const src = (l.cards || [])[0];
+    const tap = l.tap === "tap";
+    const key = l.kind === "cast" ? "play.line.cast" : tap ? "play.line.activateTap" : "play.line.activate";
+    const head = tr(key, { card: ref(src), aim: aimText(l.targets || []), extra: "" });
+    const [pre, post] = tr("paren", { text: "{text}" }).split("{text}");
+    const rest = l.text.startsWith(head) ? l.text.slice(head.length) : "";
+    const text = rest.startsWith(pre) && rest.endsWith(post) ? rest.slice(pre.length, rest.length - post.length) : "";
+    start({ kind: l.kind, [l.kind === "cast" ? "card" : "source"]: src, item, targets: [...(l.targets || [])], text, tap,
+      edit: { at, line: l } });
+  }
+
   // 唱える・起動・対象を選ぶの組み立てを、下書きの1行にする
   function commit(resolve = false) {
     const c = compose;
@@ -722,10 +797,17 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       return addLine(line("target", tr("play.line.target", { label: c.label, targets: c.targets.map(ref).join(", "), extra }), { targets: c.targets }));
     }
     const src = c.card || c.source;
-    const aim = c.targets.length ? tr("play.line.aim", { targets: c.targets.map(ref).join(", ") }) : "";
     const key = c.kind === "cast" ? "play.line.cast" : c.tap ? "play.line.activateTap" : "play.line.activate";
+    const l = line(c.kind, tr(key, { card: ref(src), aim: aimText(c.targets), extra }), { cards: [src], targets: c.targets, tap: c.kind === "activate" && c.tap ? "tap" : null });
     compose = null;
-    addLine(line(c.kind, tr(key, { card: ref(src), aim, extra }), { cards: [src], targets: c.targets, tap: c.kind === "activate" && c.tap ? "tap" : null }));
+    if (c.edit) {  // 下書きの行を書き直す（その間に行が外された・動いたら、書き直さない）
+      const lines = loadDraft().lines;
+      if (lines[c.edit.at] !== c.edit.line) { refresh(); return toast(tr("play.editTargets.gone"), true); }
+      lines[c.edit.at] = l;
+      saveDraft();
+      return refresh();
+    }
+    addLine(l);
     if (resolve === true) addLine(line("resolve", tr(c.kind === "cast" ? "play.line.resolve" : "play.line.resolveAbility", { card: ref(src) }), { cards: [src] }));
   }
 
@@ -996,20 +1078,33 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       return true;
     }
     const unplan = unplanItems(card.id);
-    openMenu(ev, title, [...unplan, ...(unplan.length ? ["-"] : []), ...cardItems(card, zone)]);
+    const g = guide();
+    const key = g && g.menu && (g.cards || []).includes(card.id) ? tr(g.menu) : null;
+    const items = cardItems(card, zone).map((it) => (it && it !== "-" && key && it.label === key ? { ...it, guide: true } : it));
+    openMenu(ev, title, [...unplan, ...(unplan.length ? ["-"] : []), ...items]);
     return true;
   }
 
   // 手札のカードを盤面へドラッグしたときの予定（render の hooks.drop）。place: battlefield / graveyard / exile /
   // library-top / library-bottom。できない場面なら null（ドラッグは手札の並べ替えだけになる）。
-  // 返す label は、領域に入ったときに出す説明。run で下書きに行を足す
-  function onDrop(id, place) {
+  // 返す label は、領域に入ったときに出す説明。run で下書きに行を足す。
+  // place が target なら、target（戦場のカード・Player・スタックの項目）を対象に唱えて解決する
+  function onDrop(id, place, target) {
     if (!ui.play || !ui.live || !ui.view || locked() || compose || pick || ui.view.turn.turn === 0) return null;
     const v = shownView || ui.view;
     if (zoneOf(v, id) !== `${me()}.hand`) return null;
     const card = findCard(v, id);
     if (!card || card.planned) return null;
     const mv = (key) => ({ label: tr(key, { card: nm(id) }), run: () => other(tr(key, { card: ref(id) }), [id]) });
+    if (place === "target") {
+      const kind = (ui.view.card_kinds || {})[id] || {};
+      if ((kind.land && !kind.spell) || !target || target === id) return null;
+      return { label: tr("play.drop.castAt", { card: nm(id), target: aimName(target) }), run: () => {
+        addLine(line("cast", tr("play.line.cast", { card: ref(id), aim: tr("play.line.aim", { targets: ref(target) }), extra: "" }),
+          { cards: [id], targets: [target] }));
+        addLine(line("resolve", tr("play.line.resolve", { card: ref(id) }), { cards: [id] }));
+      } };
+    }
     if (place === "battlefield") {
       const kind = (ui.view.card_kinds || {})[id] || {};  // 土地の面があれば土地として出す（唱えるならメニューから）
       if (kind.land) return { label: tr("play.drop.land", { card: nm(id) }), run: () => addLine(line("play_land", tr("play.line.playLand", { card: ref(id) }), { cards: [id] })) };
@@ -1032,14 +1127,23 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       if (c) showCard(c);
       return true;
     }
-    if (compose) { if (s.id !== compose.item) toggleTarget(s.id); return true; }
+    if (compose) {
+      // 下書きで仮に積んだ項目は、呪文のカードで指す（仮の能力は指せない）
+      const t = s.planned ? s.card : s.id;
+      if (t && s.id !== compose.item) toggleTarget(t);
+      return true;
+    }
     if (s.planned) {  // 下書き・送った依頼で仮に積んだ項目（plan<行の番号>。番号は送った依頼の行から数える）
       const at = Number(s.id.slice(4)) - (sent || []).length;
       const what = tr(s.card ? "play.line.resolve" : "play.line.resolveAbility", { card: ref(s.card || s.source) });
       // 一番上なら、続けて解決する予定を足せる（呪文はカード、能力は発生源で、どの項目かを審判に伝える）
       const resolve = i === 0 ? [{ label: tr("play.item.resolve"), fn: () => addLine(line("resolve", what, { cards: [s.card || s.source] })),
         hint: tr("play.resolveNext.hint") }, "-"] : [];
-      openMenu(ev, `${s.card ? nm(s.card) : tr("play.abilityOf", { card: nm(s.source) })}${tr("play.plannedSuffix")}`, [...resolve, ...(at >= 0
+      // 下書きの唱える・起動の行なら、対象を足す・外す（行を書き直す）
+      const l = at >= 0 && loadDraft().lines[at];
+      const edit = l && ["cast", "activate"].includes(l.kind)
+        ? [{ label: tr("play.item.editTargets"), fn: () => editTargets(at, s.id), hint: tr("play.item.editTargets.hint") }] : [];
+      openMenu(ev, `${s.card ? nm(s.card) : tr("play.abilityOf", { card: nm(s.source) })}${tr("play.plannedSuffix")}`, [...resolve, ...edit, ...(at >= 0
         ? [{ label: tr("play.removePlan"), fn: () => removeLine(at) }] : [{ label: tr("play.sentPlan"), fn: () => {} }])]);
       return true;
     }
@@ -1110,6 +1214,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   function button(text, fn, opts = {}) {
     const b = el("button", opts.cls || null, text);
     if (opts.title) b.title = opts.title;
+    if (opts.g && guided && guided.btn === opts.g) b.classList.add("guide");  // チュートリアルで次に押すボタン
     b.disabled = !ready() || locked() || !!opts.disabled;
     b.onclick = fn;
     return b;
@@ -1134,14 +1239,15 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const list = el("div", "crow");
     for (const id of q.cards) {
       const on = chosen.cards.includes(id);
-      const b = button(nm(id), () => toggleChosen(q, id), { cls: "chip cand" + (on ? " on" : ""), title: tr("play.ask.candidate.title", { id }) });
+      const b = button(nm(id), () => toggleChosen(q, id), { cls: "chip cand" + (on ? " on" : "") + (guided && (guided.cards || []).includes(id) ? " guide" : ""),
+        title: tr("play.ask.candidate.title", { id }) });
       const c = findCard(ui.view, id);
       const info = button(tr("play.item.details"), () => showCard(c), { cls: "chip" });
       info.disabled = !c;
       list.append(b, info);
     }
     const ok = button(n ? tr("play.ask.confirmN", { n }) : tr("play.ask.confirm"), () => answerCards(q, chosen.cards),
-      { cls: "on", disabled: n < lo || n > hi || !n });
+      { cls: "on", disabled: n < lo || n > hi || !n, g: "askOk" });
     const none = lo === 0 && button(tr("play.chooseNone"), () => answerCards(q, []));
     const row = el("div", "crow");
     row.append(...[ok, none].filter(Boolean));
@@ -1196,9 +1302,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     acts.append(iconButton(ICON.next, next ? tr("play.next.to", { step: stepLabel(next) }) : tr("play.next.any"),
         next ? go(next) : null, { disabled: off || !next, text: next ? tr("play.next.short", { step: tr(`play.nextShort.${next}`) }) : tr("play.next") }),
       iconButton(ICON.endTurn, tr("play.endTurn"), then("end_turn", tr("play.endTurn")),
-        { disabled: off || !mine, text: tr("play.endTurn"), title: tr("play.endTurn.title") }),
+        { disabled: off || !mine, text: tr("play.endTurn"), title: tr("play.endTurn.title"), g: "end_turn" }),
       iconButton(ICON.pass, tr("play.passToOpp"), then("pass", tr("play.passToOpp")),
-        { disabled: off || !mine, text: tr("play.pass"), title: tr("play.pass.title") }));
+        { disabled: off || !mine, text: tr("play.pass"), title: tr("play.pass.title"), g: "pass" }));
     return [grid, acts];
   }
 
@@ -1252,7 +1358,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const r2 = el("label", "crow");
     r2.append(free);
     const act = requestAction(d.lines, d.comment, t, seat, v.stack.length);
-    const send = button(act ? act.label : tr("play.req.send"), sendDraft, { cls: "on", disabled: off || !act,
+    const send = button(act ? act.label : tr("play.req.send"), sendDraft, { cls: "on", disabled: off || !act, g: "send",
       title: tr(act && act.kind === "pass" ? "play.req.send.pass"
         : !act && t.turn !== 0 && t.waiting_on !== seat ? "play.req.send.theirs" : "play.req.send.title") });
     const r3 = el("div", "crow");
@@ -1426,7 +1532,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     }
     const c = compose;
     box.append(el("div", "ctitle", c.kind === "target" ? tr("play.compose.targetsFor", { label: localize(c.label) })
-      : tr(c.kind === "cast" ? "play.compose.cast" : "play.compose.activate", { card: nm(c.card || c.source) })));
+      : c.edit ? tr("play.compose.editTargets", { card: c.card ? nm(c.card) : tr("play.abilityOf", { card: nm(c.source) }) })
+        : tr(c.kind === "cast" ? "play.compose.cast" : "play.compose.activate", { card: nm(c.card || c.source) })));
     box.append(el("div", "chelp muted", tr("play.compose.help") + (c.kind === "target" ? "" : tr("play.compose.helpCost"))));
     const tg = el("div", "crow");
     tg.append(el("span", "muted", tr("play.compose.targets")));
@@ -1453,13 +1560,37 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     }
     const buttons = el("div", "crow");
     // 既定は「積んで解決」（積む行と解決する行）。スタックに積んだままにする（解決の前に何かする）のはオプション
-    const buttons2 = c.kind === "target"
-      ? [button(tr("play.compose.addTargets"), () => commit(), { cls: "on" })]
+    const buttons2 = c.kind === "target" ? [button(tr("play.compose.addTargets"), () => commit(), { cls: "on" })]
+      : c.edit ? [button(tr("play.compose.saveTargets"), () => commit(), { cls: "on" })]
       : [button(tr(c.kind === "cast" ? "play.compose.castResolve" : "play.compose.activateResolve"), () => commit(true), { cls: "on",
-          title: tr("play.compose.resolve.title") }),
+          title: tr("play.compose.resolve.title"), g: "castResolve" }),
         button(tr("play.compose.stackOnly"), () => commit(), { title: tr("play.compose.stackOnly.title") })];
     buttons.append(...buttons2, button(tr("play.cancel"), cancel));
     box.append(buttons);
+    return box;
+  }
+
+  // チュートリアルの案内: 今の段（あなたの操作）の文。審判・相手の番の間は、その処理を待つ
+  // 説明の段（goal.what が next）は、読んで「次へ」を押す
+  function tutorialBox(g) {
+    const box = el("div", "tutorial");
+    box.append(el("div", "ctitle", g.done ? tr("tutorial.done") : tr("tutorial.title", { step: g.step, total: g.total })),
+      el("div", null, g.text ? localize(g.text[lang()] || g.text.en) : tr("tutorial.wait")));
+    const go = (fn) => async () => {
+      busy = true;
+      renderPanel();
+      try { await fn(); } catch (e) { toast(e.message, true); }
+      await reload().catch(() => {});
+      busy = false;
+      refresh();
+    };
+    const row = el("div", "crow");
+    if (g.goal && g.goal.what === "next") row.append(button(tr("tutorial.next"), go(source.tutorialNext), { cls: "on", g: "next" }));
+    if (g.choice) {  // 台本の後: 続けるとふつうの対局（審判と相手は Claude Code）、終えると相手が投了
+      row.append(button(tr("tutorial.continue"), go(() => source.tutorialFinish(true)), { cls: "on" }),
+        button(tr("tutorial.end"), go(() => source.tutorialFinish(false))));
+    }
+    if (row.childNodes.length) box.append(row);
     return box;
   }
 
@@ -1468,11 +1599,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     if (!panel) return;
     panel.hidden = !ui.play;
     if (!ui.play || !ui.view) return;
+    settleSent();
+    guided = guide();
     const v = ui.view, t = v.turn, seat = me();
-    const mySent = ((v.requests || {}).pending || []).some((r) => r.player === seat);
-    // 審判が処理した（本物の盤面になった）。送った後の再読込が別の更新と重なり、まだ依頼の前の盤面のことがあるので、
-    // 依頼より後の盤面で確かめる
-    if (sent && !mySent && ui.cursor > sentFrom) sent = null;
     const body = $("playbody");
     const wait = t.waiting_on;
     const waiting = ui.live && (busy || (!!wait && wait !== seat));
@@ -1485,6 +1614,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     $("playTitle").textContent = tr("play.panelTitle", { seat });
     const rows = [];
     const row = (...xs) => { const r = el("div", "prow"); r.append(...xs.filter(Boolean)); rows.push(r); };
+    if (ui.tutorial && ui.live) rows.push(tutorialBox(ui.tutorial));
     const idle = ui.live && idleState(ui.idle, wait, seat, Date.now());
     if (idle) {
       rows.push(el("div", "phint", tr("play.idle.notice", { who: idle.who, minutes: idle.minutes })));
@@ -1522,7 +1652,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     } else if (mine && t.turn === 0 && !hasKept(v, seat)) {
       const need = (v.pregame || {}).to_bottom || 0;
       row(button(tr("play.keep"), () => declareKind("keep"),
-        { title: need ? tr("play.keep.titleBottom", { n: need }) : tr("play.keep.title") }),
+        { title: need ? tr("play.keep.titleBottom", { n: need }) : tr("play.keep.title"), g: "keep" }),
       button(tr("play.mulligan"), () => declareKind("mulligan"), { title: tr("play.mulligan.title") }));
       if (mulligans(v, seat)) rows.push(el("div", "phint muted", tr("play.mulligan.count", { n: mulligans(v, seat), need })));
     }
@@ -1540,9 +1670,9 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const usable = ui.live && !busy && !locked() && !!wait && (!self || self.status === "playing");
     if (usable) {
       rows.push(el("div", "phead2 sep", tr("play.sayAndSettings")));
-      const strip = stopsStrip();
+      const strip = ui.tutorial ? null : stopsStrip();  // チュートリアルの止める場所は台本で決まっている（変えない）
       if (strip) rows.push(strip);
-      row(button(tr("play.say"), declare), !strip && button(tr("play.stops.button"), editStops, { title: tr("play.stops.button.title") }),
+      row(button(tr("play.say"), declare), !strip && !ui.tutorial && button(tr("play.stops.button"), editStops, { title: tr("play.stops.button.title") }),
         button(tr("play.concede"), async () => {
           // confirm() はブラウザペインなどでダイアログを出さずに false を返すので、ページ内のダイアログで確かめる
           if (await ask({ title: tr("play.concede.confirm"), choices: [{ label: tr("play.concede"), value: true }] })) declareKind("concede");
@@ -1561,6 +1691,6 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
   return {
     hooks: { card: onCard, drop: onDrop, mana: onMana, stack: onStack, player: onPlayer, pile: onPile, after: renderPanel, preview: previewView, retarget },
     renderPanel,
-    reset() { compose = null; pick = null; blocker = null; stops = null; stopsFailed = false; draft = null; sent = null; shownView = null; Object.assign(chosen, { seq: null, cards: [] }); },
+    reset() { compose = null; pick = null; blocker = null; stops = null; stopsFailed = false; draft = null; sent = null; wroteTo = 0; shownView = null; Object.assign(chosen, { seq: null, cards: [] }); },
   };
 }

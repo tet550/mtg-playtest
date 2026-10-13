@@ -149,15 +149,19 @@ class SqliteGameStore(BaseStore):
     def create(self, state: GameState, overwrite: bool = False) -> None:
         with self.lock():
             c = self._local.conn
+            stamp = 0
             if self.exists():
                 if not overwrite:
                     raise FileExistsError("%s already holds game %r (use --force to replace it)" % (self.db, self.name))
+                # 作り直しても stamp は前から続ける（同じ id の前の対局の時系列のキャッシュ・SSE の印と重ならないように）
+                stamp = self._row("stamp")[0] + 1
                 for table, col in (("log", "game"), ("docs", "game"), ("games", "id")):
                     c.execute("DELETE FROM %s WHERE %s = ?" % (table, col), (self.name,))
             now = _now()
-            c.execute("INSERT INTO games (id, initial, state, cursor, summary, created_at, updated_at) "
-                      "VALUES (?, ?, ?, 0, ?, ?, ?)",
-                      (self.name, _dumps(state.to_dict()), _dumps(state.to_dict()), _dumps(summary_of(state)), now, now))
+            c.execute("INSERT INTO games (id, initial, state, cursor, stamp, summary, created_at, updated_at) "
+                      "VALUES (?, ?, ?, 0, ?, ?, ?, ?)",
+                      (self.name, _dumps(state.to_dict()), _dumps(state.to_dict()), stamp, _dumps(summary_of(state)),
+                       now, now))
 
     def read_log(self) -> list:
         with self._conn() as c:

@@ -568,6 +568,8 @@ body:not(.log-open) #logClose { display: none; }
 .phead2 { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: .04em; }
 .phead2.sep { border-top: 1px solid var(--line); padding-top: 5px; margin-top: 2px; }
 .phint { font-size: 11px; }
+.tutorial { border: 2px solid var(--accent); border-radius: 8px; padding: 8px 10px; white-space: pre-wrap; line-height: 1.5; }
+.tutorial .ctitle { color: var(--accent); font-weight: 700; }
 .pask { font-weight: 700; border-left: 3px solid var(--warn); padding-left: 6px; white-space: pre-wrap; }
 .prow button:disabled { opacity: .45; }
 .compose { border: 1px solid var(--accent); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
@@ -591,6 +593,10 @@ body:not(.log-open) #logClose { display: none; }
 /* 下書き・送った依頼の予定（盤面はまだ動いていない） */
 .card.m-plan .artbox, .card.m-plan:not(.withart) { outline: 3px dotted var(--accent); outline-offset: 1px; }
 .phead.m-plan, .sitem.m-plan { outline: 2px dotted var(--accent); border-radius: 6px; }
+/* チュートリアル: 次に押す所 */
+@keyframes guidepulse { 0%, 100% { box-shadow: 0 0 0 2px var(--ok); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 30%, transparent); } }
+button.guide, .card.m-guide .artbox, .card.m-guide:not(.withart) { outline: 2px solid var(--ok); outline-offset: 1px; animation: guidepulse 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { button.guide, .card.m-guide .artbox, .card.m-guide:not(.withart) { animation: none; } }
 .card.back.planned { display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700;
   background: var(--panel); color: var(--accent); outline: 2px dashed var(--accent); outline-offset: -2px; }
 .pknown { position: absolute; left: -2px; top: 14px; z-index: 3; padding: 0 4px; font-size: 9px; line-height: 14px;

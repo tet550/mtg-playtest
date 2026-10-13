@@ -393,14 +393,15 @@ def cmd_prompt(a):
 
 
 def _gui_games():
-    """サイトの DB の、GUI の人間がいる（席の文書 "seats" がある）、決着していない対局。"""
+    """サイトの DB の、GUI の人間がいる（席の文書 "seats" がある）、決着していない対局（チュートリアルは除く）。"""
+    from . import tutorial
     from .sqlstore import SqliteGames
     source = SqliteGames(_site_db())
     for gid in source.ids():
         st = source.open(gid)
         try:
-            if play.seats(st) and play.waiting_on(st.load()) is not None:
-                yield st
+            if play.seats(st) and play.waiting_on(st.load()) is not None and not tutorial.active(st):
+                yield st  # チュートリアルは台本で進むので拾わない
         except (OSError, LookupError, ValueError):
             continue
 
@@ -452,6 +453,15 @@ def cmd_next(a):
     _wait_role(store, ai, a.timeout, body=a.body)
 
 
+def _refuse_scripted(store):
+    """台本で進んでいるチュートリアルは、審判も AI の席も台本が書く（Claude Code は回さない）。同じ名前の対局を作り直した後に、
+    前の対局を回していたエージェントが書かないよう、ここで終わる（終了コード 4）。"""
+    from . import tutorial
+    if tutorial.active(store):
+        print("この対局はチュートリアルの台本で進んでいる（審判と AI の席は回さない）。回すのをやめる")
+        sys.exit(4)
+
+
 def _wait_role(store, ai, timeout, body=False):
     """審判か AI の席の番が来るまで待ち、そのプロンプトを書き出す（next と answer --wait）。時間切れは終了コード 3。"""
     import time
@@ -459,6 +469,7 @@ def _wait_role(store, ai, timeout, body=False):
     deadline = time.monotonic() + timeout
     touched = 0.0
     while True:
+        _refuse_scripted(store)
         if body and time.monotonic() - touched > 30:  # 待っているエージェントがこの対局を受け持っている印
             prompt.touch_lease(store)
             touched = time.monotonic()
@@ -483,6 +494,7 @@ def cmd_answer(a):
     """Claude の返答（JSON のコード・ブロック）を、最後に作ったプロンプトの役割（審判か AI の席）として卓に書く。"""
     from . import play, prompt
     store = _existing(a.game)
+    _refuse_scripted(store)
     text = sys.stdin.read() if a.file in (None, "-") else pathlib.Path(a.file).read_text(encoding="utf-8")
     role = "judge" if a.judge else a.as_
     try:
@@ -618,7 +630,8 @@ def build_parser():
     p = sub.add_parser("serve", help="手元のサイトを立てる（デッキの登録・対局を作る（AI と・招待した人と）・対局・履歴）。"
                                      "審判と AI の席は Claude Code が回す（next の監視と mtg-table エージェント）")
     p.add_argument("--host", default="127.0.0.1", help="待ち受けるアドレス（別の PC のゲストを招くなら 0.0.0.0。通信は暗号化されない）")
-    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT") or 8765),
+                   help="待ち受けるポート（既定は環境変数 PORT、無ければ 8765）")
     p.add_argument("--offline", action="store_true", help="キャッシュに無いカード画像を取りに行かない")
     p.set_defaults(fn=cmd_serve)
 

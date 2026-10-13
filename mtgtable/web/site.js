@@ -54,7 +54,16 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
       return a;
     };
     const cta = el("div", "cta");
-    cta.append(mine.length ? link("primary", t("top.cta.games"), "#/games") : link("primary", t("top.cta.decks"), "#/decks"),
+    const tutorial = link(null, t("top.cta.tutorial"), "#/games");
+    tutorial.onclick = async (ev) => {  // 決まった台本で1局（AI は使わない）
+      ev.preventDefault();
+      try {
+        const r = await source.startTutorial();
+        try { localStorage.removeItem(`draft.${r.game}.${r.seat}`); } catch (_) { /* 保存できない */ }  // 前の回の下書きを持ち越さない
+        await openGame(r.game);
+      } catch (e) { toast(e.message, true); }
+    };
+    cta.append(tutorial, mine.length ? link("primary", t("top.cta.games"), "#/games") : link("primary", t("top.cta.decks"), "#/decks"),
       link(null, t("top.cta.new"), "#/new"), link(null, t("top.cta.history"), "#/history"));
     const hero = el("div", "hero");
     hero.append(

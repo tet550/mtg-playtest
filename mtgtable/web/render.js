@@ -384,7 +384,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   // 掴んだカードは写し（ghost）を画面の上に重ねてポインターに付いてこさせ（手札の欄ははみ出しを切るので）、
   // 元のカードは空いた場所の印として手札に残す。ほかのカードは空いた場所へ滑らせる。
   // GUI の対局では、同じ側の戦場・墓地・追放・ライブラリー（data-drop）へ落とすと、その予定を下書きに足す
-  // （何をするかは hooks.drop が決め、領域に入ったら Tip で出す）。
+  // （何をするかは hooks.drop が決め、領域に入ったら Tip で出す）。戦場のカード・Player・スタックの項目の上へ落とすと、
+  // それを対象に唱える。
   // タッチで長押ししたまま動かさずに離したら、ほかのカードの長押しと同じく詳細を出す
   function handDrag(row, pid) {
     const tiles = () => [...row.querySelectorAll(":scope > .card[data-ids]:not(.back)")];
@@ -436,15 +437,24 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       const d = drag;
       d.ghost.style.transform = `translate(${e.clientX - d.dx}px, ${e.clientY - d.dy - 14}px) scale(${d.action ? .8 : 1.06})`;
     };
-    // ポインターの下の落とし先（同じ側の data-drop）と、そこで何をするか
+    // ポインターの下の落とし先と、そこで何をするか。まず対象にできるもの（どちらの側でも戦場のカード・Player・
+    // スタックの項目の data-target）: そこを対象に唱える。できなければ、同じ側の領域（data-drop）
     const dropAt = (e) => {
       if (!hooks.drop) return null;
+      const id = drag.tile.dataset.ids.split(" ")[0];
+      for (const t of document.elementsFromPoint(e.clientX, e.clientY)) {
+        const target = t.dataset.target || (t.matches(".card[data-ids]") && t.closest("[data-drop='battlefield']") ? t.dataset.ids.split(" ")[0] : null);
+        if (!target) continue;
+        const action = hooks.drop(id, "target", target);
+        if (action) return { el: t, action };
+        break;
+      }
       const side = row.closest("#top, #bottom") || document;
       for (const t of side.querySelectorAll("[data-drop]")) {
         const r = t.getBoundingClientRect();
         if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
         const place = t.dataset.drop === "library" ? (e.clientY < r.top + r.height / 2 ? "library-top" : "library-bottom") : t.dataset.drop;
-        const action = hooks.drop(drag.tile.dataset.ids.split(" ")[0], place);
+        const action = hooks.drop(id, place);
         return action ? { el: t, action } : null;
       }
       return null;
@@ -632,6 +642,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     if (hooks.player) {
       head.classList.add("clickable");
       head.onclick = (ev) => hooks.player(pid, ev);
+      head.dataset.target = pid;  // 手札から落として対象にする（handDrag）
     }
     if (ui.marks && ui.marks.has(pid)) head.classList.add(ui.marks.get(pid));
     // アクティブ Player のライフの横に、今のフェイズ
@@ -767,6 +778,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       if (s.kind !== "spell") pic.classList.add("src");
       if (ui.marks && ui.marks.has(s.id)) li.classList.add(ui.marks.get(s.id));
       if (s.planned) li.classList.add("pv");
+      // 手札から落として対象にする（handDrag）。下書きで仮に積んだ呪文はカードで指す（仮の能力は指せない）
+      const target = s.planned ? s.card : s.id;
+      if (target) li.dataset.target = target;
       if (hooks.stack) {
         // スタックの項目は、カードの絵を押しても項目として扱う（能力の発生源のカードのメニューを出さない）
         li.onclick = (ev) => { if (!hooks.stack(s, i, ev) && c) showCard(c); };
