@@ -91,7 +91,7 @@ Web の責務分割と設計判断は [design/web_design.md](design/web_design.m
 プラグインを使わずに CLI だけ使うときも、GitHub のタグから入れられる（PyPI には未公開）。手元の wheel は `uv build` で作れる。
 
 ```bash
-uvx --from git+https://github.com/tet550/mtg-playtest@v0.1.1 mtgtable new g1 --deck p1=piza --deck p2=jund-sacrifice
+uvx --from git+https://github.com/tet550/mtg-playtest@v0.1.2 mtgtable new g1 --deck p1=piza --deck p2=jund-sacrifice
 ```
 
 - 同梱のデッキ（`decklists/*.txt`）は名前だけで選べる（`--deck p1=piza`）。ファイルのパスも今までどおり使える
