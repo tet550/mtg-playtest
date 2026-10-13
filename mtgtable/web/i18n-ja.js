@@ -84,7 +84,7 @@ export default {
   "top.step.history": "終わった対局は「履歴」から、どの席の視点でも全体の視点でも再生できます。",
   "top.step.history.link": "履歴へ",
   "top.cta.history": "履歴を見る",
-  "top.ai.claudeCode": "審判と AI の席は Claude Code が回します。対局を作ったら、Claude Code に「GUI の対局を回して」と頼みます（mtg-playtest スキル）。",
+  "top.ai.claudeCode": "審判と AI の席は Claude Code が回します。対局を作ったら、Claude Code に「GUI の対局を回して」と頼みます（Claude Code の mtgtable プラグイン）。",
 
   // 知らせ
   "error.prefix": "エラー: {message}",

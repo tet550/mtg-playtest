@@ -24,7 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import carddb, info, play, prompt
+from . import carddb, info, paths, play, prompt
 from .engine import public_result
 from .operations import OperationError, summarize_op
 from .decks import Decks, Invalid, check as check_deck_text
@@ -688,8 +688,8 @@ def serve(db, host: str = "127.0.0.1", port: int = 8765, offline: bool = False) 
     httpd = ThreadingHTTPServer((host, port), Handler)
     httpd.daemon_threads = True
     print("mtgtable: http://%s:%d/  (db: %s, Ctrl+C で終了)" % (host, port, db))
-    print("  審判と AI の席は Claude Code が回す（python -m mtgtable --db %s next --claude-code の監視と、"
-          "エージェント mtg-table）" % db)
+    print("  審判と AI の席は Claude Code が回す（%s --db %s next --claude-code の監視と、"
+          "エージェント mtg-table。mtgtable プラグインの mtg-playtest スキル）" % (paths.command(), paths.shell_path(db)))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

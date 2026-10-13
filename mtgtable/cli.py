@@ -422,7 +422,7 @@ def _next_any(a):
                 if a.claude_code:
                     prompt.write_claude_code(store)
                 # CLI で対局を指す形（answer・log・oracle などに使う）: サイトの DB と対局の id
-                head, target = "python -m mtgtable --db %s" % _site_db(), store.name
+                head, target = "%s --db %s" % (paths.command(), paths.shell_path(_site_db())), store.name
                 print("game: %s <コマンド> %s" % (head, target))
                 # この対局を受け持つエージェントが、自分で待つコマンド（起動するまでの間にほかの監視が拾わないよう、印も付ける）
                 print("wait: %s next %s %s --claude-code --body --timeout 240"
@@ -538,6 +538,9 @@ def cmd_deck(a):
         print("  %s: %s" % (name, err))
     if data["missing"] and not a.fetch:
         print("  (--fetch で Scryfall から取得)")
+    for p in sorted((paths.decklists_dir() / "strategy").glob("%s*.md" % d.name)):
+        if p.stem == d.name or p.stem.startswith(d.name + "-"):  # 同梱のデッキのプレイ方針（Read で読む）
+            print("strategy: %s" % p)
     if a.images:
         errors = carddb.fetch_deck_images(d)
         print("images: %s%s" % (carddb.cache_dir() / "images",

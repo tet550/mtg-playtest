@@ -1,0 +1,11 @@
+{
+  "name": "mtgtable",
+  "owner": { "name": "Tetsuya Iwaki" },
+  "plugins": [
+    {
+      "name": "mtgtable",
+      "source": "./plugins/mtgtable",
+      "description": "紙の MTG を手元のブラウザの卓で遊ぶ。審判と AI の席を Claude Code が回す"
+    }
+  ]
+}

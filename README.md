@@ -8,6 +8,52 @@ Rules Engine ではなく **Table Engine**。カード・カウンター・メ�
 
 Python 3.10 以上、標準ライブラリのみ。
 
+## はじめに（Claude Code のプラグインで入れる）
+
+審判と AI の席は Claude Code が回すので、Claude Code のプラグイン `mtgtable`（スキル `mtg-playtest` とエージェント `mtg-table`）
+として配る。mtgtable 本体（Python）は、プラグインが GitHub から取ってきて動かす（PyPI には出していない）。
+
+1. 用意するもの: Claude Code と、[uv](https://docs.astral.sh/uv/)（無ければ Python 3.10 以上と git。Claude Code が pip で入れてよいか聞く）
+2. プラグインを入れる（デスクトップアプリなら ＋ › Plugins からでもよい）
+
+```bash
+claude plugin marketplace add tet550/mtg-playtest
+```
+
+```bash
+claude plugin install mtgtable@mtgtable
+```
+
+3. どのフォルダでもよいので Claude Code を開き、「mtgtable の使い方を教えて」と頼む。手元のサイトが開くので、トップの
+   「チュートリアル」で操作を覚える（約10分。Claude Code は要らない）
+4. 「デッキ」でデッキを登録 →「対局を作る」で AI と対局を作り、Claude Code に「GUI の対局を回して」と頼む
+
+更新は `claude plugin update mtgtable@mtgtable`（または `/plugin marketplace update`）。プラグインの版と同じ版の mtgtable を使う。
+
+### リポジトリで開発するとき
+
+スキルとエージェントの正本は `plugins/mtgtable/`（`.claude/` には置かない）。clone したフォルダの Claude Code では、
+このフォルダをマーケットプレイスとして足し、プロジェクトに入れる（1回だけ）。リポジトリから動く間はスキルが `python -m mtgtable` を使い、
+スキルの変更はそのまま効く（`/reload-plugins`）。
+
+```text
+/plugin marketplace add ./
+/plugin install mtgtable@mtgtable
+```
+
+| 場所 | 中身 |
+|---|---|
+| `.claude-plugin/marketplace.json` | マーケットプレイス（このリポジトリ）。プラグインは `./plugins/mtgtable` |
+| `plugins/mtgtable/.claude-plugin/plugin.json` | プラグインの名前と版 |
+| `plugins/mtgtable/skills/mtg-playtest/` | スキル（`SKILL.md`）と、審判のプロンプトにも入るリファレンス（`references/`） |
+| `plugins/mtgtable/agents/mtg-table.md` | GUI の対局で審判と AI の席を兼ねるエージェント |
+
+版を上げて配るとき: 次の3か所の版をそろえてコミットし、タグ `v<版>` を付けて push する（利用者の mtgtable はこのタグから入る）。
+
+- `mtgtable/__init__.py` の `__version__`
+- `plugins/mtgtable/.claude-plugin/plugin.json` の `version`
+- `plugins/mtgtable/skills/mtg-playtest/SKILL.md` の「起動のコマンド」の `@v<版>`
+
 ## 構成
 
 | モジュール | 役割 | 設計書 |
@@ -38,14 +84,10 @@ Web の責務分割と設計判断は [design/web_design.md](design/web_design.m
 
 ### パッケージとして入れる（リポジトリの外で使う）
 
-リポジトリから動かす代わりに、wheel を作って入れられる（[design/app_plan.md](design/app_plan.md) 段階 2。PyPI には未公開）。
+プラグインを使わずに CLI だけ使うときも、GitHub のタグから入れられる（PyPI には未公開）。手元の wheel は `uv build` で作れる。
 
 ```bash
-uv build
-```
-
-```bash
-uvx --from dist/mtgtable-0.1.0-py3-none-any.whl mtgtable new g1 --deck p1=piza --deck p2=jund-sacrifice
+uvx --from git+https://github.com/tet550/mtg-playtest@v0.1.0 mtgtable new g1 --deck p1=piza --deck p2=jund-sacrifice
 ```
 
 - 同梱のデッキ（`decklists/*.txt`）は名前だけで選べる（`--deck p1=piza`）。ファイルのパスも今までどおり使える
@@ -143,7 +185,7 @@ python -m mtgtable new playtest/gf --deck p1=decklists/piza.txt --seed 7 --polic
 
 手元の1人（ホスト）用のサイト。デッキを登録し、画面から対局を作り（AI と・招待した人と）、終わった対局を履歴で再生する。
 アカウント・Cookie は無く、**手元のブラウザ（127.0.0.1 から、プロキシを通らない要求）がホスト**。
-審判と AI の席は Claude Code が回す（スキル `mtg-playtest` の 3b）。
+審判と AI の席は Claude Code が回す（プラグインのスキル `mtg-playtest` の 3b）。
 
 ```bash
 python -m mtgtable serve
@@ -201,7 +243,7 @@ AI は2つの役割に分かれる。**Player** は何をするかを決めて�
 （対象・モード・捨てるカードなど）をその Player に質問する（GUI では「今の操作」に選択肢が出る）。やりとりは卓の宣言
 （`intent` 依頼 / `ask` 質問 / `answer` 回答 / `ruled` 処理済み）として記録に残る。
 
-ふだんは Claude Code のエージェント `mtg-table` が両方の役割を兼ねる（`next --claude-code --body` で待ち、`answer` で書く）。
+ふだんは Claude Code のエージェント `mtg-table`（プラグイン）が両方の役割を兼ねる（`next --claude-code --body` で待ち、`answer` で書く）。
 手で回すなら、`next` / `prompt` が書き出す `latest.md` をモデルに貼り、返答を `answer` に渡す。
 
 ```bash
@@ -232,9 +274,9 @@ GUI の依頼（「審判に依頼」）を受けた時点で、`serve` が審�
 ## Batch と Operation
 
 AI は Batch（JSON）を `apply` に渡して卓を動かす。書式・Operation の一覧・カード参照・Precondition・
-エンジンが自動でやることは、スキルの [references/cli.md](.claude/skills/mtg-playtest/references/cli.md) が正本。
-よくある処理の書き方は [references/patterns.md](.claude/skills/mtg-playtest/references/patterns.md)、
-MTG の基本ルールの要点は [references/rules.md](.claude/skills/mtg-playtest/references/rules.md)。
+エンジンが自動でやることは、スキルの [references/cli.md](plugins/mtgtable/skills/mtg-playtest/references/cli.md) が正本。
+よくある処理の書き方は [references/patterns.md](plugins/mtgtable/skills/mtg-playtest/references/patterns.md)、
+MTG の基本ルールの要点は [references/rules.md](plugins/mtgtable/skills/mtg-playtest/references/rules.md)。
 
 ```json
 {"actor": "p1", "label": "T3: Forest, Llanowar Elves", "acts": [

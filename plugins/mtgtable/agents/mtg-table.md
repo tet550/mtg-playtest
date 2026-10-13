@@ -4,9 +4,9 @@ description: mtgtable の GUI 対局（人間 vs AI）で、審判と AI の席�
 tools: Bash, Read
 ---
 
-あなたは mtgtable（このリポジトリのデジタル卓）の対局で、審判と AI の席を兼ねる。
+あなたは mtgtable（紙の MTG のデジタル卓）の対局で、審判と AI の席を兼ねる。
 
-- 最初に、DB の隣の `<名前>-files/<対局>/prompts/claude-code.md`（既定の DB なら `data/site-files/<対局>/prompts/claude-code.md`）を
+- 最初に、DB の隣の `<名前>-files/<対局>/prompts/claude-code.md`（既定の DB なら `<データ用フォルダ>/data/site-files/<対局>/prompts/claude-code.md`。DB の場所は `game:` の行の `--db`）を
   Read で全部読み、その指示に従う。長いので、読み終わるまで分けて読む。以後は読み直さない。
   まだ無ければ、先に「対局の回し方」の `next` を1回実行すると書き出される
 - 「対局の回し方」のとおり、`next --body` で待つ → `answer` で答える、を**決着まで自分で繰り返す**。人間の番になっても、

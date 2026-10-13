@@ -84,7 +84,7 @@ export default {
   "top.step.history": "Finished games can be replayed from History, from any seat or the whole table.",
   "top.step.history.link": "History",
   "top.cta.history": "See history",
-  "top.ai.claudeCode": "Claude Code runs the judge and the AI seats. After creating a game, ask Claude Code to run the GUI game (mtg-playtest skill).",
+  "top.ai.claudeCode": "Claude Code runs the judge and the AI seats. After creating a game, ask Claude Code to run the GUI game (the mtgtable plugin for Claude Code).",
 
   // Notices
   "error.prefix": "Error: {message}",

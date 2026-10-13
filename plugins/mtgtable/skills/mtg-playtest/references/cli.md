@@ -1,6 +1,6 @@
 # mtgtable スクリプト・リファレンス
 
-`python -m mtgtable <コマンド>`。リポジトリ直下で実行する。
+`python -m mtgtable <コマンド>`（リポジトリでは直下で実行する。入れたものの起動の仕方は、スキルの「起動のコマンド」）。
 このファイルが Operation・Batch・参照・Precondition の正本（README は概要だけ）。
 
 ## 目次
@@ -53,7 +53,7 @@
 
 `new` は各デッキのキャッシュを作って `initial.json` の `meta.decks.<pN>.oracle` に記録する。
 キャッシュに無いカードだけ Scryfall に取りに行く（`--offline` で取りに行かない）。
-`cards/` はリポジトリ直下（`MTG_CARDS_DIR` で変更可）。第三者の著作物なのでコミットしない。
+`cards/` はリポジトリ直下（入れたものは OS のデータ用フォルダ。`MTG_CARDS_DIR` で変更可）。第三者の著作物なのでコミットしない。
 
 ## id と名前
 

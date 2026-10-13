@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from helpers import game, site_db, stores
-from mtgtable import cli, play, prompt
+from mtgtable import cli, paths, play, prompt
 from mtgtable.sqlstore import SqliteGameStore
 
 
@@ -95,7 +95,7 @@ class JudgeTest(unittest.TestCase):
         self.assertEqual(e.exception.code, 3)
         st.apply({"actor": "p1", "acts": [{"act": [{"op": "declare", "kind": "keep"}]}]})
         out = run("next", "--timeout", "0", "--claude-code")
-        self.assertIn("game: python -m mtgtable --db %s <コマンド> s1" % db, out)
+        self.assertIn("game: python -m mtgtable --db %s <コマンド> s1" % paths.shell_path(db), out)
         self.assertIn("wait: ", out)
         self.assertIn("prompt for p2", out)
         self.assertTrue(prompt.claude_code_path(st).exists())
