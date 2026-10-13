@@ -11,8 +11,8 @@
 
 「リポジトリから動いている」は、パッケージの一つ上に .git か pyproject.toml があること（clone・worktree・pip install -e）。
 
-案内に出すコマンドの頭（command()）も、ここで決める。リポジトリからは `python -m mtgtable`、入れたもの（Claude Code の
-プラグインが使う uvx・pip）からは、今動いている Python で `-m mtgtable`。
+案内に出すコマンドの頭（command()）も、ここで決める。Claude Code のプラグインの起動（bin/mtgtable）からは `mtgtable`
+（環境変数 MTGTABLE_CMD）、リポジトリからは `python -m mtgtable`、それ以外に入れたものは今動いている Python で `-m mtgtable`。
 """
 from __future__ import annotations
 
@@ -81,6 +81,9 @@ def references_dir() -> pathlib.Path:
 def command() -> str:
     """案内（serve の起動時・next の game: と wait: の行）に出す、mtgtable を起動するコマンドの頭。エージェントはこれをそのまま
     Bash で使う。入れたものは、uvx の一時的な環境でも同じ Python が残っているので、そのパスで指す（Git Bash で読める / 区切り）。"""
+    env = os.environ.get("MTGTABLE_CMD", "").strip()
+    if env:
+        return env
     if checkout():
         return "python -m mtgtable"
     return "%s -m mtgtable" % shell_path(sys.executable)

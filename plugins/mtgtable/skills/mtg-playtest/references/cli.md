@@ -1,6 +1,6 @@
 # mtgtable スクリプト・リファレンス
 
-`python -m mtgtable <コマンド>`（リポジトリでは直下で実行する。入れたものの起動の仕方は、スキルの「起動のコマンド」）。
+`mtgtable <コマンド>`（Claude Code のプラグインのコマンド。プラグインを使わずにリポジトリで動かすなら、直下で `python -m mtgtable <コマンド>`）。
 このファイルが Operation・Batch・参照・Precondition の正本（README は概要だけ）。
 
 ## 目次

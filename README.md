@@ -10,11 +10,11 @@ Python 3.10 以上、標準ライブラリのみ。
 
 ## はじめに（Claude Code のプラグインで入れる）
 
-審判と AI の席は Claude Code が回すので、Claude Code のプラグイン `mtgtable`（スキル `mtg-playtest` とエージェント `mtg-table`）
-として配る。mtgtable 本体（Python）は、プラグインが GitHub から取ってきて動かす（PyPI には出していない）。
+審判と AI の席は Claude Code が回すので、Claude Code のプラグイン `mtgtable` として配る（このリポジトリがマーケットプレイス）。
+mtgtable 本体（Python）は、プラグインの `mtgtable` コマンドが初回にプラグインと同じ版を GitHub のタグから入れる（PyPI には出していない）。
 
-1. 用意するもの: Claude Code と、[uv](https://docs.astral.sh/uv/)（無ければ Python 3.10 以上と git。Claude Code が pip で入れてよいか聞く）
-2. プラグインを入れる（デスクトップアプリなら ＋ › Plugins からでもよい）
+1. 用意するもの: Claude Code・git・[uv](https://docs.astral.sh/uv/) か Python 3.10 以上
+2. プラグインを入れる（ターミナルで。デスクトップアプリの `/plugin` は画面が開くだけで、マーケットプレイスを足せない）
 
 ```bash
 claude plugin marketplace add tet550/mtg-playtest
@@ -24,35 +24,39 @@ claude plugin marketplace add tet550/mtg-playtest
 claude plugin install mtgtable@mtgtable
 ```
 
+   `claude` が無いとき（デスクトップアプリだけを入れた Windows）は、アプリに同梱の
+   `%APPDATA%\Claude\claude-code\<版>\<id>\claude.exe` で同じコマンドを実行する。入れた後は新しいセッションから使える
 3. どのフォルダでもよいので Claude Code を開き、「mtgtable の使い方を教えて」と頼む。手元のサイトが開くので、トップの
    「チュートリアル」で操作を覚える（約10分。Claude Code は要らない）
 4. 「デッキ」でデッキを登録 →「対局を作る」で AI と対局を作り、Claude Code に「GUI の対局を回して」と頼む
 
-更新は `claude plugin update mtgtable@mtgtable`（または `/plugin marketplace update`）。プラグインの版と同じ版の mtgtable を使う。
+更新は `claude plugin marketplace update mtgtable` の後 `claude plugin update mtgtable@mtgtable`。新しい版の mtgtable は、
+次に `mtgtable` を使ったときに入る。
 
-### リポジトリで開発するとき
-
-スキルとエージェントの正本は `plugins/mtgtable/`（`.claude/` には置かない）。clone したフォルダの Claude Code では、
-このフォルダをマーケットプレイスとして足し、プロジェクトに入れる（1回だけ）。リポジトリから動く間はスキルが `python -m mtgtable` を使い、
-スキルの変更はそのまま効く（`/reload-plugins`）。
-
-```text
-/plugin marketplace add ./
-/plugin install mtgtable@mtgtable
-```
+### プラグインの構成
 
 | 場所 | 中身 |
 |---|---|
 | `.claude-plugin/marketplace.json` | マーケットプレイス（このリポジトリ）。プラグインは `./plugins/mtgtable` |
-| `plugins/mtgtable/.claude-plugin/plugin.json` | プラグインの名前と版 |
+| `plugins/mtgtable/.claude-plugin/plugin.json` | プラグインの名前と版（`mtgtable` コマンドが入れる mtgtable の版もこれ） |
+| `plugins/mtgtable/bin/mtgtable` | `mtgtable` コマンド（Bash の PATH に入る）。リポジトリの中では `python -m mtgtable`、外では版ごとの仮想環境（データ用フォルダの `runtime/<版>/`）を作って動かす |
 | `plugins/mtgtable/skills/mtg-playtest/` | スキル（`SKILL.md`）と、審判のプロンプトにも入るリファレンス（`references/`） |
-| `plugins/mtgtable/agents/mtg-table.md` | GUI の対局で審判と AI の席を兼ねるエージェント |
+| `plugins/mtgtable/agents/mtg-table.md` | GUI の対局で審判と AI の席を兼ねるエージェント（`mtgtable:mtg-table`） |
 
-版を上げて配るとき: 次の3か所の版をそろえてコミットし、タグ `v<版>` を付けて push する（利用者の mtgtable はこのタグから入る）。
+### リポジトリで開発するとき
+
+プラグインを入れていれば、clone したフォルダでは `mtgtable` コマンドがこのフォルダのパッケージを動かす（Python の変更はそのまま効く）。
+スキル・エージェントの変更を push 前に試すなら、マーケットプレイスをこのフォルダに向けて入れ直す（ターミナルで、リポジトリ直下から）。
+戻すときは同じ手順で `tet550/mtg-playtest` を足す。
+
+```bash
+claude plugin marketplace remove mtgtable && claude plugin marketplace add ./ && claude plugin install mtgtable@mtgtable
+```
+
+版を上げて配るとき: 次の2か所の版をそろえてコミットし、タグ `v<版>` を付けて push する（利用者の mtgtable はこのタグから入る）。
 
 - `mtgtable/__init__.py` の `__version__`
 - `plugins/mtgtable/.claude-plugin/plugin.json` の `version`
-- `plugins/mtgtable/skills/mtg-playtest/SKILL.md` の「起動のコマンド」の `@v<版>`
 
 ## 構成
 
@@ -87,7 +91,7 @@ Web の責務分割と設計判断は [design/web_design.md](design/web_design.m
 プラグインを使わずに CLI だけ使うときも、GitHub のタグから入れられる（PyPI には未公開）。手元の wheel は `uv build` で作れる。
 
 ```bash
-uvx --from git+https://github.com/tet550/mtg-playtest@v0.1.0 mtgtable new g1 --deck p1=piza --deck p2=jund-sacrifice
+uvx --from git+https://github.com/tet550/mtg-playtest@v0.1.1 mtgtable new g1 --deck p1=piza --deck p2=jund-sacrifice
 ```
 
 - 同梱のデッキ（`decklists/*.txt`）は名前だけで選べる（`--deck p1=piza`）。ファイルのパスも今までどおり使える

@@ -1,0 +1,77 @@
+#!/bin/sh
+# mtgtable を起動する（Claude Code のプラグインの bin/。プラグインが有効な間、Bash ツールの PATH に入る）。
+#
+# - 今いるフォルダが mtgtable のリポジトリなら、その中のパッケージを動かす（開発。python -m mtgtable）
+# - それ以外は、プラグインと同じ版の mtgtable を GitHub のタグから、データ用フォルダの仮想環境に一度だけ入れて動かす
+#   （uv があれば uv。無ければ Python 3.10 以上の venv と pip。どちらも git が要る）
+#
+# 案内に出すコマンド（serve の表示・next の game: と wait: の行）も mtgtable になる（MTGTABLE_CMD）。
+set -e
+
+REPO="https://github.com/tet550/mtg-playtest"
+plugin=$(cd "$(dirname "$0")/.." && pwd)
+version=$(sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p' "$plugin/.claude-plugin/plugin.json" | head -n 1)
+export MTGTABLE_CMD=mtgtable
+export PYTHONIOENCODING=utf-8
+
+say() { echo "mtgtable: $*" >&2; }
+
+# Python 3.10 以上を探す（python3・python・Windows の py -3）
+find_python() {
+  for py in python3 python "py -3"; do
+    if $py -c 'import sys; sys.exit(sys.version_info < (3, 10))' >/dev/null 2>&1; then
+      echo "$py"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# リポジトリから（開発）
+if [ -f mtgtable/__init__.py ] && [ -f pyproject.toml ] && grep -q '^name = "mtgtable"' pyproject.toml; then
+  py=$(find_python) || { say "Python 3.10 以上が見つからない"; exit 127; }
+  exec $py -m mtgtable "$@"
+fi
+
+# データ用フォルダ（mtgtable/paths.py の data_home と同じ）
+if [ -n "$MTGTABLE_HOME" ]; then
+  home="$MTGTABLE_HOME"
+elif [ -n "$APPDATA" ]; then
+  home="$APPDATA/mtgtable"
+  command -v cygpath >/dev/null 2>&1 && home="$(cygpath -u "$APPDATA")/mtgtable"
+elif [ "$(uname -s)" = Darwin ]; then
+  home="$HOME/Library/Application Support/mtgtable"
+else
+  home="${XDG_DATA_HOME:-$HOME/.local/share}/mtgtable"
+fi
+venv="$home/runtime/$version"
+if [ -x "$venv/Scripts/python.exe" ]; then
+  vpy="$venv/Scripts/python.exe"
+else
+  vpy="$venv/bin/python"
+fi
+
+if [ ! -f "$venv/.installed" ]; then
+  say "初回なので mtgtable $version を入れる（$REPO の v$version から。$venv）"
+  rm -rf "$venv"
+  mkdir -p "$home/runtime"
+  if command -v uv >/dev/null 2>&1; then
+    uv venv --quiet --python ">=3.10" "$venv" >&2
+    [ -x "$venv/Scripts/python.exe" ] && vpy="$venv/Scripts/python.exe"
+    uv pip install --quiet --python "$vpy" "git+$REPO@v$version" >&2
+  else
+    py=$(find_python) || {
+      say "Python 3.10 以上か uv（https://docs.astral.sh/uv/）が要る。どちらかを入れてから、もう一度実行する"
+      exit 127
+    }
+    $py -m venv "$venv" >&2
+    [ -x "$venv/Scripts/python.exe" ] && vpy="$venv/Scripts/python.exe"
+    "$vpy" -m pip install --quiet --disable-pip-version-check "git+$REPO@v$version" >&2 || {
+      rm -rf "$venv"
+      say "入れられなかった（git が要る。ネットワークも確かめる）"
+      exit 1
+    }
+  fi
+  touch "$venv/.installed"
+fi
+exec "$vpy" -m mtgtable "$@"
