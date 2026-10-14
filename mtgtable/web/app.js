@@ -274,6 +274,12 @@ function nextPos() {
   return ui.pos + 1;
 }
 
+// 盤面に見えるものだけの印。宣言・優先権・依頼など、盤面の外の変化しかない Act は自動再生で待たずに通り過ぎる
+function boardKey(v) {
+  const { turn, active, phase, step } = v.turn || {};
+  return JSON.stringify([v.zones, v.players, v.stack, v.combat, v.links, turn, active, phase, step]);
+}
+
 function stopPlay() {
   clearTimeout(ui.timer);
   ui.timer = null;
@@ -299,7 +305,9 @@ function startPlay(from = null) {
       return show();
     }
     const from = ui.pos;
-    ui.pos = Math.min(nextPos(), ui.cursor);
+    const before = boardKey(viewAt(from));
+    do ui.pos = Math.min(nextPos(), ui.cursor);
+    while (ui.pos < ui.cursor && boardKey(viewAt(ui.pos)) === before);
     ui.deltaBase = { pos: ui.pos, from };  // 自動再生では、ライフの差を1回前に表示した位置から数える
     ui.live = false;
     ui.animate = { duration: Math.min(450, interval() * 0.7) };
