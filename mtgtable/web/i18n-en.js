@@ -125,8 +125,6 @@ export default {
   "opened.exile": "Exile {count}",
   "opened.fromTop": "#{n} from top",
   "opened.unknownPosition": "Position unknown",
-  "hand.title": "Hand {count}",
-  "hand.planned": " (+{n} planned)",
   "hand.toDraw.title": "To be drawn (unknown until the judge processes it)",
   "player.life.title": "Life {life}",
   "player.name": "{name} ({id})",

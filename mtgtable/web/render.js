@@ -607,10 +607,13 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       q.title = tr("hand.toDraw.title");
       row.append(q);
     }
+    // 扇の傾き: 中央からの位置を、端が ±3 になるように縮める（枚数が多くても傾きすぎない）
+    const n = row.children.length, mid = (n - 1) / 2;
+    [...row.children].forEach((c, i) => c.style.setProperty("--off", ((i - mid) * 3 / Math.max(3, mid)).toFixed(2)));
     const box = el("div", "handbox");
     box.dataset.key = `hand:${pid}`;
     box.dataset.zone = `${pid}.hand`;
-    box.append(el("h3", null, tr("hand.title", { count: hand.count }) + (extra ? tr("hand.planned", { n: extra }) : "")), row);
+    box.append(row);  // 枚数は出さない（カードの裏・表と「？」で分かる）
     return box;
   }
 
@@ -743,8 +746,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     field.dataset.drop = "battlefield";
     field.append(...(mirrored ? [lands, others] : [others, lands]));
 
+    // 左の列に束（ライブラリー・墓地・追放）、右に戦場・土地・手札（相手の欄は上下を反転）
+    const hand = handRow(v, pid);
+    const main = el("div", "sidemain");
+    main.append(...(mirrored ? [hand, field] : [field, hand]));
     const grid = el("div", "sidegrid");
-    grid.append(piles, field);
+    grid.append(piles, main);
 
     // 開いた墓地・追放の中身
     const opened = [];
@@ -756,8 +763,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     }
     if (ui.open.has(exKey) && ex.length) opened.push(openedBlock(exKey, tr("opened.exile", { count: ex.length }), ex));
 
-    const hand = handRow(v, pid);
-    box.append(...(mirrored ? [head, hand, grid, ...opened] : [head, grid, ...opened, hand]));
+    box.append(head, grid, ...opened);
     // 宣言の吹き出しは見出しから戦場の側へはみ出す（位置は placeSpeech で合わせる）
     const said = speech(v, pid, prev);
     if (said) box.append(said);
@@ -765,6 +771,34 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   }
 
   // 吹き出しを Player のアイコンの真下に置き、しっぽ（左から 18px）をアイコンの中央に合わせる（描いた後に測る）
+  // 手札（扇）は横にスクロールさせず、重なりを詰めて幅に収める。スクロールする欄は縦にもはみ出せず、浮かせた・傾けた・
+  // 大きくしたカードが切れるので、欄は overflow: visible のまま（--ov が詰めた重なり。無ければ CSS の既定の重なり）。
+  // 枚数が変わったら描くたびに、幅が変わったら（窓・Log の欄）ResizeObserver で合わせ直す
+  const handFit = new ResizeObserver((entries) => entries.forEach((e) => fitHand(e.target)));
+  function fitHand(row) {
+    row.style.removeProperty("--ov");
+    const cards = row.children, n = cards.length;
+    if (n < 2) return;
+    const cs = getComputedStyle(row);
+    const room = row.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const first = cards[0], last = cards[n - 1];
+    if (last.offsetLeft - first.offsetLeft + last.offsetWidth <= room) return;  // 並びの幅（扇の傾きは数えない）
+    const w = Math.max(...[...cards].map((c) => c.offsetWidth));
+    const gap = parseFloat(cs.columnGap) || 0;  // 欄の gap も1枚ごとの送りに入る
+    row.style.setProperty("--ov", `${Math.floor((room - w) / (n - 1) - w - gap)}px`);
+  }
+  const handWatched = new WeakSet();
+  function fitHands() {
+    for (const row of document.querySelectorAll(".hand.fan")) {
+      if (!handWatched.has(row)) {  // 画像が読み込まれるとカードの幅が変わる（欄の幅は変わらないので ResizeObserver では拾えない）
+        handWatched.add(row);
+        handFit.observe(row);
+        row.addEventListener("load", () => fitHand(row), true);
+      }
+      fitHand(row);
+    }
+  }
+
   function placeSpeech() {
     for (const b of document.querySelectorAll(".speech")) {
       const icon = b.parentElement.querySelector(".phead .avatar");
@@ -1013,6 +1047,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       patch(side, [playerSide(v, pid, slot === "top", from >= 0 && from < ui.pos ? viewAt(from) : null)]);
       side.classList.toggle("active", t.active === pid);
     }
+    fitHands();
     // 押していた手札のカードが、この更新で手札から無くなった
     if (drag && !drag.tile.isConnected) finish(false);
 

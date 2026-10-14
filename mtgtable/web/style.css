@@ -109,6 +109,7 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 .sidegrid { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; margin-top: 8px; }
 .piles { display: flex; flex-direction: column; gap: 14px; align-items: flex-start; }
 .field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sidemain { display: flex; flex-direction: column; gap: 8px; min-width: 0; }  /* 戦場・土地・手札（左の列は束） */
 .bfrow { min-height: 40px; align-items: flex-start; }
 .lands { gap: 10px; }
 /* 土地以外の列: 種類の変わり目を空ける */
@@ -138,15 +139,20 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 .lgroup.overlap > .card + .card { margin-left: -86px; }
 .lgroup.overlap > .card.tapped + .card.tapped { margin-left: -124px; }
 .lgroup .gcount { position: absolute; left: 6px; top: 6px; }
-.handbox { margin-top: 10px; }
 .hand { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 6px; }
-.hand.fan { flex-wrap: nowrap; overflow-x: auto; padding: 14px 4px 4px; }
+.hand.fan { flex-wrap: nowrap; overflow: visible; padding: 14px 4px 4px; }  /* スクロールさせず、重なりを詰めて収める（render.js の fitHand） */
 /* 手札が 0 枚でも高さを保つ（盤面の位置がずれないように） */
 .hand { min-height: 95px; }
 .hand.fan { min-height: 141px; }
-.hand.fan > .card { flex: none; transition: transform .12s; }
-.hand.fan > .card + .card { margin-left: -46px; }
-.hand.fan > .card:hover { transform: translateY(-12px); z-index: 2; position: relative; }
+/* 扇: 中央からの位置（--off。端で ±3 になるよう JS が決める）で少し傾け、端ほど少し下げる。ホバーでまっすぐ浮かせる */
+.hand.fan > .card { flex: none; transition: transform .12s; transform-origin: 50% 100%;
+  transform: translateY(calc(var(--off, 0) * var(--off, 0) * .7px)) rotate(calc(var(--off, 0) * 1.6deg)); }
+.hand.fan > .card + .card { margin-left: var(--ov, -46px); }
+.hand.fan > .card:hover { transform: translateY(-8px); z-index: 2; position: relative; }
+/* 上の欄（相手）は上下を反転した扇 */
+#top .hand.fan > .card:not(:hover) { transform-origin: 50% 0;
+  transform: translateY(calc(var(--off, 0) * var(--off, 0) * -.7px)) rotate(calc(var(--off, 0) * -1.6deg)); }
+#top .hand.fan > .card:hover { transform: translateY(8px); }  /* 相手の手札はホバーで下（盤面の中央の側）へ */
 /* 手札のドラッグ: 元のカードは空いた場所の印、写しを画面の上に重ねて動かす */
 .hand > .card.dragging { opacity: .25; }
 /* 盤面（両 Player の欄・戦闘・スタック）は押して操作する所なので、なぞっても文字を選ばない。文を読む・写すのは Log・詳細・操作パネル */
@@ -166,7 +172,7 @@ body.nosel, body.nosel * { user-select: none !important; -webkit-user-select: no
 .card.inhand .artbox img.art { width: 88px; height: 123px; }
 .card.inhand .note, .card.inhand .id { display: none; }
 .card.back.inhand { width: 64px; height: 89px; border-radius: 6px; flex: none; }
-.hand.fan > .card.back + .card.back { margin-left: -40px; }
+.hand.fan > .card.back + .card.back { margin-left: var(--ov, -40px); }
 .card.inhand.withart .nm { display: none; }
 /* 土地は小さめに */
 .lands .card.withart { width: 86px; }
@@ -248,15 +254,29 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
   .layout { flex: 1; min-height: 0; padding-top: 8px; padding-bottom: 8px; }
   .board { min-height: 0; gap: 6px; }
   .side { flex: 1 1 0; min-height: 0; position: relative; container-type: size; padding: 6px 10px; overflow: hidden; }
-  .side > div { height: 100%; display: flex; flex-direction: column; gap: 4px; }
+  .side > div { height: 100%; display: flex; flex-direction: column; gap: 0; }
   .phead { flex: none; }
   .sidegrid { flex: 1; min-height: 0; margin-top: 0; }
   .piles { gap: 8px; overflow: hidden; }
   .field { min-height: 0; gap: 4px; justify-content: space-evenly; }
-  .bfrow, .lands, .hand.fan { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
-  .handbox { flex: none; margin-top: 0; display: flex; align-items: center; gap: 8px; }
-  .handbox h3 { writing-mode: vertical-rl; margin: 0; }
-  .hand.fan { padding: 14px 4px 2px; min-height: calc(var(--h) + 16px); }  /* 上の余白はホバーで浮かせる分（12px）より広く。横スクロールの欄は上にはみ出せない */
+  .bfrow, .lands { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+  .sidemain { min-height: 0; gap: 0; }
+  .sidemain > .field { flex: 1; }
+  .sidemain > .field > .row { margin: 0; }
+  #bottom .sidemain > .field { justify-content: flex-end; }  /* 余りは見出しの側へ（土地と手札を離さない） */
+  /* 手札は土地に少し重ねる（行の上の余白 8px を含めて 12px 上へ。相手は下へ） */
+  .handbox { flex: none; position: relative; z-index: 1; }
+  #bottom .handbox { margin-top: -12px; }
+  /* 相手の手札（上の欄）は土地に重ねず、カードを 1.25 倍にして行の下に揃え、上の端で切る（下はホバーで下げる分を見せる） */
+  #top .handbox { clip-path: inset(0 -100vw -100vh -100vw); }
+  #top .hand { --h: calc(var(--ha) * 1.25); }
+  #top .hand.fan { padding: 0 4px 4px; height: calc(var(--ha) + 4px); align-items: flex-end; }
+  /* 手札の行の高さは割り当て（--ha）+ 8px。上の余白はホバーで浮かせる分（相手は反転した扇で上げる分） */
+  .hand.fan { padding: 8px 4px 0; height: calc(var(--ha) + 8px); min-height: 0; }
+  /* 自分の手札（下の欄）はカードを 1.25 倍にして、欄の下の端の外へ少しはみ出させて切る（行を欄の余白 6px の分だけ下へ） */
+  #bottom .hand { --h: calc(var(--ha) * 1.25); }
+  #bottom .handbox { margin-bottom: -6px; }
+  #bottom .hand.fan > .card:hover { transform: translateY(calc(var(--ha) - var(--h) - 8px)); }  /* 欄の下で切れている分も浮かせて、全体を見せる */
   .zone.opened { position: absolute; left: 110px; right: 10px; bottom: 8px; max-height: 70%; overflow: auto; z-index: 5;
     margin: 0; background: var(--panel); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
   .zone.opened .row { max-height: none; flex-wrap: wrap; }
@@ -269,9 +289,14 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
   .log { flex: 1; min-height: 80px; max-height: none; }
 
   /* カードの高さ（--h）: 行ごとに、領域の高さ（cqh）に合わせる。幅は 488:680 */
-  .bfrow:not(.lands) { --h: min(31cqh, 151px); }
-  .lands { --h: min(21cqh, 106px); }
-  .hand { --h: min(20cqh, 123px); }
+  /* 右の列（戦場・土地・手札）は縦に積むので、領域の高さから決まった分（見出し・すき間・行の余白・手札の重なり 約 32px）を引いた残りを
+     27 : 17 : 27 で分ける（戦場の行はカードの 1.12 倍の高さ。合わせて 74 単位）。小さい窓でも重ならない */
+  .side { --u: calc((100cqh - 28px) / 74); }
+  #bottom { --u: calc((100cqh - 22px) / 74); }  /* 自分の欄は手札を下の余白（6px）へはみ出させる分だけ広い */
+  #top { --u: calc((100cqh - 40px) / 74); }  /* 相手の欄は手札を土地に重ねない分だけ狭い */
+  .bfrow:not(.lands) { --h: min(calc(var(--u) * 27), 151px); }
+  .lands { --h: min(calc(var(--u) * 17), 106px); }
+  .hand { --ha: min(calc(var(--u) * 27), 150px); --h: var(--ha); }
   .piles { --h: min(19cqh, 100px); }
   .combat { --h: min(7.5vh, 96px); gap: 8px; }
   .cbcol { padding: 3px; gap: 2px; }
@@ -291,8 +316,8 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
   .plabel { margin-top: 2px; }
   .lgroup.overlap > .card + .card, .lands .lgroup.overlap > .card + .card { margin-left: calc(var(--h) * -.7176 + 12px); }
   .lgroup.overlap > .card.tapped + .card.tapped, .lands .lgroup.overlap > .card.tapped + .card.tapped { margin-left: calc(var(--h) * -1 + 14px); }
-  .hand.fan > .card + .card { margin-left: calc(var(--h) * -.36); }
-  .hand.fan > .card.back + .card.back { margin-left: calc(var(--h) * -.45); }
+  .hand.fan > .card + .card { margin-left: var(--ov, calc(var(--h) * -.36)); }
+  .hand.fan > .card.back + .card.back { margin-left: var(--ov, calc(var(--h) * -.45)); }
   .tuck { padding-top: calc(var(--n) * var(--h) * .12); }
 }
 
@@ -387,16 +412,18 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
   border-radius: 6px 6px 0 0; }
 .pile.empty .pstack .plabel { color: var(--muted); background: none; }
 @media (min-height: 560px), (orientation: portrait) {
-  .piles { --h: min(16cqh, 100px); gap: 6px; }
-  .sidegrid { grid-template-columns: calc(min(16cqh, 100px) * .72 + 14px) minmax(0, 1fr); }
+  /* 束は左の列の高さいっぱいに3つ並ぶ大きさ（見出し・束の重なり・すき間の分 約 60px を引いて 3 等分）で、上下に散らす */
+  .side { --ph: min(calc((100cqh - 60px) / 3), 120px); }
+  .piles { --h: var(--ph); gap: 6px; justify-content: space-between; }
+  .sidegrid { grid-template-columns: calc(var(--ph) * .72 + 14px) minmax(0, 1fr); }
 }
 
 /* ---- 戦場の行は高さを固定し、枚数が変わっても行の位置が動かないように ---- */
 @media (min-height: 560px), (orientation: portrait) {
-  .field { justify-content: flex-start; gap: 6px; }
-  .bfrow:not(.lands) { --peek: .05; flex: none; height: calc(var(--h) * 1.16 + 8px); align-items: flex-end; }
-  .lands { flex: none; height: calc(var(--h) + 8px); align-items: center; }
-  .tuck { padding-top: calc(min(var(--n), 3) * var(--h) * var(--peek, .05)); }
+  .field { justify-content: flex-start; gap: 2px; }
+  .bfrow:not(.lands) { --peek: .05; flex: none; height: calc(var(--h) * 1.12 + 4px); align-items: flex-end; }
+  .lands { flex: none; height: calc(var(--h) + 4px); align-items: center; }
+  .tuck { padding-top: min(calc(min(var(--n), 3) * var(--h) * var(--peek, .05)), calc(var(--h) * .12)); }  /* 行の高さの余り（.12）に収める */
   .bfrow:not(.lands) > .card.tapped, .bfrow:not(.lands) > .tuck { align-self: flex-end; }
 }
 
@@ -543,8 +570,7 @@ body:not(.log-open) #logClose { display: none; }
 /* ライフの数は 2 桁分の幅を取る（20 → 6 などで横の並びがずれないように） */
 .life .lnum { min-width: 2ch; text-align: right; }
 /* 見出しの高さはフェイズ列の有無で変えない（変わると戦場が上下にずれる） */
-.phead { height: 24px; }
-@media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) { .phead { height: 22px; } }
+.phead { height: 22px; }
 
 /* カードの動き（motion.js）: 画面全体に重ねた層で写しを動かす。クリックは下に通す */
 #motionlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; overflow: visible; }
