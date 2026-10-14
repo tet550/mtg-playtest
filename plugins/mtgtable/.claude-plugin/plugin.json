@@ -1,6 +1,6 @@
 {
   "name": "mtgtable",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "紙の MTG を手元のブラウザの卓で遊ぶ。審判と AI の席を Claude Code が回す（mtgtable の起動・対局・一人回し）",
   "author": { "name": "Tetsuya Iwaki" },
   "repository": "https://github.com/tet550/mtg-playtest",
