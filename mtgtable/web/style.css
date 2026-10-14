@@ -2,6 +2,7 @@
   --bg: #f5f4ef; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #d9d7cf;
   --card: #fbfaf6; --card-line: #bdb9ad; --accent: #2f5d8a; --warn: #a1452e; --ok: #3c7a3f;
   --badge: #ece9df; --tapped: #e6e3d8; --hl: #fff2b8; --on-accent: #fff;
+  --guide: #d4860f;  /* チュートリアルの次に押す所。自分の番（--ok）・待ち（--accent）・対象（--warn）と分ける */
   /* 画面全体の重なり順（下から）。盤面（.board）は isolation で1枚の層にまとめ、中の小窓（戦闘・スタック・カード）の
      z-index は盤面の中だけで効く。<dialog>（showModal）はブラウザの最上層なので、これらすべての上に出る */
   --z-motion: 20;   /* 動いているカードの写し: 盤面の小窓より上（スタックへ入る・出るのが見える） */
@@ -16,6 +17,7 @@
     --bg: #18191b; --panel: #222326; --ink: #e8e6e1; --muted: #9a988f; --line: #3a3b3f;
     --card: #2a2b2f; --card-line: #4a4b50; --accent: #7fb0e0; --warn: #e08a72; --ok: #8cc58f;
     --badge: #34353a; --tapped: #232427; --hl: #4a4220; --on-accent: #0f2338;
+    --guide: #f0ad3c;
   }
 }
 * { box-sizing: border-box; }
@@ -145,7 +147,8 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 .hand.fan > .card:hover { transform: translateY(-12px); z-index: 2; position: relative; }
 /* 手札のドラッグ: 元のカードは空いた場所の印、写しを画面の上に重ねて動かす */
 .hand > .card.dragging { opacity: .25; }
-.hand > .card[data-ids] { user-select: none; -webkit-user-select: none; }
+/* 盤面（両 Player の欄・戦闘・スタック）は押して操作する所なので、なぞっても文字を選ばない。文を読む・写すのは Log・詳細・操作パネル */
+#top, #bottom, #combatbox, #fl-stack { user-select: none; -webkit-user-select: none; }
 /* ドラッグの間は、なぞった先の文字を選ばない */
 body.nosel, body.nosel * { user-select: none !important; -webkit-user-select: none !important; }
 .hand img { -webkit-user-drag: none; user-drag: none; }
@@ -596,8 +599,8 @@ body:not(.log-open) #logClose { display: none; }
 .card.m-plan .artbox, .card.m-plan:not(.withart) { outline: 3px dotted var(--accent); outline-offset: 1px; }
 .phead.m-plan, .sitem.m-plan { outline: 2px dotted var(--accent); border-radius: 6px; }
 /* チュートリアル: 次に押す所 */
-@keyframes guidepulse { 0%, 100% { box-shadow: 0 0 0 2px var(--ok); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 30%, transparent); } }
-button.guide, .card.m-guide .artbox, .card.m-guide:not(.withart) { outline: 2px solid var(--ok); outline-offset: 1px; animation: guidepulse 1.2s ease-in-out infinite; }
+@keyframes guidepulse { 0%, 100% { box-shadow: 0 0 0 2px var(--guide); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--guide) 30%, transparent); } }
+button.guide, .card.m-guide .artbox, .card.m-guide:not(.withart) { outline: 2px solid var(--guide); outline-offset: 1px; animation: guidepulse 1.2s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { button.guide, .card.m-guide .artbox, .card.m-guide:not(.withart) { animation: none; } }
 .card.back.planned { display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700;
   background: var(--panel); color: var(--accent); outline: 2px dashed var(--accent); outline-offset: -2px; }
@@ -924,8 +927,23 @@ body.sitepage { padding-bottom: 32px; }
 @keyframes thinkglow { 0%, 100% { box-shadow: inset 0 0 0 0 transparent; } 50% { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); } }
 @keyframes thinkglowactive { 0%, 100% { box-shadow: inset 4px 0 0 var(--accent); } 50% { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); } }
 .pstatus.waiting { color: var(--accent); }
+/* 自分の番（操作待ち）: 緑で、ヘッダーの印・自分の欄・操作パネルを揃えて光らせる。回ってきた瞬間は強く一度だけ */
+.thinking.yours { color: var(--bg); background: var(--ok); animation: yourspulse 1.6s ease-in-out infinite; }
+.thinking.yours::before { border: none; width: 8px; height: 8px; background: currentColor; animation: none; }
+@keyframes yourspulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
+.chip.yours { color: var(--bg); background: var(--ok); font-weight: 700; }
+body.mymove #bottom { box-shadow: inset 0 0 0 2px var(--ok); }
+body.mymove #bottom.active { box-shadow: inset 4px 0 0 var(--accent), inset 0 0 0 2px var(--ok); }
+body.mymove #fl-play { border-color: var(--ok); box-shadow: 0 0 0 2px var(--ok), 0 8px 28px rgba(0, 0, 0, .38); }
+body.mymove #fl-play .fhead { color: var(--bg); background: var(--ok); border-radius: 8px 8px 0 0; }
+body.mymove #fl-play .fhead button { color: var(--ink); }
+.pstatus.mine { font-size: 15px; padding: 4px 8px; border-radius: 6px; background: color-mix(in srgb, var(--ok) 16%, transparent); }
+body.turnflash #fl-play { animation: turnflash .9s ease-out 2; }
+body.turnflash #bottom { animation: turnflashside .9s ease-out 2; }
+@keyframes turnflash { 0% { box-shadow: 0 0 0 2px var(--ok), 0 0 0 2px var(--ok); } 40% { box-shadow: 0 0 0 2px var(--ok), 0 0 0 14px color-mix(in srgb, var(--ok) 35%, transparent); } 100% { box-shadow: 0 0 0 2px var(--ok), 0 0 0 18px transparent; } }
+@keyframes turnflashside { 0%, 100% { background: var(--panel); } 35% { background: color-mix(in srgb, var(--ok) 18%, var(--panel)); } }
 @media (prefers-reduced-motion: reduce) {
-  .dots i, .thinking::before, .chip.think, .side:has(.chip.think) { animation: none; }
+  .dots i, .thinking::before, .chip.think, .side:has(.chip.think), .thinking.yours, body.turnflash #fl-play, body.turnflash #bottom { animation: none; }
   .dots i { opacity: .7; }
 }
 

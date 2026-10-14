@@ -691,6 +691,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       think.append(dots());
       head.append(think);
     }
+    if (ui.mymove && ui.play.seat === pid) head.append(el("span", "chip yours", tr("player.yourMove")));
     // 残り（状態・マナ・カウンターなど）は右の余白の中だけに並べ、入らない分は切る（左の並びを押さない）
     const extra = el("span", "pextra");
     head.append(extra);
@@ -965,9 +966,22 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const thinker = ui.live && t.waiting_on && !(ui.play && t.waiting_on === ui.play.seat) ? t.waiting_on : null;
     ui.thinker = thinker;
     const thinking = $("thinking");
-    thinking.hidden = !thinker;
+    // 自分の番（操作待ち）は、同じ所に緑の印。番が回ってきた瞬間だけ、自分の欄と操作パネルを光らせる
+    const mymove = ui.live && !!ui.play && t.waiting_on === ui.play.seat;
+    const turned = mymove && !ui.mymove && !!ui.shown;
+    ui.mymove = mymove;
+    thinking.hidden = !thinker && !mymove;
+    thinking.classList.toggle("yours", mymove);
     if (thinker) patch(thinking, [thinker === "judge" ? tr("thinking.judge") : tr("thinking.player", { who: thinker }), dots()]);
+    else if (mymove) patch(thinking, [tr("thinking.mine")]);
     document.body.classList.toggle("judging", thinker === "judge");
+    document.body.classList.toggle("mymove", mymove);
+    document.title = (mymove ? "● " : "") + document.title.replace(/^● /, "");  // 別のタブにいても番が来たとわかる
+    if (turned) {
+      document.body.classList.remove("turnflash");
+      void document.body.offsetWidth;  // 続けて回ってきても、もう一度光らせる
+      document.body.classList.add("turnflash");
+    }
 
     // 視点の Player を下に。judge は先攻を上に
     const order = v.players.map((p) => p.id);

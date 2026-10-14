@@ -1608,7 +1608,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const body = $("playbody");
     const wait = t.waiting_on;
     const waiting = ui.live && (busy || (!!wait && wait !== seat));
-    const status = el("div", "pstatus" + (wait === seat ? " mine" : "") + (waiting ? " waiting" : ""));
+    const status = el("div", "pstatus" + (ui.live && !waiting && wait === seat ? " mine" : "") + (waiting ? " waiting" : ""));
     status.textContent = !ui.live ? tr(ui.playing ? "play.status.replaying" : "play.status.past")
       : busy ? tr("play.status.sending")
         : wait === seat ? tr("play.status.mine") + (myAsk(v, seat) ? tr("play.status.question") : t.priority === seat ? tr("play.status.priority") : "")
