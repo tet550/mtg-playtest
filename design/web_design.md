@@ -15,6 +15,7 @@ Python の `info.player_view` に置き、ブラウザは受け取った view �
 | `web/source.js` | ローカル API と静的 JSON の違い、画像・オラクル、更新購読、古い要求結果の破棄 |
 | `web/timeline.js` | キーフレームと差分から指定位置の view を復元。DOM・通信に依存しない |
 | `web/render.js` | カード、盤面、戦闘、スタック、Log の DOM 描画 |
+| `web/patch.js` | 組み立てた木を今の DOM に差分で当てる（要素を使い回して、選んだ文字・入力・ドラッグを更新で消さない）。[render_patch_design.md](render_patch_design.md) |
 | `web/motion.js` | カードの動き（タップ・移動・束への出し入れ）。描画の前後の位置を比べ、重ねた層で写しを動かす |
 | `web/app.js` | 選択状態、読み込み結果の反映、再生、ユーザー操作、初期化、席の鍵の受け取り |
 | `web/play.js` | GUI の対局の操作（メニュー・Act の組み立て・送信・操作パネル）。後半を参照 |
@@ -47,7 +48,8 @@ HTTP の時系列と Log は別リクエストのままなので、CLI の書き
 ビルド不要の ES modules と Python 標準ライブラリを維持する。小規模な読み取り専用画面に
 フレームワーク、バンドラー、汎用イベントバスは追加しない。
 Python 側は既に Viewer・Handler・export_site に役割が分かれているため、今回さらに分割しない。
-CSS とレイアウトは維持し、描画の部分更新は性能上の必要性が判明した時点で検討する。
+CSS とレイアウトは維持する。描画は毎回その時点の木を組み立て、`patch.js` で今の DOM に差分で当てる
+（性能のためではなく、更新で画面の状態を消さないため。[render_patch_design.md](render_patch_design.md)）。
 
 `mtgtable/web/` がソースの正本、`docs/static/` は公開用コピー。
 export は JS/CSS をまとめてコピーするため、モジュール追加のたびにコピー対象を列挙し直す必要はない。

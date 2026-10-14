@@ -6,6 +6,12 @@ export const el = (tag, cls, text) => {
   return e;
 };
 
+// ドラッグの間はページの文字を選ばせない（なぞった先の文字が選ばれて青くなるのを防ぐ）。始めるときに残っている選択も消す
+export const noSelect = (on) => {
+  document.body.classList.toggle("nosel", on);
+  if (on) getSelection()?.removeAllRanges();
+};
+
 // 待っている間の「…」（3つの点が順に跳ねる）
 export const dots = () => {
   const d = el("span", "dots");

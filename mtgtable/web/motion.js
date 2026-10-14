@@ -70,7 +70,7 @@ export function createMotion() {
       if (e.closest(".zone.opened")) continue;
       const rect = e.getBoundingClientRect();
       if (!rect.width) continue;
-      const item = { el: e, rect, layer: layerOf(e), tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
+      const item = { el: e, rect, size: measure(e), layer: layerOf(e), tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
       for (const id of item.ids) if (!cards.has(id)) cards.set(id, item);
     }
     const places = new Map();
@@ -90,18 +90,26 @@ export function createMotion() {
     layer.replaceChildren();
   }
 
-  // 要素の写しを、その位置に重ねる。祖先のクラスで決まる大きさは測った値で固定する
-  function ghost(e, rect) {
+  // 祖先のクラスで決まる大きさ（写しは別の層に置くので、測った値で固定する）。画面から外れた要素は測れないので、
+  // 描く前の capture() で測っておく
+  function measure(e) {
+    const box = e.querySelector(".artbox");
+    const img = box && box.querySelector("img.art");
+    return { w: e.offsetWidth, h: e.offsetHeight, box: box && [box.offsetWidth, box.offsetHeight], img: img && [img.offsetWidth, img.offsetHeight] };
+  }
+
+  // 要素の写しを、その位置に重ねる
+  function ghost(e, rect, size = measure(e)) {
     const g = e.cloneNode(true);
     g.classList.remove("sel");
     g.style.visibility = "";
     Object.assign(g.style, { position: "fixed", left: `${rect.left}px`, top: `${rect.top}px`, margin: "0",
-      width: `${e.offsetWidth}px`, height: `${e.offsetHeight}px`, boxSizing: "border-box" });
-    const box = e.querySelector(".artbox"), gbox = g.querySelector(".artbox");
-    if (box && gbox) {
-      Object.assign(gbox.style, { width: `${box.offsetWidth}px`, height: `${box.offsetHeight}px` });
-      const img = box.querySelector("img.art"), gimg = gbox.querySelector("img.art");
-      if (img && gimg) Object.assign(gimg.style, { width: `${img.offsetWidth}px`, height: `${img.offsetHeight}px` });
+      width: `${size.w}px`, height: `${size.h}px`, boxSizing: "border-box" });
+    const gbox = g.querySelector(".artbox");
+    if (size.box && gbox) {
+      Object.assign(gbox.style, { width: `${size.box[0]}px`, height: `${size.box[1]}px` });
+      const gimg = gbox.querySelector("img.art");
+      if (size.img && gimg) Object.assign(gimg.style, { width: `${size.img[0]}px`, height: `${size.img[1]}px` });
     }
     layer.append(g);
     return g;
@@ -148,7 +156,7 @@ export function createMotion() {
 
   // 画面から消えるカードは、写しを行き先の束まで飛ばす（行き先が見えなければ、その場で消える）
   function leave(was, to, duration, hide) {
-    const g = ghost(was.el, was.rect);
+    const g = ghost(was.el, was.rect, was.size);  // was.el は描き直しで画面から外れている
     const a = center(was.rect);
     const end = to
       ? `translate(${center(to).x - a.x}px, ${center(to).y - a.y}px) scale(${Math.min(to.width / was.rect.width, to.height / was.rect.height)})`

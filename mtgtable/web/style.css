@@ -146,6 +146,8 @@ button.on:disabled { background: var(--panel); color: inherit; border-color: var
 /* 手札のドラッグ: 元のカードは空いた場所の印、写しを画面の上に重ねて動かす */
 .hand > .card.dragging { opacity: .25; }
 .hand > .card[data-ids] { user-select: none; -webkit-user-select: none; }
+/* ドラッグの間は、なぞった先の文字を選ばない */
+body.nosel, body.nosel * { user-select: none !important; -webkit-user-select: none !important; }
 .hand img { -webkit-user-drag: none; user-drag: none; }
 .dragghost { position: fixed; left: 0; top: 0; margin: 0 !important; z-index: var(--z-drag); pointer-events: none; cursor: grabbing;
   transform-origin: center; filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .55)); transition: none; }

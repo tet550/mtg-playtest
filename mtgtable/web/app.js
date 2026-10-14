@@ -1,5 +1,5 @@
 // 手元のサイト（対局の盤面と、トップ・デッキ・対局を作る・履歴の画面）の起動・画面操作・更新を調停する。
-import { $, el } from "./dom.js";
+import { $, el, noSelect } from "./dom.js";
 import { createSource, latestLoader } from "./source.js";
 import { Timeline } from "./timeline.js";
 import { createRenderer } from "./render.js";
@@ -182,6 +182,7 @@ function changeSelection() {
   ui.log = [];
   ui.cursor = 0;
   for (const id of ["top", "bottom", "log", "detail"]) $(id).replaceChildren();
+  delete $("log").dataset.cur;
   for (const id of ["fl-detail", "fl-stack", "combatbox"]) $(id).hidden = true;
   load().catch(showError);
   listen();
@@ -367,7 +368,8 @@ function setupFloat(panel) {
     const pb = panel.getBoundingClientRect(), bb = area();
     const start = { x: e.clientX, y: e.clientY, left: pb.left - bb.left, top: pb.top - bb.top };
     const move = (ev) => { want = anchor(start.left + ev.clientX - start.x, start.top + ev.clientY - start.y); place(); };
-    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); save(); };
+    const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); noSelect(false); save(); };
+    noSelect(true);
     addEventListener("pointermove", move);
     addEventListener("pointerup", up);
     e.preventDefault();
@@ -380,7 +382,7 @@ function setLog(open) {
   document.body.classList.toggle("log-open", open);
   $("logToggle").classList.toggle("on", open);
   remember("logOpen", open ? "1" : "0");
-  if (open) renderLog();
+  if (open) { delete $("log").dataset.cur; renderLog(); }  // 開いたら今の位置へ寄せる
   requestAnimationFrame(clampFloats);
 }
 $("logToggle").onclick = () => setLog(!document.body.classList.contains("log-open"));
@@ -392,10 +394,12 @@ $("logResizer").addEventListener("pointerdown", (e) => {
   };
   const up = () => {
     removeEventListener("pointermove", move); removeEventListener("pointerup", up);
+    noSelect(false);
     placeSpeech();
     clampFloats();
     remember("logWidth", getComputedStyle(document.documentElement).getPropertyValue("--logw").trim());
   };
+  noSelect(true);
   addEventListener("pointermove", move);
   addEventListener("pointerup", up);
   e.preventDefault();

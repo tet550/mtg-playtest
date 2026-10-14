@@ -1,4 +1,5 @@
-import { $, dots, el } from "./dom.js";
+import { $, dots, el, noSelect } from "./dom.js";
+import { patch } from "./patch.js";
 import { createMotion } from "./motion.js";
 import { t as tr } from "./i18n.js";  // t はターン（v.turn）などの名前に使っているので tr
 import { createCardNames, displayName, localize } from "./cardnames.js";
@@ -11,6 +12,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   const motion = createMotion();
   // カード名の日本語（日本語の画面で、見えているカードの名前だけ聞く）。分かったら描き直す
   const cardNames = createCardNames(source, () => { render(); renderLog(); });
+  // 読めなかった画像の URL。描き直しは差分で当てるので、次からは組み立ての時点で文字にする（読み直しを繰り返さない）
+  const broken = new Set();
+  const failed = (url) => { broken.add(url); return true; };
   // 文の中の {G} {2} {T} {W/U} などをマナ・シンボルの画像にした要素の並び（画像を使わないときは文字のまま）
   function manaNodes(text) {
     if (!ui.images) return [document.createTextNode(text)];
@@ -18,12 +22,16 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     let last = 0;
     for (const m of text.matchAll(/\{([^{}]{1,5})\}/g)) {
       if (m.index > last) out.push(document.createTextNode(text.slice(last, m.index)));
-      const img = el("img", "ms");
-      img.alt = m[0];
-      img.title = m[0];
-      img.src = symbolURL(m[1].replace("/", ""));
-      img.onerror = () => img.replaceWith(document.createTextNode(m[0]));
-      out.push(img);
+      const url = symbolURL(m[1].replace("/", ""));
+      if (broken.has(url)) out.push(document.createTextNode(m[0]));
+      else {
+        const img = el("img", "ms");
+        img.alt = m[0];
+        img.title = m[0];
+        img.src = url;
+        img.onerror = (e) => failed(url) && e.currentTarget.replaceWith(document.createTextNode(m[0]));
+        out.push(img);
+      }
       last = m.index + m[0].length;
     }
     if (last < text.length) out.push(document.createTextNode(text.slice(last)));
@@ -65,12 +73,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const box = el("div", "artbox");
     if (c.face_down || !c.name) {
       box.classList.add("back");
+    } else if (broken.has(imageURL(c.name))) {
+      box.classList.add("noimg");
     } else {
       const img = el("img", "art");
       img.loading = "lazy";
       img.alt = displayName(c.name);
-      img.src = imageURL(c.name);
-      img.onerror = () => { box.classList.add("noimg"); img.remove(); };
+      const url = img.src = imageURL(c.name);
+      img.onerror = (e) => { failed(url); const t = e.currentTarget; t.parentElement && t.parentElement.classList.add("noimg"); t.remove(); };
       box.append(img);
     }
     const flags = el("div", "flags");
@@ -233,6 +243,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     }
     return groups.map((g) => {
       const box = el("div", "lgroup" + (ui.images ? " overlap" : ""));
+      box.dataset.key = `lands:${g.key}`;
       const cards = g.key === "tapped" ? [...g.cards].sort((a, b) => displayName(a.name).localeCompare(displayName(b.name))) : g.cards;
       box.append(...cards.map((c) => withUnder(c, under)));
       if (g.cards.length > 1) box.append(el("span", "chip strong gcount", `×${g.cards.length}`));
@@ -293,6 +304,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const cards = ui.images ? under[c.id] || [] : [];
     if (!cards.length) return tile;
     const box = el("div", "tuck");
+    box.dataset.key = `tuck:${c.id}`;
     box.style.setProperty("--n", cards.length);
     if (cards.some((u) => u.cls.includes("attached"))) box.classList.add("hasaura");  // オーラは少し多めに見せる
     cards.forEach((u, i) => {
@@ -316,11 +328,16 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       stackBox.append(layer);
     }
     const face = el("div", "face" + (top ? "" : " back") + (opts.known ? " known" : ""));
-    if (top && ui.images) {
+    if (top && ui.images && !broken.has(imageURL(top.name))) {
       const img = el("img");
       img.alt = displayName(top.name);
-      img.src = imageURL(top.name);
-      img.onerror = () => { img.remove(); face.append(el("div", "ftext", `<${displayName(top.name)}>`)); };
+      const url = img.src = imageURL(top.name);
+      img.onerror = (e) => {
+        failed(url);
+        const t = e.currentTarget, f = t.parentElement;
+        t.remove();
+        if (f) f.append(el("div", "ftext", `<${displayName(top.name)}>`));
+      };
       face.append(img);
     } else if (top) {
       face.append(el("div", "ftext", `<${displayName(top.name)}>`));
@@ -350,6 +367,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   // 開いた束の中身。画像で並べ、ライブラリーは上からの位置を重ねて出す
   function openedBlock(key, title, cards) {
     const z = el("div", "zone opened");
+    z.dataset.key = `opened:${key}`;
     const close = el("button", "chip oclose", tr("opened.close"));
     close.title = tr("opened.close.title");
     close.onclick = () => toggleOpen(key);
@@ -386,185 +404,201 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   // GUI の対局では、同じ側の戦場・墓地・追放・ライブラリー（data-drop）へ落とすと、その予定を下書きに足す
   // （何をするかは hooks.drop が決め、領域に入ったら Tip で出す）。戦場のカード・Player・スタックの項目の上へ落とすと、
   // それを対象に唱える。
-  // タッチで長押ししたまま動かさずに離したら、ほかのカードの長押しと同じく詳細を出す
-  function handDrag(row, pid) {
-    const tiles = () => [...row.querySelectorAll(":scope > .card[data-ids]:not(.back)")];
-    const SLIDE = { duration: 160, easing: "cubic-bezier(.2, .7, .2, 1)" };
-    let drag = null;
-    const finish = (commit) => {
-      if (!drag) return;
-      const d = drag;
-      drag = null;
-      listen(false);
-      clearTimeout(d.timer);
-      if (!d.active) return;
-      ui.dragging = false;
-      const pending = ui.renderPending;
-      ui.renderPending = false;
-      const action = commit ? d.action : null;
-      overDrop(d, null, null);
-      droppedAt = performance.now();
-      const ghost = d.ghost;
-      if (action) {  // 領域へ落とした: 手札の並びは元に戻して、予定を足す（描き直しで手札から仮に出ていく）
-        ghost.remove();
-        d.tile.classList.remove("dragging");
-        row.insertBefore(d.tile, d.after ? d.after.nextElementSibling : row.firstElementChild);
-        action.run();
-        if (pending) render();
-        return;
-      }
-      // 写しを空いた場所へ戻してから消す
-      const to = d.tile.getBoundingClientRect();
-      const back = ghost.animate([{ transform: ghost.style.transform },
-        { transform: `translate(${to.left}px, ${to.top}px) scale(1)` }], SLIDE);
-      const done = () => { ghost.remove(); d.tile.classList.remove("dragging"); };
-      back.onfinish = back.oncancel = done;
-      setTimeout(done, SLIDE.duration + 100);  // 画面が描かれていない（裏のタブなど）とアニメーションが終わらない
-      if (commit && d.tile.isConnected) (ui.handOrder ||= {})[pid] = tiles().map((t) => t.dataset.ids);
-      if (pending) setTimeout(render, SLIDE.duration + 120);  // 戻るのを見せてから、溜めていた描き直し
-      if (commit && d.touch && !d.moved) {
-        ghost.remove();
-        d.tile.classList.remove("dragging");
-        d.tile.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
-      }
-    };
-    let droppedAt = -1e9;
-    row.addEventListener("click", (e) => {
-      if (performance.now() - droppedAt < 300) { e.stopPropagation(); e.preventDefault(); }
-    }, true);
-    // 写しは、掴んだ所がポインターの下に来るように置く（領域の上では小さくする）
-    const follow = (e) => {
-      const d = drag;
-      d.ghost.style.transform = `translate(${e.clientX - d.dx}px, ${e.clientY - d.dy - 14}px) scale(${d.action ? .8 : 1.06})`;
-    };
-    // ポインターの下の落とし先と、そこで何をするか。まず対象にできるもの（どちらの側でも戦場のカード・Player・
-    // スタックの項目の data-target）: そこを対象に唱える。できなければ、同じ側の領域（data-drop）
-    const dropAt = (e) => {
-      if (!hooks.drop) return null;
-      const id = drag.tile.dataset.ids.split(" ")[0];
-      for (const t of document.elementsFromPoint(e.clientX, e.clientY)) {
-        const target = t.dataset.target || (t.matches(".card[data-ids]") && t.closest("[data-drop='battlefield']") ? t.dataset.ids.split(" ")[0] : null);
-        if (!target) continue;
-        const action = hooks.drop(id, "target", target);
-        if (action) return { el: t, action };
-        break;
-      }
-      const side = row.closest("#top, #bottom") || document;
-      for (const t of side.querySelectorAll("[data-drop]")) {
-        const r = t.getBoundingClientRect();
-        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
-        const place = t.dataset.drop === "library" ? (e.clientY < r.top + r.height / 2 ? "library-top" : "library-bottom") : t.dataset.drop;
-        const action = hooks.drop(id, place);
-        return action ? { el: t, action } : null;
-      }
-      return null;
-    };
-    const tip = () => document.getElementById("droptip") || document.body.appendChild(Object.assign(el("div"), { id: "droptip" }));
-    const overDrop = (d, hit, e) => {
-      if (d.over && (!hit || hit.el !== d.over)) d.over.classList.remove("dropover");
-      d.over = hit ? hit.el : null;
-      d.action = hit ? hit.action : null;
-      const t = tip();
-      t.hidden = !hit;
-      if (!hit) return;
-      hit.el.classList.add("dropover");
-      t.textContent = hit.action.label;
-      t.style.left = `${e.clientX + 14}px`;
-      t.style.top = `${e.clientY + 18}px`;
-    };
-    const grab = (e) => {
-      const d = drag;
-      d.active = true;
-      ui.dragging = true;
-      const r = d.tile.getBoundingClientRect();
-      d.dx = d.x0 - r.left;
-      d.dy = d.y0 - r.top;
-      d.ghost = d.tile.cloneNode(true);
-      d.ghost.classList.add("dragghost");
-      d.ghost.style.width = `${r.width}px`;
-      d.ghost.style.height = `${r.height}px`;
-      d.ghost.style.setProperty("--h", getComputedStyle(row).getPropertyValue("--h"));  // 小さい画面のカードの高さ
-      document.body.append(d.ghost);
-      d.tile.classList.add("dragging");
-      d.after = d.tile.previousElementSibling;
-      try { d.tile.setPointerCapture(d.pointer); } catch { /* 離した後に長押しの時計が来たときなど */ }
-      follow(e || { clientX: d.x0, clientY: d.y0 });
-    };
-    row.addEventListener("pointerdown", (e) => {
-      const tile = e.target.closest(".card");
-      if (e.button !== 0 || !tile || !tiles().includes(tile)) return;
-      // マウスは既定の動き（画像のドラッグ・文字の選択）を止める。画像のドラッグが始まるとポインターが取り消される
-      if (e.pointerType !== "touch") e.preventDefault();
-      finish(false);  // 前のドラッグが残っていたら片付ける
-      drag = { tile, pointer: e.pointerId, x0: e.clientX, y0: e.clientY, active: false, touch: e.pointerType === "touch" };
-      listen(true);
-      if (drag.touch) drag.timer = setTimeout(() => drag && grab(), 300);
-    });
-    row.addEventListener("dragstart", (e) => e.preventDefault());
-    const onMove = (e) => {
-      if (!drag || e.pointerId !== drag.pointer) return;
-      // 離したのを取りこぼした（画面の外で離した・別の窓へ移った）: ボタンが押されていないなら元へ戻す
-      if (e.pointerType === "mouse" && !(e.buttons & 1)) return finish(false);
-      const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
-      if (!drag.active) {
-        if (drag.touch) { if (moved > 8) finish(false); return; }  // 長押しの前に動いたらスクロール
-        if (moved < 5) return;
-        grab(e);
-      }
-      if (moved > 8) drag.moved = true;
-      const hit = dropAt(e);
-      overDrop(drag, hit, e);
-      // 手札の欄の上にいる間は、写しの中心が隣のカードの中心を越えたら、空いた場所を入れ替える
-      const rr = row.getBoundingClientRect();
-      if (!hit && e.clientY > rr.top - 40 && e.clientY < rr.bottom + 40) {
-        const t = drag.tile;
-        // 入れ替えの判定は、滑っている途中のずれ（transform）を除いた位置で比べる。見た目の位置で比べると、
-        // 入れ替えた直後に元へ戻す判定になって行ったり来たりする
-        const center = (o) => {
-          const r = o.getBoundingClientRect();
-          return r.left + r.width / 2 - new DOMMatrixReadOnly(getComputedStyle(o).transform).e;
-        };
-        const mid = e.clientX - drag.dx + t.offsetWidth / 2;
-        const others = tiles().filter((o) => o !== t);
-        const next = others.find((o) => mid < center(o));
-        const last = others[others.length - 1];
-        if (last && (next ? t.nextElementSibling !== next : last.nextElementSibling !== t)) {
-          const before = new Map(others.map((o) => [o, o.offsetLeft]));
-          if (next) row.insertBefore(t, next); else last.after(t);
-          for (const [o, x] of before) {  // 押し出されたカードは元の位置から滑らせる（FLIP）
-            const dx = x - o.offsetLeft;
-            if (dx) o.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], SLIDE);
-          }
+  // タッチで長押ししたまま動かさずに離したら、ほかのカードの長押しと同じく詳細を出す。
+  // 描き直しは差分で当てるので、手札の欄とカードはドラッグの間も残り、盤面の更新はそのまま描く。押しているカードが
+  // 更新で手札から無くなったら（捨てさせられたなど）、ドラッグはそこで終わる。
+  // イベントは描き直しで消えない #top / #bottom で受ける（手札の欄は data-pid を持つ）
+  const SLIDE = { duration: 160, easing: "cubic-bezier(.2, .7, .2, 1)" };
+  const tilesOf = (row) => [...row.querySelectorAll(":scope > .card[data-ids]:not(.back)")];
+  const orderOf = (row) => tilesOf(row).map((t) => t.dataset.ids);
+  let drag = null;
+  let droppedAt = -1e9;
+  const finish = (commit) => {
+    if (!drag) return;
+    const d = drag;
+    drag = null;
+    listen(false);
+    clearTimeout(d.timer);
+    if (!d.active) return;
+    const action = commit && d.tile.isConnected ? d.action : null;
+    overDrop(d, null, null);
+    droppedAt = performance.now();
+    const ghost = d.ghost;
+    const order = (ui.handOrder ||= {});
+    // 並べ替えを確定しないとき（領域へ落とした・取り消した）は、掴む前の並びに戻す
+    const restore = () => { if (d.order) order[d.pid] = d.order; else delete order[d.pid]; };
+    if (action) {  // 領域へ落とした: 手札の並びは元に戻して、予定を足す（描き直しで手札から仮に出ていく）
+      ghost.remove();
+      d.tile.classList.remove("dragging");
+      restore();
+      action.run();
+      render();
+      return;
+    }
+    if (!d.tile.isConnected) {  // 押していたカードが手札から無くなった
+      ghost.remove();
+      restore();
+      return;
+    }
+    // 写しを空いた場所へ戻してから消す
+    const to = d.tile.getBoundingClientRect();
+    const back = ghost.animate([{ transform: ghost.style.transform },
+      { transform: `translate(${to.left}px, ${to.top}px) scale(1)` }], SLIDE);
+    const done = () => { ghost.remove(); d.tile.classList.remove("dragging"); };
+    back.onfinish = back.oncancel = done;
+    setTimeout(done, SLIDE.duration + 100);  // 画面が描かれていない（裏のタブなど）とアニメーションが終わらない
+    if (commit) order[d.pid] = orderOf(d.row);
+    else { restore(); setTimeout(render, SLIDE.duration + 120); }  // 戻るのを見せてから、元の並びで描く
+    if (commit && d.touch && !d.moved) {
+      ghost.remove();
+      d.tile.classList.remove("dragging");
+      d.tile.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    }
+  };
+  // 写しは、掴んだ所がポインターの下に来るように置く（領域の上では小さくする）
+  const follow = (e) => {
+    const d = drag;
+    d.ghost.style.transform = `translate(${e.clientX - d.dx}px, ${e.clientY - d.dy - 14}px) scale(${d.action ? .8 : 1.06})`;
+  };
+  // ポインターの下の落とし先と、そこで何をするか。まず対象にできるもの（どちらの側でも戦場のカード・Player・
+  // スタックの項目の data-target）: そこを対象に唱える。できなければ、同じ側の領域（data-drop）
+  const dropAt = (e) => {
+    if (!hooks.drop) return null;
+    const id = drag.tile.dataset.ids.split(" ")[0];
+    for (const t of document.elementsFromPoint(e.clientX, e.clientY)) {
+      const target = t.dataset.target || (t.matches(".card[data-ids]") && t.closest("[data-drop='battlefield']") ? t.dataset.ids.split(" ")[0] : null);
+      if (!target) continue;
+      const action = hooks.drop(id, "target", target);
+      if (action) return { el: t, action };
+      break;
+    }
+    for (const t of drag.side.querySelectorAll("[data-drop]")) {
+      const r = t.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) continue;
+      const place = t.dataset.drop === "library" ? (e.clientY < r.top + r.height / 2 ? "library-top" : "library-bottom") : t.dataset.drop;
+      const action = hooks.drop(id, place);
+      return action ? { el: t, action } : null;
+    }
+    return null;
+  };
+  const tip = () => document.getElementById("droptip") || document.body.appendChild(Object.assign(el("div"), { id: "droptip" }));
+  const overDrop = (d, hit, e) => {
+    if (d.over && (!hit || hit.el !== d.over)) d.over.classList.remove("dropover");
+    d.over = hit ? hit.el : null;
+    d.action = hit ? hit.action : null;
+    const t = tip();
+    t.hidden = !hit;
+    if (!hit) return;
+    hit.el.classList.add("dropover");
+    t.textContent = hit.action.label;
+    t.style.left = `${e.clientX + 14}px`;
+    t.style.top = `${e.clientY + 18}px`;
+  };
+  const grab = (e) => {
+    const d = drag;
+    d.active = true;
+    d.order = (ui.handOrder || {})[d.pid] || null;
+    const r = d.tile.getBoundingClientRect();
+    d.dx = d.x0 - r.left;
+    d.dy = d.y0 - r.top;
+    d.ghost = d.tile.cloneNode(true);
+    d.ghost.classList.add("dragghost");
+    d.ghost.style.width = `${r.width}px`;
+    d.ghost.style.height = `${r.height}px`;
+    d.ghost.style.setProperty("--h", getComputedStyle(d.row).getPropertyValue("--h"));  // 小さい画面のカードの高さ
+    document.body.append(d.ghost);
+    d.tile.classList.add("dragging");
+    try { d.tile.setPointerCapture(d.pointer); } catch { /* 離した後に長押しの時計が来たときなど */ }
+    follow(e || { clientX: d.x0, clientY: d.y0 });
+  };
+  const onDown = (e) => {
+    const tile = e.target.closest(".card");
+    const row = tile && tile.parentElement;
+    if (e.button !== 0 || !row || !row.matches(".hand[data-pid]") || !tilesOf(row).includes(tile)) return;
+    // マウスは既定の動き（画像のドラッグ・文字の選択）を止める。画像のドラッグが始まるとポインターが取り消される
+    if (e.pointerType !== "touch") e.preventDefault();
+    finish(false);  // 前のドラッグが残っていたら片付ける
+    drag = { tile, row, pid: row.dataset.pid, side: e.currentTarget, pointer: e.pointerId, x0: e.clientX, y0: e.clientY,
+      active: false, touch: e.pointerType === "touch" };
+    listen(true);
+    if (drag.touch) drag.timer = setTimeout(() => drag && grab(), 300);
+  };
+  const onMove = (e) => {
+    if (!drag || e.pointerId !== drag.pointer) return;
+    // 離したのを取りこぼした（画面の外で離した・別の窓へ移った）: ボタンが押されていないなら元へ戻す
+    if (e.pointerType === "mouse" && !(e.buttons & 1)) return finish(false);
+    if (!drag.tile.isConnected) return finish(false);
+    const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
+    if (!drag.active) {
+      if (drag.touch) { if (moved > 8) finish(false); return; }  // 長押しの前に動いたらスクロール
+      if (moved < 5) return;
+      grab(e);
+    }
+    if (moved > 8) drag.moved = true;
+    const hit = dropAt(e);
+    overDrop(drag, hit, e);
+    // 手札の欄の上にいる間は、写しの中心が隣のカードの中心を越えたら、空いた場所を入れ替える
+    const row = drag.row;
+    const rr = row.getBoundingClientRect();
+    if (!hit && e.clientY > rr.top - 40 && e.clientY < rr.bottom + 40) {
+      const t = drag.tile;
+      // 入れ替えの判定は、滑っている途中のずれ（transform）を除いた位置で比べる。見た目の位置で比べると、
+      // 入れ替えた直後に元へ戻す判定になって行ったり来たりする
+      const center = (o) => {
+        const r = o.getBoundingClientRect();
+        return r.left + r.width / 2 - new DOMMatrixReadOnly(getComputedStyle(o).transform).e;
+      };
+      const mid = e.clientX - drag.dx + t.offsetWidth / 2;
+      const others = tilesOf(row).filter((o) => o !== t);
+      const next = others.find((o) => mid < center(o));
+      const last = others[others.length - 1];
+      if (last && (next ? t.nextElementSibling !== next : last.nextElementSibling !== t)) {
+        const before = new Map(others.map((o) => [o, o.offsetLeft]));
+        if (next) row.insertBefore(t, next); else last.after(t);
+        // 途中の並びを覚えておく（ドラッグの間に描き直しても、この並びで描く。確定しなければ finish で戻す）
+        (ui.handOrder ||= {})[drag.pid] = orderOf(row);
+        for (const [o, x] of before) {  // 押し出されたカードは元の位置から滑らせる（FLIP）
+          const dx = x - o.offsetLeft;
+          if (dx) o.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], SLIDE);
         }
       }
-      follow(e);
-    };
-    // 動かす・離す・取り消すは window で受ける（手札の欄の外や、ポインターの捕捉が外れた後でも届くように）。
-    // 窓から離れた（別のアプリ・タブへ移った）ら元へ戻す。描くたびに手札の欄を作り直すので、押している間だけ付ける
-    const onUp = (e) => { if (drag && e.pointerId === drag.pointer) finish(true); };
-    const onCancel = (e) => { if (drag && e.pointerId === drag.pointer) finish(false); };
-    const onBlur = () => finish(false);
-    const onHidden = () => { if (document.hidden) finish(false); };
-    const listen = (on) => {
-      const f = on ? "addEventListener" : "removeEventListener";
-      window[f]("pointermove", onMove, true);
-      window[f]("pointerup", onUp, true);
-      window[f]("pointercancel", onCancel, true);
-      window[f]("blur", onBlur);
-      document[f]("visibilitychange", onHidden);
-    };
+    }
+    follow(e);
+  };
+  // 動かす・離す・取り消すは window で受ける（手札の欄の外や、ポインターの捕捉が外れた後でも届くように）。
+  // 窓から離れた（別のアプリ・タブへ移った）ら元へ戻す。押している間だけ付ける
+  const onUp = (e) => { if (drag && e.pointerId === drag.pointer) finish(true); };
+  const onCancel = (e) => { if (drag && e.pointerId === drag.pointer) finish(false); };
+  const onBlur = () => finish(false);
+  const onHidden = () => { if (document.hidden) finish(false); };
+  const listen = (on) => {
+    const f = on ? "addEventListener" : "removeEventListener";
+    noSelect(on);
+    window[f]("pointermove", onMove, true);
+    window[f]("pointerup", onUp, true);
+    window[f]("pointercancel", onCancel, true);
+    window[f]("blur", onBlur);
+    document[f]("visibilitychange", onHidden);
+  };
+  for (const side of [$("top"), $("bottom")]) {
+    side.addEventListener("pointerdown", onDown);
+    side.addEventListener("dragstart", (e) => { if (e.target.closest(".hand")) e.preventDefault(); });
+    // 落とした直後のクリック（離したカードの上で起きる）は捨てる
+    side.addEventListener("click", (e) => {
+      if (e.target.closest(".hand") && performance.now() - droppedAt < 300) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
     // 長押しで掴んだ後は、指を動かしても手札をスクロールさせない
-    row.addEventListener("touchmove", (e) => { if (drag && drag.active) e.preventDefault(); }, { passive: false });
+    side.addEventListener("touchmove", (e) => { if (drag && drag.active) e.preventDefault(); }, { passive: false });
     // 長押しの途中に来るブラウザの contextmenu は捨てる（詳細は離したときに出す）
-    row.addEventListener("contextmenu", (e) => { if (drag) { e.preventDefault(); e.stopPropagation(); } }, true);
+    side.addEventListener("contextmenu", (e) => { if (drag && e.target.closest(".hand")) { e.preventDefault(); e.stopPropagation(); } }, true);
   }
 
   function handRow(v, pid) {
     const hand = v.zones[`${pid}.hand`];
     const shown = sortHand(pid, hand.cards || hand.known || []);
     const row = el("div", "hand" + (ui.images ? " fan" : ""));
+    row.dataset.pid = pid;  // 手札のドラッグ（#top / #bottom で受ける）
     row.append(...shown.map((c) => cardTile(c, " inhand")));
-    handDrag(row, pid);
     for (let i = shown.length; i < hand.count; i++) row.append(el("div", "card back inhand"));
     // 下書き・送った依頼で引く予定の「？」（中身は審判の処理の後に届く。play.js の planned）
     const extra = (ui.planned && ui.planned.hand[pid]) || 0;
@@ -574,6 +608,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       row.append(q);
     }
     const box = el("div", "handbox");
+    box.dataset.key = `hand:${pid}`;
     box.dataset.zone = `${pid}.hand`;
     box.append(el("h3", null, tr("hand.title", { count: hand.count }) + (extra ? tr("hand.planned", { n: extra }) : "")), row);
     return box;
@@ -592,6 +627,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const delta = before == null ? 0 : p.life - before;
     if (!delta) return wrap;
     const d = el("span", "ldelta " + (delta < 0 ? "minus" : "plus"), delta < 0 ? `−${-delta}` : `+${delta}`);
+    d.dataset.key = `delta:${before}:${p.life}`;  // 増減が変わったら新しい要素で（出たときの動きを出す）
     d.title = `${before} → ${p.life}`;
     wrap.append(d);
     return wrap;
@@ -626,6 +662,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const text = d.text && d.kind !== "intent" && !d.text.startsWith("standing") ? tr("decl.with", { word, text: localize(d.text) }) : word;
     const fresh = freshHere && !ruledAge;
     const b = el("span", "speech" + (fresh ? " fresh" : "") + (ruledAge !== null ? " fading" : ""));
+    b.dataset.key = `speech:${d.seq}`;  // 新しい宣言は新しい要素で（出たときの動きを出す）
     // 消えるまでの残りの時間（描き直しても、出た時刻から数える）
     if (ruledAge !== null) b.style.animationDelay = `${fresh ? "0ms, " : ""}${-ruledAge}ms`;
     b.append(el("span", "stx", text));
@@ -642,7 +679,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     if (hooks.player) {
       head.classList.add("clickable");
       head.onclick = (ev) => hooks.player(pid, ev);
-      head.dataset.target = pid;  // 手札から落として対象にする（handDrag）
+      head.dataset.target = pid;  // 手札から落として対象にする（手札のドラッグ）
     }
     if (ui.marks && ui.marks.has(pid)) head.classList.add(ui.marks.get(pid));
     // アクティブ Player のライフの横に、今のフェイズ
@@ -764,13 +801,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     $("fl-stack").hidden = !v.stack.length;
     foldable("fl-stack", v.stack.map((s) => s.id).join(","), v.stack.length);
     if (!v.stack.length) {
-      box.replaceChildren();
+      patch(box, []);
       return;
     }
     const cards = new Map();
     for (const z of Object.values(v.zones)) for (const c of z.cards || []) cards.set(c.id, c);
-    box.replaceChildren(...v.stack.map((s, i) => {
+    patch(box, v.stack.map((s, i) => {
       const li = el("li", "sitem" + (s.kind === "spell" ? "" : " ability"));
+      li.dataset.key = s.id;
       const id = s.card || s.source;
       const c = cards.get(id) || (id && ui.names[id] ? { id, name: ui.names[id] } : null);
       const pic = c ? cardTile({ ...c, tapped: false, counters: {}, notes: [], links: [] }, ui.images ? " instack" : " small")
@@ -778,7 +816,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       if (s.kind !== "spell") pic.classList.add("src");
       if (ui.marks && ui.marks.has(s.id)) li.classList.add(ui.marks.get(s.id));
       if (s.planned) li.classList.add("pv");
-      // 手札から落として対象にする（handDrag）。下書きで仮に積んだ呪文はカードで指す（仮の能力は指せない）
+      // 手札から落として対象にする（手札のドラッグ）。下書きで仮に積んだ呪文はカードで指す（仮の能力は指せない）
       const target = s.planned ? s.card : s.id;
       if (target) li.dataset.target = target;
       if (hooks.stack) {
@@ -817,14 +855,15 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     foldable("combatbox", JSON.stringify([v.combat.attacks, v.combat.blocks, (ui.planned && ui.planned.blocks) || []]),
       v.combat.attacks.length);
     if (!v.combat.attacks.length) {
-      box.replaceChildren();
+      patch(box, []);
       return;
     }
     const cards = new Map((v.zones.battlefield.cards || []).map((c) => [c.id, c]));
     const tile = (id) => (cards.has(id) ? cardTile(cards.get(id), ui.images ? " incombat" : " small")
       : el("div", "card small", ref(id)));
-    box.replaceChildren(...v.combat.attacks.map((a) => {
+    patch(box, v.combat.attacks.map((a) => {
       const col = el("div", "cbcol");
+      col.dataset.key = a.attacker;
       // 攻撃先は、画面の上下のどちらの Player かを矢印で（Player 以外はカード名）
       // プレインズウォーカーはコントローラーの側（バトルは守る Player が卓に無いので →）
       const pw = cards.get(a.target);
@@ -904,9 +943,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return strip;
   }
 
+  // 描き直しは、組み立てた木を今の DOM に差分で当てる（patch.js）。使い回した要素の状態（選んだ文字・フォーカス・
+  // 打ちかけの文字・開いた折りたたみ・スクロール・手札のドラッグ）は更新で消えない
   function render() {
-    // 手札のドラッグ中は描き直さない（手札の欄が作り直されてドラッグが切れる）。離したときに描く
-    if (ui.dragging) { ui.renderPending = true; return; }
     // GUI の対局では、下書きの行を仮に反映した写しを描く（hooks.preview。卓の view は変えない）
     const v = ui.view && hooks.preview ? hooks.preview(ui.view) : ui.view;
     if (!v) return;
@@ -914,10 +953,6 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const animate = ui.animate && ui.motion ? ui.animate : null;
     ui.animate = null;
     motion.stop();
-    // 手札のドラッグの途中で描き直したら、ドラッグはそこで終わり（写しと Tip を片付ける）
-    for (const g of document.querySelectorAll(".dragghost")) g.remove();
-    const droptip = document.getElementById("droptip");
-    if (droptip) droptip.hidden = true;
     const before = animate && ui.shown ? motion.capture() : null;
     const shown = ui.shown;
     ui.names = collectNames(v);
@@ -931,7 +966,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     ui.thinker = thinker;
     const thinking = $("thinking");
     thinking.hidden = !thinker;
-    if (thinker) thinking.replaceChildren(document.createTextNode(thinker === "judge" ? tr("thinking.judge") : tr("thinking.player", { who: thinker })), dots());
+    if (thinker) patch(thinking, [thinker === "judge" ? tr("thinking.judge") : tr("thinking.player", { who: thinker }), dots()]);
     document.body.classList.toggle("judging", thinker === "judge");
 
     // 視点の Player を下に。judge は先攻を上に
@@ -942,9 +977,11 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const from = ui.deltaBase && ui.deltaBase.pos === ui.pos ? ui.deltaBase.from : ui.pos - 1;
     for (const [slot, pid] of [["top", opp], ["bottom", me]]) {
       const side = $(slot);
-      side.replaceChildren(playerSide(v, pid, slot === "top", from >= 0 && from < ui.pos ? viewAt(from) : null));
+      patch(side, [playerSide(v, pid, slot === "top", from >= 0 && from < ui.pos ? viewAt(from) : null)]);
       side.classList.toggle("active", t.active === pid);
     }
+    // 押していた手札のカードが、この更新で手札から無くなった
+    if (drag && !drag.tile.isConnected) finish(false);
 
     renderStack(v);
 
@@ -968,9 +1005,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   function renderLog() {
     if (!document.body.classList.contains("log-open")) return;  // 閉じているときは作らない
     const box = $("log");
-    const prevScroll = box.scrollTop;
     if (ui.seat !== "judge" && !ui.play) {
-      box.replaceChildren(el("div", "batch muted", tr("log.judgeOnly")));
+      patch(box, [el("div", "batch muted", tr("log.judgeOnly"))]);
       return;
     }
     const groups = [];
@@ -979,8 +1015,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       if (last && last.batch === e.batch) last.items.push(e);
       else groups.push({ batch: e.batch, items: [e] });
     }
-    box.replaceChildren(...groups.map((g) => {
+    patch(box, groups.map((g) => {
       const d = el("div", "batch");
+      d.dataset.key = `b${g.batch}`;
       const first = g.items[0];
       const actors = [...new Set(g.items.map((e) => e.actor))].join(",");
       d.append(manaEl("div", "bl", `B${g.batch} ${actors}　${localize(first.batch_label || "")}`));
@@ -992,6 +1029,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
         if (e.cont) text += " …";
         const a = manaEl("div", "act" + (e.undone ? " undone" : "") + (e.seq === ui.pos ? " cur" : ""),
           `${e.seq} ${e.actor} ${text}`);
+        a.dataset.key = `a${e.seq}`;
         a.title = e.steps.map((s) => "> " + s.op + (s.parent ? ` (${s.parent})` : "") +
           s.events.map((x) => "\n    " + x).join("")).join("\n");
         // Log をクリックしたときは、Log のスクロール位置を動かさない
@@ -1000,13 +1038,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       }
       return d;
     }));
+    // 今の位置が変わったとき（と開いたとき）だけ、その行へ寄せる。それ以外はスクロールも選んだ文字もそのまま。
+    // Log をクリックして移ったときは寄せない
     const cur = box.querySelector(".act.cur");
-    if (ui.keepLogScroll) {
-      box.scrollTop = prevScroll;
-      ui.keepLogScroll = false;
-    } else if (cur) {
-      box.scrollTop = cur.offsetTop - box.clientHeight / 2;
-    }
+    if (ui.keepLogScroll) ui.keepLogScroll = false;
+    else if (cur && box.dataset.cur !== String(ui.pos)) box.scrollTop = cur.offsetTop - box.clientHeight / 2;
+    box.dataset.cur = ui.pos;
   }
 
 

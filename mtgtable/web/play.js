@@ -3,6 +3,7 @@
 // 「審判に依頼」で下書きを1つの依頼として審判に送り（「その後」は下書きの最後の行で決まる）、審判がルールに沿って卓に書く。
 // 引く・見るなど隠れた情報の行は、手札・束に「？」の予定を出すだけ（中身は審判の処理の後に、席の view として届く）。
 import { $, dots, el } from "./dom.js";
+import { patch } from "./patch.js";
 import { lang, t as tr } from "./i18n.js";  // t はターンなどの変数名に使っているので tr
 import { displayName, localize } from "./cardnames.js";
 
@@ -470,6 +471,7 @@ export function toast(text, error) {
 
 export function createPlay(ui, { source, reload, showCard, toggleOpen, render, manaNodes }) {
   let compose = null;  // 組み立て中の行（唱える・起動・対象を選ぶ）
+  let composeCount = 0;  // 組み立てを始めた回数（操作パネルの組み立ての欄のキー）
   let pick = null;     // 次のクリックで選ぶもの（ブロック先の攻撃クリーチャーなど）
   let blocker = null;  // ブロックを決める所で選んだ自分のクリーチャー（次に押した攻撃クリーチャーをブロックする）
   let busy = false;
@@ -744,6 +746,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   function start(c) {
     if (judging()) return toast(tr("play.toast.judging"), true);
+    c.key = ++composeCount;
     compose = c;
     pick = null;
     refresh();
@@ -1308,8 +1311,6 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     return [grid, acts];
   }
 
-  let freeFocus = false;  // 文の欄で足した後、描き直した欄にもう一度入力できるようにする
-
   // 依頼の欄: 下書きの行を並べ、送るボタンで「その後」を選ぶ。送る前は行を外せる（盤面は変わらない）。
   // ボタンに無い操作・補足（対象・モード・X など）は、文の欄に書いて Enter で1行として足す
   function requestBox() {
@@ -1344,17 +1345,17 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     free.placeholder = tr("play.req.free.placeholder");
     free.title = tr("play.req.free.title");
     free.disabled = off;
+    free.dataset.key = "free";
     free.onkeydown = (e) => {
       if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;  // 変換の確定の Enter は足さない
       e.preventDefault();
-      const text = free.value.trim();
+      const input = e.currentTarget;  // 描き直しで使い回す欄（free は組み立てたときの写し）
+      const text = input.value.trim();
       if (!text) return;
       const n = loadDraft().lines.length;
-      freeFocus = true;
       other(text);
-      if (loadDraft().lines.length === n) freeFocus = false;  // 足せなかった（ゲーム前など）: 文は欄に残す
+      if (loadDraft().lines.length > n) input.value = "";  // 足せなかった（ゲーム前など）: 文は欄に残す
     };
-    if (freeFocus) { freeFocus = false; setTimeout(() => free.focus()); }
     const r2 = el("label", "crow");
     r2.append(free);
     const act = requestAction(d.lines, d.comment, t, seat, v.stack.length);
@@ -1526,6 +1527,8 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
 
   function composeBox() {
     const box = el("div", "compose");
+    // 組み立てごとに別の要素にする（前の組み立ての打ちかけの文字を持ち越さない）
+    box.dataset.key = pick ? "pick" : `compose:${compose.key}`;
     if (pick) {
       box.append(el("div", "ctitle", pick.prompt), button(tr("play.cancel"), () => { pick = null; renderPanel(); }));
       return box;
@@ -1546,7 +1549,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
     const input = el("input");
     input.value = c.text;
     input.placeholder = tr("play.compose.placeholder");
-    input.oninput = () => { c.text = input.value.trim(); };
+    input.oninput = (e) => { c.text = e.currentTarget.value.trim(); };
     row.append(el("span", "muted", tr("play.compose.text")), input);
     box.append(tg, row);
     if (c.kind === "activate") {  // コストの {T}: 発生源をタップして起動する（盤面の予定でもタップ状態にする）
@@ -1554,7 +1557,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
       const box2 = el("input");
       box2.type = "checkbox";
       box2.checked = !!c.tap;
-      box2.onchange = () => { c.tap = box2.checked; };
+      box2.onchange = (e) => { c.tap = e.currentTarget.checked; };
       tap.append(box2, el("span", null, tr("play.compose.tap", { card: nm(c.source), T: "{T}" })));
       box.append(tap);
     }
@@ -1678,7 +1681,7 @@ export function createPlay(ui, { source, reload, showCard, toggleOpen, render, m
           if (await ask({ title: tr("play.concede.confirm"), choices: [{ label: tr("play.concede"), value: true }] })) declareKind("concede");
         }));
     }
-    body.replaceChildren(status, ...rows);
+    patch(body, [status, ...rows]);  // 差分で当てる（打ちかけの文字・フォーカス・開いた「送った依頼」が残る）
   }
 
   setInterval(() => { if (ui.play && ui.idle) renderPanel(); }, 30000);  // 時間切れの知らせの分を進める
