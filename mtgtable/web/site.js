@@ -107,7 +107,7 @@ export function createSite(source, { toast, games, openGame, config = () => ({})
     const board = BOARD_PAGES.includes(page);
     for (const sel of [".replay", "main.layout"]) document.querySelector(sel).hidden = !board;
     // 盤面にしか効かないヘッダーの部品（対局・席・画像・動き・接続・Log など）は、盤面のときだけ
-    for (const id of ["game", "seat", "images", "motion"]) $(id).closest("label").hidden = !board;
+    for (const id of ["game", "seat"]) $(id).closest("label").hidden = !board;
     for (const id of ["conn", "logToggle", "turn", "thinking", "playing", "fl-play"]) $(id).classList.toggle("offpage", !board);
     const root = $("page");
     root.hidden = board;

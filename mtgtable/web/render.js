@@ -675,7 +675,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const box = el("div");
     const head = el("div", "phead");
     const before = prev && prev.players.find((x) => x.id === pid);
-    head.append(el("span", "pname", tr("player.name", { name: p.name, id: p.id })), lifeBadge(p, before && before.life));
+    head.append(avatar(v, p), lifeBadge(p, before && before.life));
     if (hooks.player) {
       head.classList.add("clickable");
       head.onclick = (ev) => hooks.player(pid, ev);
@@ -764,14 +764,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return box;
   }
 
-  // 吹き出しをライフの真下に置く（名前の長さで変わるので、描いた後に測る）
+  // 吹き出しを Player のアイコンの真下に置き、しっぽ（左から 18px）をアイコンの中央に合わせる（描いた後に測る）
   function placeSpeech() {
     for (const b of document.querySelectorAll(".speech")) {
-      const head = b.parentElement.querySelector(".phead");
-      const life = head && head.querySelector(".life");
-      if (!life) continue;
-      b.style.left = `${life.getBoundingClientRect().left - b.parentElement.getBoundingClientRect().left + 4}px`;
-      b.style.top = `${head.offsetTop + head.offsetHeight + 6}px`;
+      const icon = b.parentElement.querySelector(".phead .avatar");
+      if (!icon) continue;
+      const box = b.parentElement.getBoundingClientRect(), r = icon.getBoundingClientRect();
+      b.style.left = `${r.left + r.width / 2 - box.left - 18}px`;  // 左の余白へ少しはみ出してよい
+      b.style.top = `${r.bottom - box.top + 6}px`;
     }
   }
 
@@ -930,6 +930,21 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return svg;
   }
 
+  // Player のアイコン: 人の席は旅の少年、AI の席は石のゴーレム（どちらか分からない観戦では少年）。名前は Tip に
+  function avatar(v, p) {
+    const humans = ui.idle && ui.idle.humans;
+    const kind = humans && !humans.includes(p.id) ? "ai" : "human";
+    const a = el("span", "avatar" + (ui.play && ui.play.seat === p.id ? " me" : ""));
+    a.title = tr("player.name", { name: p.name, id: p.id }) + tr(`player.kind.${kind}`);
+    a.setAttribute("aria-label", a.title);
+    const img = el("img");
+    img.src = `static/avatar-${kind}.png`;
+    img.alt = "";
+    img.draggable = false;
+    a.append(img);
+    return a;
+  }
+
   function phaseStrip(t) {
     const strip = el("span", "phases");
     strip.title = `${t.phase}/${t.step}`;
@@ -961,7 +976,11 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     ui.attacking = new Set(v.combat.attacks.map((a) => a.attacker));
     ui.blocking = new Set(v.combat.blocks.map((b) => b.blocker));
     const t = v.turn;
-    $("turn").textContent = t.turn === 0 ? tr("turn.pregame") : `T${t.turn}`;
+    // ターンは、アクティブ Player の何ターン目か（ターンは席の順に回る）。通算は Tip に
+    const n = Math.ceil(t.turn / Math.max(1, v.players.length));
+    $("turn").textContent = t.turn === 0 ? tr("turn.pregame")
+      : ui.play && t.active === ui.play.seat ? tr("turn.mine", { n }) : tr("turn.theirs", { who: t.active, n });
+    $("turn").title = t.turn === 0 ? "" : tr("turn.title", { turn: t.turn });
     // 最新で、自分以外（審判・AI・相手）の番を待っている間は、動く印を出す
     const thinker = ui.live && t.waiting_on && !(ui.play && t.waiting_on === ui.play.seat) ? t.waiting_on : null;
     ui.thinker = thinker;

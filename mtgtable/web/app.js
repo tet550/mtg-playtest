@@ -450,7 +450,7 @@ onLang(() => {
 document.addEventListener("click", (e) => { if (!e.target.closest(".more")) setMore(false); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") setMore(false);
-  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || $("ask").open || $("credits").open) return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || $("ask").open || $("credits").open || $("options").open) return;
   if (e.key === "ArrowLeft") manual(() => step(-1))();
   if (e.key === "ArrowRight") manual(() => step(1))();
   if (e.key === " ") { e.preventDefault(); $("play").click(); }

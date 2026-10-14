@@ -24,8 +24,6 @@
       <option value="p1">p1</option>
       <option value="p2">p2</option>
     </select></label>
-    <label><input id="images" type="checkbox" checked> <span data-i18n="header.images">画像</span></label>
-    <label data-i18n-title="header.motion.title" title="タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）"><input id="motion" type="checkbox" checked> <span data-i18n="header.motion">動き</span></label>
     <span id="turn" class="turn"></span>
     <span id="thinking" class="thinking" hidden></span>
     <span id="playing" class="chip strong playing" hidden></span>
@@ -37,6 +35,7 @@
     <div id="moreMenu" class="moremenu" role="menu" hidden>
       <!-- 言語（日本語・English。名前は訳さない） -->
       <div class="langrow" role="group" data-i18n-aria-label="more.lang" aria-label="言語"><button type="button" role="menuitemradio" data-lang="ja" lang="ja">日本語</button><button type="button" role="menuitemradio" data-lang="en" lang="en">English</button></div>
+      <button type="button" role="menuitem" data-open="options" data-i18n="more.options">表示の設定</button>
       <button type="button" role="menuitem" data-open="credits" data-i18n="more.credits">権利の表記</button>
     </div>
   </div>
@@ -91,6 +90,13 @@
 <div id="menu" class="menu" hidden></div>
 <dialog id="ask" class="ask"></dialog>
 <div id="toast" class="toast" hidden></div>
+<!-- 表示の設定: ヘッダーの「⋯」から開く（変えるとすぐ効き、ブラウザに覚える） -->
+<dialog id="options" class="credits options">
+  <h3 data-i18n="options.title">表示の設定</h3>
+  <label class="opt"><input id="images" type="checkbox" checked> <span data-i18n="header.images">カードの画像を出す</span></label>
+  <label class="opt"><input id="motion" type="checkbox" checked> <span><span data-i18n="header.motion">動きを出す</span><br><small class="muted" data-i18n="header.motion.title">タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）</small></span></label>
+  <form method="dialog" class="crow"><button class="on" data-i18n="credits.close">閉じる</button></form>
+</dialog>
 <!-- 権利の表記: ヘッダーの「⋯」から開く -->
 <dialog id="credits" class="credits">
   <h3 data-i18n="credits.title">権利の表記</h3>

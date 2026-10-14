@@ -36,7 +36,7 @@ from .store import BaseStore, StaleCursor
 
 STATIC = pathlib.Path(__file__).with_name("web")
 _TYPES = {".svg": "image/svg+xml", ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-          ".css": "text/css; charset=utf-8"}
+          ".css": "text/css; charset=utf-8", ".png": "image/png"}
 IMAGE_MAX_AGE = 7 * 24 * 3600  # ブラウザにもキャッシュさせる
 KEYFRAME_EVERY = 25  # 時系列は、この件数ごとに丸ごとの view、間は前の view からの差分
 MAX_BODY = 256 * 1024  # 書き込みの要求の大きさの上限
