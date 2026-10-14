@@ -576,16 +576,20 @@ body:not(.log-open) #logClose { display: none; }
 #motionlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; overflow: visible; }
 #motionlayer > .card { will-change: transform, opacity; }
 
-/* 見出しの右側: 優先権は決まった欄、マナなどは残りの幅の中だけ（入らない分は切る）。左の名前・ライフ・フェイズを押さない */
-.phead .chip.prio { flex: none; }
-.phead .chip.prio.off { visibility: hidden; }
+/* 優先権: ライフの右・フェイズの左の決まった欄に、挙げた手のアイコン（持っていない側も欄は取っておく） */
+.phead .prio { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px;
+  border-radius: 6px; background: var(--accent); color: var(--on-accent); }
+.phead .prio svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.phead .prio.off { visibility: hidden; }
+/* 見出しの右側: マナなどは残りの幅の中だけ（入らない分は切る）。左の名前・ライフ・優先権・フェイズを押さない */
 .pextra { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap;
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent); }
 .pextra > * { flex: none; }
 .phead .pextra .chip.mana { max-width: none; }
 @media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
   .phead { gap: 5px; }
-  .phead .chip.prio { padding-left: 4px; padding-right: 4px; }
+  .phead .prio { width: 20px; height: 18px; }
+  .phead .prio svg { width: 13px; height: 13px; }
 }
 
 /* ---------------------------------------------------------------- GUI の対局（serve --play・席の鍵） */
@@ -985,7 +989,9 @@ body.turnflash #bottom { animation: turnflashside .9s ease-out 2; }
 /* 折り返しは基準の幅で決まるので、どちらも基準 0 から伸ばす。部品は中身の幅まで（狭いと対局の名前・ターンの文字を詰める）、
    再生バーは残り全部（中の部品が入る幅より狭くはしない） */
 .bar:has(.sitenav:not([hidden])) > .barctl { flex: 10 1 0; min-width: 0; }
-.bar:has(.sitenav:not([hidden])) > .barctl > .turn { flex: none; }  /* 詰めるのは対局の名前から（ターンは削らない） */
+/* 詰めるのは対局の名前から（ターンは削らない）。幅は一番長い文（「あなたの 10 ターン目」）に合わせて固定し、
+   文の長さで右の再生バーがずれないように */
+.bar:has(.sitenav:not([hidden])) > .barctl > .turn { flex: none; width: 8.5em; text-overflow: ellipsis; }
 .bar:has(.sitenav:not([hidden])) > .replay { order: 5; flex: 1 1 0; padding: 0; margin: 0; border: 0; gap: 6px; }
 .bar:has(.sitenav:not([hidden])) > .replay input { flex: 1 1 0; width: 0; min-width: 40px; }  /* スライダーの既定の幅（約 130px）を最小にしない */
 @media (max-width: 1279px) { .bar:has(.sitenav:not([hidden])) > .replay > :is(#first, #unit, #speed, #posText) { display: none; } }

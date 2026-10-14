@@ -63,14 +63,15 @@ export function createMotion() {
   let hidden = [];
   let animations = [];
 
-  // 今の画面のカードと束の位置
-  function capture() {
+  // 今の画面のカードと束の位置。settled: 傾きが変わりかけなら行き着く先で測る（描画の後。前は今見えている傾き）
+  function capture(settled = false) {
     const cards = new Map();
     for (const e of document.querySelectorAll(TRACKED)) {
       if (e.closest(".zone.opened")) continue;
       const rect = e.getBoundingClientRect();
       if (!rect.width) continue;
-      const item = { el: e, rect, size: measure(e), layer: layerOf(e), tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
+      const size = measure(e);
+      const item = { el: e, rect, size, pose: pose(e, rect, size, settled), layer: layerOf(e), tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
       for (const id of item.ids) if (!cards.has(id)) cards.set(id, item);
     }
     const places = new Map();
@@ -98,13 +99,33 @@ export function createMotion() {
     return { w: e.offsetWidth, h: e.offsetHeight, box: box && [box.offsetWidth, box.offsetHeight], img: img && [img.offsetWidth, img.offsetHeight] };
   }
 
-  // 要素の写しを、その位置に重ねる
-  function ghost(e, rect, size = measure(e)) {
+  // 要素の置き場所（transform を除いた箱の中心）と、要素自身の transform（手札の扇の傾き・ホバーで浮かせた分）。
+  // 写しは傾きごと動かす（傾きを外して動かすと、手札の枚数が変わったときに全部のカードが真っすぐになってから傾き直す）。
+  // settled なら、傾きが変わりかけ（CSS の transition の途中）でも行き着く先の傾きで測る
+  function pose(e, rect, size, settled) {
+    const cs = getComputedStyle(e);
+    let m = new DOMMatrixReadOnly(cs.transform === "none" ? undefined : cs.transform);
+    const t = settled && e.getAnimations().find((a) => a.transitionProperty === "transform");
+    if (t) {
+      const frames = t.effect.getKeyframes();
+      try { m = new DOMMatrixReadOnly(frames[frames.length - 1].transform); } catch { /* 読めなければ今の傾き */ }
+    }
+    const [ox, oy] = cs.transformOrigin.split(" ").map(parseFloat);
+    const dx = ox - size.w / 2, dy = oy - size.h / 2;  // 箱の中心から transform の原点まで
+    // 見えている外接の箱の中心 = 原点 + m（中心 − 原点）から、箱の中心を逆に求める（今の傾きで測った rect から）
+    const now = new DOMMatrixReadOnly(cs.transform === "none" ? undefined : cs.transform);
+    const c = center(rect);
+    return { x: c.x - dx + now.a * dx + now.c * dy - now.e, y: c.y - dy + now.b * dx + now.d * dy - now.f,
+      tf: m.toString(), origin: cs.transformOrigin };
+  }
+
+  // 要素の写しを、その位置に重ねる（transform は動きの keyframe で与える）
+  function ghost(e, pose, size = measure(e)) {
     const g = e.cloneNode(true);
     g.classList.remove("sel");
     g.style.visibility = "";
-    Object.assign(g.style, { position: "fixed", left: `${rect.left}px`, top: `${rect.top}px`, margin: "0",
-      width: `${size.w}px`, height: `${size.h}px`, boxSizing: "border-box" });
+    Object.assign(g.style, { position: "fixed", left: `${pose.x - size.w / 2}px`, top: `${pose.y - size.h / 2}px`, margin: "0",
+      width: `${size.w}px`, height: `${size.h}px`, boxSizing: "border-box", transformOrigin: pose.origin, transition: "none" });
     const gbox = g.querySelector(".artbox");
     if (size.box && gbox) {
       Object.assign(gbox.style, { width: `${size.box[0]}px`, height: `${size.box[1]}px` });
@@ -124,44 +145,47 @@ export function createMotion() {
 
   // 本物を隠して写しを動かし、終わったら本物に戻す
   function fly(now, frames, duration) {
-    const g = ghost(now.el, now.rect);
+    const g = ghost(now.el, now.pose, now.size);
     now.el.style.visibility = "hidden";
     hidden.push(now.el);
     run(g, frames, duration, () => { g.remove(); now.el.style.visibility = ""; });
   }
 
   // 前の位置・向きから今の位置へ（タップは 90° 回す）。hide: 始め・終わりが窓の下に隠れているか（隠れている側は透明にする）
+  // 始めと終わりの transform は同じ並び（translate rotate scale matrix）にして、1つずつ補間させる
+  const pos = (x, y, turn, sx, sy, tf) => `translate(${x}px, ${y}px) rotate(${turn}deg) scale(${sx}, ${sy}) ${tf}`;
+  const STILL = "matrix(1, 0, 0, 1, 0, 0)";
+
   function move(was, now, duration, hide) {
-    const a = center(was.rect), b = center(now.rect);
+    const a = was.pose, b = now.pose;
     const turn = was.tapped === now.tapped ? 0 : now.tapped ? -90 : 90;
     const [sx, sy] = turn
-      ? [was.rect.height / now.rect.width, was.rect.width / now.rect.height]
-      : [was.rect.width / now.rect.width, was.rect.height / now.rect.height];
-    fly(now, [{ transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) rotate(${turn}deg) scale(${sx}, ${sy})`, opacity: hide[0] ? 0 : 1 },
-      { transform: "none", opacity: hide[1] ? 0 : 1 }], duration);
+      ? [was.size.h / now.size.w, was.size.w / now.size.h]
+      : [was.size.w / now.size.w, was.size.h / now.size.h];
+    fly(now, [{ transform: pos(a.x - b.x, a.y - b.y, turn, sx, sy, a.tf), opacity: hide[0] ? 0 : 1 },
+      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration);
   }
 
   // 束（ライブラリーなど）から出てくる
   function enter(now, from, duration, hide) {
-    const a = center(from), b = center(now.rect);
-    const s = Math.min(from.width / now.rect.width, from.height / now.rect.height);
-    fly(now, [{ transform: `translate(${a.x - b.x}px, ${a.y - b.y}px) scale(${s})`, opacity: hide[0] ? 0 : 0.4 },
-      { transform: "none", opacity: hide[1] ? 0 : 1 }], duration);
+    const a = center(from), b = now.pose;
+    const s = Math.min(from.width / now.size.w, from.height / now.size.h);
+    fly(now, [{ transform: pos(a.x - b.x, a.y - b.y, 0, s, s, STILL), opacity: hide[0] ? 0 : 0.4 },
+      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration);
   }
 
   // どこからか分からないもの（トークンなど）は、その場に現れる
   function appear(now, duration) {
-    run(now.el, [{ transform: "scale(.6)", opacity: 0 }, { transform: "none", opacity: 1 }], duration);
+    run(now.el, [{ scale: ".6", opacity: 0 }, { scale: "1", opacity: 1 }], duration);  // transform（扇の傾き）とは別に
   }
 
   // 画面から消えるカードは、写しを行き先の束まで飛ばす（行き先が見えなければ、その場で消える）
   function leave(was, to, duration, hide) {
-    const g = ghost(was.el, was.rect, was.size);  // was.el は描き直しで画面から外れている
-    const a = center(was.rect);
-    const end = to
-      ? `translate(${center(to).x - a.x}px, ${center(to).y - a.y}px) scale(${Math.min(to.width / was.rect.width, to.height / was.rect.height)})`
-      : "scale(.8)";
-    run(g, [{ transform: "none", opacity: hide[0] ? 0 : 1 }, { transform: end, opacity: hide[1] ? 0 : 0.9, offset: 0.85 },
+    const g = ghost(was.el, was.pose, was.size);  // was.el は描き直しで画面から外れている
+    const a = was.pose;
+    const s = to ? Math.min(to.width / was.size.w, to.height / was.size.h) : 0.8;
+    const end = to ? pos(center(to).x - a.x, center(to).y - a.y, 0, s, s, STILL) : pos(0, 0, 0, s, s, a.tf);
+    run(g, [{ transform: pos(0, 0, 0, 1, 1, a.tf), opacity: hide[0] ? 0 : 1 }, { transform: end, opacity: hide[1] ? 0 : 0.9, offset: 0.85 },
       { transform: end, opacity: 0 }], duration, () => g.remove());
   }
 
@@ -203,9 +227,29 @@ export function createMotion() {
     return null;
   }
 
+  // 写しを見せるのは、本物のカードが見える所（各 Player の欄の枠の内側のうち見出し（名前・ライフ）より下と、
+  // 盤面の上の小窓）だけ。手札のように欄の端で切れているカードの写しも、枠・見出し・その上の余白には出ない
+  function clipToSides() {
+    let d = "";
+    const add = (l, t, r, b) => { if (r > l && b > t) d += `M${l} ${t}H${r}V${b}H${l}Z`; };
+    for (const side of document.querySelectorAll("#top, #bottom")) {
+      const r = side.getBoundingClientRect();
+      const l = r.left + side.clientLeft, t = r.top + side.clientTop;
+      const head = side.querySelector(".phead");
+      const below = head ? Math.max(t, head.getBoundingClientRect().bottom) : t;
+      add(l, below, l + side.clientWidth, t + side.clientHeight);
+    }
+    for (const e of document.querySelectorAll("#combatbox, #fl-stack, #fl-detail")) {
+      const r = e.getBoundingClientRect();
+      if (r.width && r.height) add(r.left, r.top, r.right, r.bottom);
+    }
+    layer.style.clipPath = d ? `path("${d}")` : "";
+  }
+
   // 描画の後に呼ぶ。before は描画の前の capture()
   function play(before, oldView, newView, duration) {
-    const after = capture();
+    clipToSides();
+    const after = capture(true);
     const jobs = [];
     const done = new Set();
     // 始め・終わりが窓の下に隠れているか。両方とも隠れていれば動かさない（写しが窓の上に出てしまうので）
@@ -222,9 +266,9 @@ export function createMotion() {
         else jobs.push(() => appear(now, duration));
         continue;
       }
-      const dx = Math.abs(was.rect.left - now.rect.left), dy = Math.abs(was.rect.top - now.rect.top);
-      const dw = Math.abs(was.rect.width - now.rect.width);
-      if (dx > 1 || dy > 1 || dw > 1 || was.tapped !== now.tapped) {
+      const dx = Math.abs(was.pose.x - now.pose.x), dy = Math.abs(was.pose.y - now.pose.y);
+      const dw = Math.abs(was.size.w - now.size.w);
+      if (dx > 1 || dy > 1 || dw > 1 || was.tapped !== now.tapped || was.pose.tf !== now.pose.tf) {
         add([hidden0(was.rect, was.layer), hidden1(now.rect, now.layer)], (hide) => move(was, now, duration, hide));
       }
     }

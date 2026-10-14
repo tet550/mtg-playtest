@@ -542,11 +542,11 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const rr = row.getBoundingClientRect();
     if (!hit && e.clientY > rr.top - 40 && e.clientY < rr.bottom + 40) {
       const t = drag.tile;
-      // 入れ替えの判定は、滑っている途中のずれ（transform）を除いた位置で比べる。見た目の位置で比べると、
+      // 入れ替えの判定は、滑っている途中のずれ（translate）を除いた位置で比べる。見た目の位置で比べると、
       // 入れ替えた直後に元へ戻す判定になって行ったり来たりする
       const center = (o) => {
         const r = o.getBoundingClientRect();
-        return r.left + r.width / 2 - new DOMMatrixReadOnly(getComputedStyle(o).transform).e;
+        return r.left + r.width / 2 - (parseFloat(getComputedStyle(o).translate) || 0);
       };
       const mid = e.clientX - drag.dx + t.offsetWidth / 2;
       const others = tilesOf(row).filter((o) => o !== t);
@@ -557,9 +557,10 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
         if (next) row.insertBefore(t, next); else last.after(t);
         // 途中の並びを覚えておく（ドラッグの間に描き直しても、この並びで描く。確定しなければ finish で戻す）
         (ui.handOrder ||= {})[drag.pid] = orderOf(row);
-        for (const [o, x] of before) {  // 押し出されたカードは元の位置から滑らせる（FLIP）
+        fanTilt(row);  // 傾きを新しい並びの位置に合わせる
+        for (const [o, x] of before) {  // 押し出されたカードは元の位置から滑らせる（FLIP。扇の transform とは別の translate で）
           const dx = x - o.offsetLeft;
-          if (dx) o.animate([{ transform: `translateX(${dx}px)` }, { transform: "none" }], SLIDE);
+          if (dx) o.animate([{ translate: `${dx}px 0` }, { translate: "0 0" }], SLIDE);
         }
       }
     }
@@ -593,6 +594,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     side.addEventListener("contextmenu", (e) => { if (drag && e.target.closest(".hand")) { e.preventDefault(); e.stopPropagation(); } }, true);
   }
 
+  // 扇の傾き: 中央からの位置を、端が ±3 になるように縮める（枚数が多くても傾きすぎない）。並べ替えた後にも呼ぶ
+  function fanTilt(row) {
+    const n = row.children.length, mid = (n - 1) / 2;
+    [...row.children].forEach((c, i) => c.style.setProperty("--off", ((i - mid) * 3 / Math.max(3, mid)).toFixed(2)));
+  }
+
   function handRow(v, pid) {
     const hand = v.zones[`${pid}.hand`];
     const shown = sortHand(pid, hand.cards || hand.known || []);
@@ -607,9 +614,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       q.title = tr("hand.toDraw.title");
       row.append(q);
     }
-    // 扇の傾き: 中央からの位置を、端が ±3 になるように縮める（枚数が多くても傾きすぎない）
-    const n = row.children.length, mid = (n - 1) / 2;
-    [...row.children].forEach((c, i) => c.style.setProperty("--off", ((i - mid) * 3 / Math.max(3, mid)).toFixed(2)));
+    fanTilt(row);
     const box = el("div", "handbox");
     box.dataset.key = `hand:${pid}`;
     box.dataset.zone = `${pid}.hand`;
@@ -685,10 +690,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       head.dataset.target = pid;  // 手札から落として対象にする（手札のドラッグ）
     }
     if (ui.marks && ui.marks.has(pid)) head.classList.add(ui.marks.get(pid));
-    // アクティブ Player のライフの横に、今のフェイズ
+    // ライフの横に優先権（アイコン）。欄はいつも取っておく（持ち主が替わってもフェイズ以降の並びがずれないように）
+    const prio = el("span", "prio" + (v.turn.priority === pid ? "" : " off"));
+    prio.title = tr("player.priority");
+    prio.setAttribute("aria-label", prio.title);
+    prio.append(icon(PRIORITY_ICON));
+    head.append(prio);
+    // アクティブ Player は、その横に今のフェイズ
     if (v.turn.active === pid && v.turn.turn > 0) head.append(phaseStrip(v.turn));
-    // 優先権の欄はいつも取っておく（持ち主が替わっても横の並びがずれないように）
-    head.append(el("span", "chip prio" + (v.turn.priority === pid ? "" : " off"), tr("player.priority")));
     if (ui.thinker === pid) {
       const think = el("span", "chip think", tr("player.thinking"));
       think.append(dots());
@@ -950,6 +959,8 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     main2: "M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM9 7h6M9 10h6",
     ending: "M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z",                                          // 月
   };
+  const PRIORITY_ICON = "M8 13V5.5a1.5 1.5 0 0 1 3 0V12M11 11.5v-8a1.5 1.5 0 0 1 3 0V12M14 11.5V5a1.5 1.5 0 0 1 3 0v7"
+    + "M17 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1.5a7 7 0 0 1-5.6-2.8L3.3 14.6a1.5 1.5 0 0 1 2.4-1.8L8 15.5";  // 挙げた手
   const PHASES = ["beginning", "main1", "combat", "main2", "ending"];
   const STEPS = ["untap", "upkeep", "draw", "main", "beginning_of_combat", "declare_attackers", "declare_blockers",
     "combat_damage", "first_strike_damage", "end_of_combat", "end", "cleanup"];
