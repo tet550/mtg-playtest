@@ -57,6 +57,7 @@
       <option value="2500" data-i18n="replay.speed.slow">遅い</option>
     </select>
     <button id="live" class="on" data-i18n-title="replay.live.title" title="最新を追う">Live</button>
+    <button id="rec" class="rec" hidden data-i18n="rec.button" data-i18n-title="rec.button.title" title="盤面を動画に録る（15 秒か 30 秒）">● 録画</button>
     <span id="posText" class="muted"></span>
   </div>
 </header>
@@ -96,6 +97,17 @@
   <label class="opt"><input id="images" type="checkbox" checked> <span data-i18n="header.images">カードの画像を出す</span></label>
   <label class="opt"><input id="motion" type="checkbox" checked> <span><span data-i18n="header.motion">動きを出す</span><br><small class="muted" data-i18n="header.motion.title">タップや移動を動きで見せる（1件ずつの移動と自動再生のとき）</small></span></label>
   <form method="dialog" class="crow"><button class="on" data-i18n="credits.close">閉じる</button></form>
+</dialog>
+<!-- 録画: 再生のバーの「● 録画」から開く（record.js） -->
+<dialog id="recDialog" class="credits">
+  <h3 data-i18n="rec.title">録画</h3>
+  <p id="recHint"></p>
+  <p data-i18n="rec.note">ブラウザがこのタブの共有を確かめる。録るのは盤面だけ（ヘッダーと Log は入らない）。録り終えると動画のファイルを保存する。</p>
+  <div class="crow">
+    <button type="button" class="on" data-sec="15" data-i18n="rec.s15">15 秒</button>
+    <button type="button" class="on" data-sec="30" data-i18n="rec.s30">30 秒</button>
+    <form method="dialog"><button data-i18n="rec.cancel">やめる</button></form>
+  </div>
 </dialog>
 <!-- 権利の表記: ヘッダーの「⋯」から開く -->
 <dialog id="credits" class="credits">

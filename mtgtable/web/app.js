@@ -6,6 +6,7 @@ import { createRenderer } from "./render.js";
 import { createPlay, toast } from "./play.js";
 import { createSite, routeOf } from "./site.js";
 import { applyDom, onLang, setLang, t } from "./i18n.js";
+import { canRecord, createRecorder } from "./record.js";
 
 applyDom();  // 今の言語の文言を HTML の印に入れる（描く前に）
 
@@ -96,6 +97,7 @@ function applySeatMode() {
   $("seat").disabled = !!k;
   $("playing").hidden = !k;
   $("fl-play").hidden = !k;
+  $("rec").hidden = !(viewing && !k && canRecord());  // 録画は再生（#/view）で、操作していないときだけ
   document.body.classList.toggle("playing", !!k);
   seatLabels();
 }
@@ -171,6 +173,7 @@ function listen() {
 }
 
 function changeSelection() {
+  recorder.stop();
   stopPlay();
   applySeatMode();
   ui.open.clear();
@@ -319,6 +322,10 @@ function startPlay(from = null) {
 
 const manual = (f) => (...args) => { stopPlay(); return f(...args); };
 
+// 録画（再生の画面）: 今の位置から自動再生して、盤面を動画に録る
+const recorder = createRecorder({ ui, target: document.querySelector(".board"), startPlay: () => startPlay(), stopPlay, toast,
+  fileName: (from, ext) => `mtgtable-${ui.game}-${ui.seat}-${from}.${ext}` });
+
 // ---------------------------------------------------------------- 小窓と Log
 
 // 小窓: 見出しをドラッグで盤面の中を移動（位置は覚える）、– で畳む、× で閉じる
@@ -452,13 +459,14 @@ onLang(() => {
   for (const o of $("game").options) o.textContent = gameLabel(o.value);
   for (const o of $("seat").options) o.textContent = viewing ? VIEW_LABEL(o.value) : o.value === "judge" ? t("seat.judge") : o.value;
   if (site) site.relabel();
+  recorder.relabel();
   if (ui.view) render();
   if (document.body.classList.contains("log-open")) renderLog();
 });
 document.addEventListener("click", (e) => { if (!e.target.closest(".more")) setMore(false); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") setMore(false);
-  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || $("ask").open || $("credits").open || $("options").open) return;
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName) || document.body.classList.contains("sitepage") || document.querySelector("dialog[open]")) return;
   if (e.key === "ArrowLeft") manual(() => step(-1))();
   if (e.key === "ArrowRight") manual(() => step(1))();
   if (e.key === " ") { e.preventDefault(); $("play").click(); }

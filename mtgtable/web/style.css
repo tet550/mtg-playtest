@@ -953,6 +953,8 @@ table.decks .sharerow .crow { display: flex; flex-wrap: wrap; gap: 6px; align-it
 .credits button { padding: 6px 16px; border-radius: 8px; }
 .options .opt { display: flex; align-items: flex-start; gap: 8px; margin: 0 0 10px; font-size: 13px; line-height: 1.5; cursor: pointer; }
 .options .opt input { margin-top: 3px; }
+#recDialog .crow { gap: 8px; }
+.replay .rec.on { background: #c0392b; border-color: #c0392b; color: #fff; }
 body.sitepage { padding-bottom: 32px; }
 .page .draft { border: 1px dashed var(--warn); color: var(--warn); padding: 8px 12px; border-radius: 8px; }
 
