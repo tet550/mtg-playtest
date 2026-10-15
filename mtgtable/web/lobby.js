@@ -1,4 +1,4 @@
-// 対局を作る画面（手元のサイト）: 登録したデッキで、AI と・招待した人と。招待の URL を開いた人（ゲスト）の「席に着く」画面も。
+// 対局を作る画面（手元のサイト）: 登録したデッキか同梱のデッキで、AI と・招待した人と。招待の URL を開いた人（ゲスト）の「席に着く」画面も。
 import { el } from "./dom.js";
 import { FORMATS, checkLines } from "./decks.js";
 
@@ -52,17 +52,17 @@ export function createLobby(source, { toast, openGame, active }) {
   async function render(root) {
     clearInterval(timer);
     root.replaceChildren(el("h2", null, "対局を作る"));
-    let decks = [];
+    let decks = [], repo = [];
     try { decks = await source.decks(); } catch (e) { toast(e.message, true); }
+    try { repo = await source.aiDecks(); } catch (_) { repo = []; }
     if (!decks.length) {
-      const p = el("p", null, "先にデッキを登録します。");
+      const p = el("p", "muted", "デッキを登録していないので、用意したデッキで対局します。自分のデッキを使うときは");
       const a = el("a", null, "デッキへ");
       a.href = "#/decks";
       p.append(" ", a);
       root.append(p);
-    } else {
-      root.append(await form(decks));
     }
+    if (decks.length || repo.length) root.append(form(decks, repo));
     const list = el("div", "invites");
     root.append(el("h3", null, "招待"), list);
     await renderInvites(list);
@@ -73,13 +73,12 @@ export function createLobby(source, { toast, openGame, active }) {
     }, 4000);
   }
 
-  async function form(decks) {
+  function form(decks, repo) {
     const f = el("form", "deckform");
-    const mine = select(decks.map((d) => [d.id, `${d.name}（${d.main} 枚）`]));
+    const mine = select([...decks.map((d) => [`deck:${d.id}`, `${d.name}（${d.main} 枚）`]),
+      ...repo.map((n) => [`repo:${n}`, `用意したデッキ: ${n}`])]);
     const opponent = select([["ai", "AI と対戦する"], ["human", "人を招待して対戦する"]]);
-    let aiDecks = [];
-    try { aiDecks = await source.aiDecks(); } catch (_) { aiDecks = []; }
-    const aiDeck = select([...aiDecks.map((n) => [`repo:${n}`, `用意したデッキ: ${n}`]),
+    const aiDeck = select([...repo.map((n) => [`repo:${n}`, `用意したデッキ: ${n}`]),
       ...decks.map((d) => [`deck:${d.id}`, `登録したデッキ: ${d.name}`])]);
     const aiField = field("AI のデッキ", aiDeck, "審判と AI の席は Claude Code が回します（mtg-playtest スキルの GUI の対局）");
     opponent.onchange = () => { aiField.hidden = opponent.value !== "ai"; };

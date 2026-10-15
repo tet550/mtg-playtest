@@ -3,7 +3,8 @@
 使うのは手元の1人（ホスト）。ホストの席は、卓の外の文書 "seats" に鍵の無い席として置く（host_seats）。
 審判と AI の席は Claude Code が回す（`next` の監視と mtg-table エージェント）。
 
-- AI と: すぐに対局を作る。ホストは p1、p2 は "seats" に無い席（AI）。AI のデッキは登録したデッキか、同梱のデッキ
+- デッキは登録したデッキか、同梱のデッキ（デッキを登録していなくても対局を作れる）
+- AI と: すぐに対局を作る。ホストは p1、p2 は "seats" に無い席（AI）
 - 招待した人と: まず招待（表 invites）だけを作り、URL を返す。招待された人（ゲスト）は、デッキリストを貼るか同梱のデッキを
   選んで席に着く。その時点で対局を作り（相手のデッキが決まるまで初期状態を作れないので）、ゲストの席の鍵を返す。
   ゲストはその鍵（ブラウザが覚える）で自分の席だけを読み書きする。招待の URL は1回だけ使え、期限つきで、ホストは
@@ -126,18 +127,10 @@ class Lobby:
     # ---- 作る
 
     def create(self, body: dict) -> dict:
-        """{"deck": 登録したデッキの id, "opponent": "ai" | "human", "ai_deck": "deck:<id>" | "repo:<名前>"}"""
-        mine = snapshot(self.decks.get(str(body.get("deck") or "")))
+        """{"deck": "deck:<id>" | "repo:<名前>"（登録したデッキか同梱のデッキ）, "opponent": "ai" | "human", "ai_deck": 同じ形}"""
+        mine = self._entry(str(body.get("deck") or ""))
         if body.get("opponent") == "ai":
-            ai = str(body.get("ai_deck") or "")
-            kind, _, ref = ai.partition(":")
-            if kind == "deck":
-                other = snapshot(self.decks.get(ref))
-            elif kind == "repo":
-                other = ref
-            else:
-                raise ValueError('ai_deck must be "deck:<id>" or "repo:<name>"')
-            game = self._new_game({"p1": mine, "p2": other}, ["p1"])
+            game = self._new_game({"p1": mine, "p2": self._entry(str(body.get("ai_deck") or ""))}, ["p1"])
             return {"game": game, "seat": "p1"}
         if body.get("opponent") != "human":
             raise ValueError("opponent must be ai or human")
@@ -145,8 +138,20 @@ class Lobby:
         expires = (datetime.datetime.now() + datetime.timedelta(hours=INVITE_TTL)).isoformat(timespec="seconds")
         self._run("INSERT INTO invites (id, owner, deck, visibility, token_sha256, expires_at, created_at) "
                   "VALUES (?, ?, ?, '', ?, ?, ?)",
-                  (invite, LOCAL, json.dumps(mine, ensure_ascii=False), _hash(token), expires, _now()))
+                  (invite, LOCAL, json.dumps(mine if isinstance(mine, dict) else {"repo": mine, "name": mine, "format": "standard"},
+                                             ensure_ascii=False), _hash(token), expires, _now()))
         return {"invite": invite, "token": token, "expires": expires}
+
+    def _entry(self, ref: str):
+        """"deck:<id>" は登録したデッキの写し、"repo:<名前>" は同梱のデッキの名前（start_game の entries の値）。"""
+        kind, _, key = ref.partition(":")
+        if kind == "deck":
+            return snapshot(self.decks.get(key))
+        if kind == "repo":
+            if key not in repo_decks():
+                raise LookupError("unknown deck %r" % key)
+            return key
+        raise ValueError('deck must be "deck:<id>" or "repo:<name>"')
 
     # ---- 招待
 
@@ -197,7 +202,8 @@ class Lobby:
         if self._run("UPDATE invites SET game = ? WHERE id = ? AND game IS NULL", (game, invite)) != 1:
             raise Refused("this invite has already been used")
         try:
-            self._new_game({"p1": json.loads(deck), "p2": guest}, ["p1"], game)
+            host = json.loads(deck)
+            self._new_game({"p1": host.get("repo") or host, "p2": guest}, ["p1"], game)
             token = play.invite(self.games.open(game), "p2")
         except Exception:
             self._run("UPDATE invites SET game = NULL WHERE id = ?", (invite,))

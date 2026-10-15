@@ -110,10 +110,10 @@ class SiteTest(unittest.TestCase):
         code, d = h.call("/api/decks", {"name": "green", "format": "standard",
                                         "text": deck("56 Forest", "4 Grizzly Bears")})
         self.assertEqual(code, 201, d)
-        code, r = h.call("/api/games", {"deck": d["id"], "opponent": "ai", "ai_deck": "repo:piza"})
+        code, r = h.call("/api/games", {"deck": "deck:" + d["id"], "opponent": "ai", "ai_deck": "repo:piza"})
         self.assertEqual((code, r["seat"]), (201, "p1"))
         self.assertEqual(prompt.ai_seats(SqliteGameStore(self.db, r["game"])), ["p2"])  # 相手は AI の席（鍵の無い席）
-        code, inv = h.call("/api/games", {"deck": d["id"], "opponent": "human"})
+        code, inv = h.call("/api/games", {"deck": "deck:" + d["id"], "opponent": "human"})
         join = lambda: Browser(self.base, guest=True).call(  # noqa: E731
             "/api/invites/%s/join" % inv["invite"], {"token": inv["token"], "text": deck("60 Forest"), "name": "lands"})
         code, j = join()
