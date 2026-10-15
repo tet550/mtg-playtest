@@ -136,19 +136,44 @@ export function createMotion() {
     return g;
   }
 
-  function run(target, frames, duration, done) {
-    const a = target.animate(frames, { duration, easing: EASE, fill: "both" });
+  function run(target, frames, duration, done, delay = 0) {
+    const a = target.animate(frames, { duration, delay, easing: EASE, fill: "both" });
     animations.push(a);
     a.onfinish = () => { a.cancel(); done && done(); };
     return a;
   }
 
-  // 本物を隠して写しを動かし、終わったら本物に戻す
-  function fly(now, frames, duration) {
+  // 本物を隠して写しを動かし、終わったら本物に戻す。doom: 戦場から除かれるカードの演出（その間は動き出さない）
+  function fly(now, frames, duration, doom) {
     const g = ghost(now.el, now.pose, now.size);
     now.el.style.visibility = "hidden";
     hidden.push(now.el);
-    run(g, frames, duration, () => { g.remove(); now.el.style.visibility = ""; });
+    run(g, frames, duration, () => { g.remove(); now.el.style.visibility = ""; }, doom ? doom(g) : 0);
+  }
+
+  // 戦場から除かれるカード: その場で赤く光って震え、砕けた破片が飛び散ってから、行き先へ動く。
+  // 写し（transform で動く）に translate と filter を重ねるので、動きとは別に当てられる。戻す時間（ms）を返す。
+  // lead: 先に見せたい演出（解決の光が対象に当たるまで）の分だけ待つ
+  const SHAKE = 380;
+  function shatter(g, at, lead) {
+    animations.push(g.animate([
+      { translate: "0 0", filter: "none" },
+      { translate: "-3px 0", filter: "brightness(1.4) sepia(1) saturate(4) hue-rotate(-30deg)", offset: 0.2 },
+      { translate: "3px 1px", offset: 0.35 }, { translate: "-3px -1px", offset: 0.5 }, { translate: "2px 0", offset: 0.65 },
+      { translate: "-1px 0", filter: "brightness(1.8) sepia(1) saturate(5) hue-rotate(-30deg)", offset: 0.85 },
+      { translate: "0 0", filter: "grayscale(.6) brightness(.8)" }],
+    { duration: SHAKE, delay: lead, fill: "both" }));
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + Math.random() * 0.5;
+      const dist = 40 + Math.random() * 40;
+      burst("shard", at.x + (Math.random() - 0.5) * 30, at.y + (Math.random() - 0.5) * 40, [
+        { translate: "0 0", rotate: "0deg", opacity: 1 },
+        { translate: `${Math.cos(angle) * dist}px ${Math.sin(angle) * dist + 20}px`, rotate: `${(Math.random() - 0.5) * 540}deg`, opacity: 0 }],
+      { duration: 520, delay: lead + SHAKE * 0.85, easing: "cubic-bezier(.2, .8, .4, 1)" });
+    }
+    burst("shatterring", at.x, at.y, [{ scale: "0.3", opacity: 0.9 }, { scale: "1.4", opacity: 0 }],
+      { duration: 420, delay: lead + SHAKE * 0.85, easing: "ease-out" });
+    return lead + SHAKE;
   }
 
   // 前の位置・向きから今の位置へ（タップは 90° 回す）。hide: 始め・終わりが窓の下に隠れているか（隠れている側は透明にする）
@@ -156,14 +181,14 @@ export function createMotion() {
   const pos = (x, y, turn, sx, sy, tf) => `translate(${x}px, ${y}px) rotate(${turn}deg) scale(${sx}, ${sy}) ${tf}`;
   const STILL = "matrix(1, 0, 0, 1, 0, 0)";
 
-  function move(was, now, duration, hide) {
+  function move(was, now, duration, hide, doom) {
     const a = was.pose, b = now.pose;
     const turn = was.tapped === now.tapped ? 0 : now.tapped ? -90 : 90;
     const [sx, sy] = turn
       ? [was.size.h / now.size.w, was.size.w / now.size.h]
       : [was.size.w / now.size.w, was.size.h / now.size.h];
     fly(now, [{ transform: pos(a.x - b.x, a.y - b.y, turn, sx, sy, a.tf), opacity: hide[0] ? 0 : 1 },
-      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration);
+      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration, doom);
   }
 
   // 束（ライブラリーなど）から出てくる
@@ -180,13 +205,13 @@ export function createMotion() {
   }
 
   // 画面から消えるカードは、写しを行き先の束まで飛ばす（行き先が見えなければ、その場で消える）
-  function leave(was, to, duration, hide) {
+  function leave(was, to, duration, hide, doom) {
     const g = ghost(was.el, was.pose, was.size);  // was.el は描き直しで画面から外れている
     const a = was.pose;
     const s = to ? Math.min(to.width / was.size.w, to.height / was.size.h) : 0.8;
     const end = to ? pos(center(to).x - a.x, center(to).y - a.y, 0, s, s, STILL) : pos(0, 0, 0, s, s, a.tf);
     run(g, [{ transform: pos(0, 0, 0, 1, 1, a.tf), opacity: hide[0] ? 0 : 1 }, { transform: end, opacity: hide[1] ? 0 : 0.9, offset: 0.85 },
-      { transform: end, opacity: 0 }], duration, () => g.remove());
+      { transform: end, opacity: 0 }], duration, () => g.remove(), doom ? doom(g) : 0);
   }
 
   // 見えていなかったカードの出どころ: 前の view で束にあればその束、無ければ数が減ったライブラリー・手札
@@ -246,8 +271,8 @@ export function createMotion() {
     layer.style.clipPath = d ? `path("${d}")` : "";
   }
 
-  // 描画の後に呼ぶ。before は描画の前の capture()
-  function play(before, oldView, newView, duration) {
+  // 描画の後に呼ぶ。before は描画の前の capture()。lead: 除去の演出を始めるまで待つ時間（解決の光が当たるまで）
+  function play(before, oldView, newView, duration, lead = 0) {
     clipToSides();
     const after = capture(true);
     const jobs = [];
@@ -256,6 +281,11 @@ export function createMotion() {
     const hidden0 = (rect, layer) => covered(rect, layer, before.covers);
     const hidden1 = (rect, layer) => covered(rect, layer, after.covers);
     const add = (hide, job) => { if (!(hide[0] && hide[1])) jobs.push(() => job(hide)); };
+    // 戦場から除かれた（戦場にあって、今は戦場に無い）カードは、砕けてから動く。進めたときだけ
+    const forward = newView.version > oldView.version;
+    const onField = (view, id) => (zoneOf(view, id) || {}).key === "battlefield";
+    const doomOf = (item, hide) => (forward && !hide[0] && item.ids.some((id) => onField(oldView, id) && !onField(newView, id))
+      ? (g) => shatter(g, center(item.rect), lead) : null);
     for (const now of after.cards.values()) {
       if (done.has(now)) continue;
       done.add(now);
@@ -269,17 +299,111 @@ export function createMotion() {
       const dx = Math.abs(was.pose.x - now.pose.x), dy = Math.abs(was.pose.y - now.pose.y);
       const dw = Math.abs(was.size.w - now.size.w);
       if (dx > 1 || dy > 1 || dw > 1 || was.tapped !== now.tapped || was.pose.tf !== now.pose.tf) {
-        add([hidden0(was.rect, was.layer), hidden1(now.rect, now.layer)], (hide) => move(was, now, duration, hide));
+        add([hidden0(was.rect, was.layer), hidden1(now.rect, now.layer)], (hide) => move(was, now, duration, hide, doomOf(was, hide)));
       }
     }
     for (const was of new Set(before.cards.values())) {
       if (was.ids.some((id) => after.cards.has(id))) continue;
       const to = destination(was.ids[0], oldView, newView, after);
-      add([hidden0(was.rect, was.layer), !to || hidden1(to, -1)], (hide) => leave(was, to, duration, hide));
+      add([hidden0(was.rect, was.layer), !to || hidden1(to, -1)], (hide) => leave(was, to, duration, hide, doomOf(was, hide)));
     }
     if (jobs.length > MAX_JOBS) return;
     for (const job of jobs) job();
   }
 
-  return { capture, stop, play };
+  // 戦闘ダメージに入ったとき、戦闘の欄で攻撃クリーチャーとブロックしているカードがぶつかり合う。
+  // ブロックされていなければ、攻撃先の向き（矢印）へ突っ込む。続けて描き直しても止めない（stop() とは別に持つ）
+  // (x, y) に置いた飾りの要素を動かし、終わったら消す（カードの写しの層とは別に、画面の一番上に置く）
+  function burst(cls, x, y, frames, timing) {
+    const s = document.createElement("div");
+    s.className = "fx " + cls;
+    Object.assign(s.style, { left: `${x}px`, top: `${y}px` });
+    document.body.append(s);
+    const a = s.animate(frames, { fill: "both", ...timing });
+    a.onfinish = a.oncancel = () => s.remove();
+    return a;
+  }
+
+  let clashes = [];
+  function clash() {
+    for (const a of clashes) a.cancel();
+    clashes = [];
+    for (const e of document.querySelectorAll(".clashspark")) e.remove();
+    const box = document.getElementById("combatbox");
+    if (!box || box.hidden || box.classList.contains("min")) return;
+    const D = 680, HIT = 0.42;
+    const has = (e, id) => e.dataset.ids.split(" ").includes(id);
+    const hit = (e, dx, dy) => {
+      const a = e.animate([
+        { translate: "0 0", filter: "none", easing: "ease-out" },
+        { translate: `${-dx * 0.18}px ${-dy * 0.18}px`, offset: 0.24, easing: "cubic-bezier(.6, 0, 1, .6)" },  // 振りかぶる
+        { translate: `${dx}px ${dy}px`, filter: "brightness(1.8)", offset: HIT },
+        { translate: `${dx * 0.7 + 4}px ${dy * 0.7}px`, filter: "brightness(1.2)", offset: HIT + 0.08 },        // はね返って揺れる
+        { translate: `${dx * 0.6 - 4}px ${dy * 0.6}px`, offset: HIT + 0.16 },
+        { translate: `${dx * 0.5 + 2}px ${dy * 0.5}px`, filter: "none", offset: HIT + 0.24, easing: EASE },
+        { translate: "0 0", filter: "none" },
+      ], D);
+      clashes.push(a);
+    };
+    const spark = (x, y) => clashes.push(burst("clashspark", x, y,
+      [{ scale: "0.2", opacity: 1 }, { scale: "1.3", opacity: 1, offset: 0.4 }, { scale: "1.7", opacity: 0 }],
+      { duration: D * 0.5, delay: D * HIT, easing: "ease-out" }));
+    for (const col of box.querySelectorAll(".cbcol")) {
+      const attacker = [...col.children].find((e) => e.dataset.ids && has(e, col.dataset.key));
+      if (!attacker) continue;
+      const a = attacker.getBoundingClientRect();
+      const blockers = [...col.querySelectorAll(".cbrow > [data-ids]:not(.plannedblk)")];
+      if (!blockers.length) {
+        // 攻撃先へ突っ込む（↑ ↓ は上下の Player、→ はそれ以外）
+        const arrow = (col.querySelector(".cbto .arw") || {}).textContent;
+        const [ux, uy] = arrow === "↑" ? [0, -1] : arrow === "↓" ? [0, 1] : [1, 0];
+        const reach = Math.min(40, a.height * 0.35);
+        hit(attacker, ux * reach, uy * reach);
+        spark(a.left + a.width / 2 + ux * (a.width / 2 + reach), a.top + a.height / 2 + uy * (a.height / 2 + reach));
+        continue;
+      }
+      const rects = blockers.map((b) => b.getBoundingClientRect());
+      const below = rects[0].top > a.top;  // ブロックが攻撃カードの下（下の Player を攻撃している）
+      const edge = below ? Math.min(...rects.map((r) => r.top)) : Math.max(...rects.map((r) => r.bottom));
+      const front = below ? a.bottom : a.top;
+      const meet = (front + edge) / 2;
+      const ax = a.left + a.width / 2;
+      hit(attacker, 0, meet - front + (below ? 4 : -4));
+      blockers.forEach((b, i) => {
+        const r = rects[i];
+        hit(b, (ax - (r.left + r.width / 2)) * 0.4, meet - edge + (below ? -4 : 4));
+      });
+      spark(ax, meet);
+    }
+  }
+
+  // 呪文・能力の解決: スタックの項目の所で光の輪が広がり、対象（カード・Player）へ光の玉が飛んで当たる。
+  // items: [{ from: 解決する前の項目の位置, targets: [対象の位置] }]。ルールの判断はしない（打ち消されても同じ）
+  let resolves = [];
+  function resolve(items) {
+    for (const a of resolves) a.cancel();
+    resolves = [];
+    const D = 760, FLY = 0.2, HIT = 0.55;
+    for (const { from, targets, flash } of items) {
+      const a = center(from);
+      resolves.push(burst("resolvering", a.x, a.y, [{ scale: "0.3", opacity: 0.9 }, { scale: "1.5", opacity: 0 }],
+        { duration: D * 0.5, easing: "cubic-bezier(.1, .7, .3, 1)" }));
+      for (const to of targets) {
+        const b = center(to);
+        resolves.push(burst("resolveorb", a.x, a.y, [
+          { translate: "0 0", scale: "0.4", opacity: 0 },
+          { translate: "0 0", scale: "1", opacity: 1, offset: 0.25 },
+          { translate: `${b.x - a.x}px ${b.y - a.y}px`, scale: "0.8", opacity: 1 }],
+        { duration: D * (HIT - FLY), delay: D * FLY, easing: "cubic-bezier(.5, 0, .8, .6)" }));
+        resolves.push(burst("resolvering hit", b.x, b.y, [{ scale: "0.2", opacity: 1 }, { scale: "1.2", opacity: 0 }],
+          { duration: D * (1 - HIT), delay: D * HIT, easing: "ease-out" }));
+      }
+      for (const e of flash) {
+        resolves.push(e.animate([{ filter: "none" }, { filter: "brightness(1.9) drop-shadow(0 0 10px #ffd84a)", offset: 0.3 }, { filter: "none" }],
+          { duration: D * (1 - HIT), delay: D * HIT }));
+      }
+    }
+  }
+
+  return { capture, stop, play, clash, resolve };
 }

@@ -575,6 +575,22 @@ body:not(.log-open) #logClose { display: none; }
 /* カードの動き（motion.js）: 画面全体に重ねた層で写しを動かす。クリックは下に通す */
 #motionlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; overflow: visible; }
 #motionlayer > .card { will-change: transform, opacity; }
+/* 戦闘ダメージでカードがぶつかったところの火花（motion.js の clash） */
+/* 解決の演出（motion.js の resolve）: スタックの項目から広がる輪と、対象へ飛ぶ光の玉 */
+.fx { position: fixed; z-index: var(--z-motion); pointer-events: none; }
+.resolvering { width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 3px solid #ffd84a;
+  box-shadow: 0 0 16px #ffd84a, inset 0 0 12px rgba(255, 216, 74, .6); }
+.resolvering.hit { width: 72px; height: 72px; margin: -36px 0 0 -36px; }
+.resolveorb { width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 30%, #ffd84a 55%, transparent 72%); box-shadow: 0 0 14px 4px rgba(255, 216, 74, .7); }
+/* 戦場から除かれるカードの破片と輪（motion.js の shatter） */
+.shard { width: 9px; height: 13px; margin: -6px 0 0 -4px; background: linear-gradient(135deg, #f3e3c0, #c0392b 60%, #3a1c16);
+  clip-path: polygon(50% 0, 100% 40%, 70% 100%, 0 70%); }
+.shatterring { width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid rgba(231, 76, 60, .9);
+  box-shadow: 0 0 18px rgba(231, 76, 60, .7); }
+.clashspark { width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  background: radial-gradient(circle, #fff 0 14%, #ffd84a 26%, rgba(255, 120, 40, .7) 46%, transparent 68%);
+  clip-path: polygon(50% 0, 60% 36%, 100% 22%, 66% 52%, 92% 92%, 52% 68%, 18% 100%, 34% 58%, 0 40%, 40% 36%); }
 
 /* 優先権: ライフの右・フェイズの左の決まった欄に、挙げた手のアイコン（持っていない側も欄は取っておく） */
 .phead .prio { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px;

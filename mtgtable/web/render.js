@@ -1004,6 +1004,34 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return strip;
   }
 
+  // 戦闘ダメージのステップと、その前のステップ（ここから進んだときだけぶつけ合う）
+  const INTO_DAMAGE = { first_strike_damage: ["declare_attackers", "declare_blockers"],
+    combat_damage: ["declare_attackers", "declare_blockers", "first_strike_damage"] };
+
+  // スタックから無くなった項目（進めたときだけ）を、解決として光らせ、対象へ光を飛ばす。
+  // 対象の位置は今の画面で、無くなった（死亡など）なら描く前の位置で
+  function resolveFx(shown, v, before, stackRects) {
+    const items = [];
+    for (const s of shown.stack) {
+      if (s.planned || v.stack.some((x) => x.id === s.id)) continue;
+      const from = stackRects.get(s.id);
+      if (!from || !from.width) continue;
+      const targets = [], flash = [];
+      for (const id of shown.links.filter((l) => l.source === s.id && l.kind === "target").flatMap((l) => l.targets)) {
+        const slot = ui.sides.top === id ? "top" : ui.sides.bottom === id ? "bottom" : null;
+        const e = slot ? $(slot).querySelector(".phead .avatar")
+          : document.querySelector(`#top [data-ids~="${CSS.escape(id)}"], #bottom [data-ids~="${CSS.escape(id)}"]`);
+        const rect = e && e.getBoundingClientRect();
+        if (rect && rect.width) {
+          targets.push(rect);
+          flash.push(e);
+        } else if (before.cards.has(id)) targets.push(before.cards.get(id).rect);
+      }
+      items.push({ from, targets, flash });
+    }
+    if (items.length) motion.resolve(items);
+  }
+
   // 描き直しは、組み立てた木を今の DOM に差分で当てる（patch.js）。使い回した要素の状態（選んだ文字・フォーカス・
   // 打ちかけの文字・開いた折りたたみ・スクロール・手札のドラッグ）は更新で消えない
   function render() {
@@ -1016,6 +1044,9 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     motion.stop();
     const before = animate && ui.shown ? motion.capture() : null;
     const shown = ui.shown;
+    // 解決の演出に使う、描く前のスタックの項目の位置（項目の id → カードの絵の位置）
+    const stackRects = before ? new Map([...$("stack").children].filter((li) => li.dataset.key)
+      .map((li) => [li.dataset.key, (li.querySelector(".card") || li).getBoundingClientRect()])) : null;
     ui.names = collectNames(v);
     cardNames.want(Object.values(ui.names));
     ui.attacking = new Set(v.combat.attacks.map((a) => a.attacker));
@@ -1077,7 +1108,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     placeSpeech();
     clampFloats();
     ui.shown = v;
-    if (before && shown !== v) motion.play(before, shown, v, animate.duration);
+    // 同じ更新で呪文・能力が解決したら、除去の演出は解決の光が対象に当たってから
+    const resolved = before && shown !== v && shown.stack.some((s) => !s.planned && !v.stack.some((x) => x.id === s.id));
+    if (before && shown !== v) motion.play(before, shown, v, animate.duration, resolved ? 420 : 0);
+    // 戦闘ダメージのステップに進んだら、戦闘の欄でカードをぶつけ合う（戻るときは出さない）
+    if (before && shown !== v && (INTO_DAMAGE[t.step] || []).includes(shown.turn.step)) motion.clash();
+    if (before && shown !== v && v.version > shown.version) resolveFx(shown, v, before, stackRects);
     if (hooks.after) hooks.after();
   }
 
