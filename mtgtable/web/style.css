@@ -235,6 +235,8 @@ body.nosel, body.nosel * { user-select: none !important; -webkit-user-select: no
 .card.instack.src .artbox::after { content: "能力"; position: absolute; left: 0; right: 0; bottom: 0; text-align: center;
   background: rgba(0, 0, 0, .72); color: #fff; font-size: 10px; }
 .sbody { min-width: 0; flex: 1; font-size: 12px; }
+/* 順番の札は「一番上」と番号で同じ幅（積む・解決で番号が変わっても、横の文字がずれない） */
+.shead .chip:first-child { box-sizing: border-box; min-width: 4.3em; text-align: center; }
 .sname { font-weight: 600; }
 .stext { color: var(--muted); font-size: 11px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .stargets { margin-top: 2px; }
@@ -578,6 +580,10 @@ body:not(.log-open) #logClose { display: none; }
 /* 戦闘ダメージでカードがぶつかったところの火花（motion.js の clash） */
 /* 解決の演出（motion.js の resolve）: スタックの項目から広がる輪と、対象へ飛ぶ光の玉 */
 .fx { position: fixed; z-index: var(--z-motion); pointer-events: none; }
+/* スタックの項目の出入り（motion.js の stackRows）: 抜ける項目の写しと、積まれた項目の縁の光 */
+#motionlayer > .rowghost { list-style: none; display: flex; background: var(--panel); border-bottom: none; border-radius: 6px; }
+#motionlayer > .rowghost.resolving { box-shadow: 0 0 0 2px #ffd84a, 0 0 18px rgba(255, 216, 74, .8); }
+.stackpush { border-radius: 6px; box-shadow: 0 0 0 2px #ffd84a, 0 0 16px rgba(255, 216, 74, .75); }
 .resolvering { width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 3px solid #ffd84a;
   box-shadow: 0 0 16px #ffd84a, inset 0 0 12px rgba(255, 216, 74, .6); }
 .resolvering.hit { width: 72px; height: 72px; margin: -36px 0 0 -36px; }

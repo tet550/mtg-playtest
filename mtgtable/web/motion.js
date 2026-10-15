@@ -71,7 +71,7 @@ export function createMotion() {
       const rect = e.getBoundingClientRect();
       if (!rect.width) continue;
       const size = measure(e);
-      const item = { el: e, rect, size, pose: pose(e, rect, size, settled), layer: layerOf(e), tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
+      const item = { el: e, rect, size, pose: pose(e, rect, size, settled), layer: layerOf(e), inStack: !!e.closest("#stack"), tapped: e.classList.contains("tapped"), ids: e.dataset.ids.split(" ") };
       for (const id of item.ids) if (!cards.has(id)) cards.set(id, item);
     }
     const places = new Map();
@@ -79,7 +79,18 @@ export function createMotion() {
       const rect = (e.querySelector(".pstack") || e).getBoundingClientRect();
       if (rect.width) places.set(e.dataset.zone, rect);
     }
-    return { cards, places, covers: coverRects() };
+    // スタックの項目（行ごと。能力も）と、スタックの窓
+    const rows = new Map();
+    for (const li of document.querySelectorAll("#stack > li[data-key]")) {
+      const rect = li.getBoundingClientRect();
+      // 写しは別の層に置くので、祖先で決まる文字の大きさとカードの大きさ（--h）を取っておく
+      const cs = getComputedStyle(li);
+      if (rect.width) rows.set(li.dataset.key, { el: li, rect, font: cs.fontSize, h: cs.getPropertyValue("--h") });
+    }
+    const box = document.getElementById("fl-stack");
+    const boxRect = box && box.getBoundingClientRect();
+    const stackBox = boxRect && boxRect.width ? { el: box, rect: boxRect } : null;
+    return { cards, places, covers: coverRects(), rows, stackBox, clip: clipRects() };
   }
 
   // 動いている途中なら、すぐ終わらせる（次の描画の前に呼ぶ）
@@ -311,9 +322,9 @@ export function createMotion() {
 
   // 写しを見せるのは、本物のカードが見える所（各 Player の欄の枠の内側のうち見出し（名前・ライフ）より下と、
   // 盤面の上の小窓）だけ。手札のように欄の端で切れているカードの写しも、枠・見出し・その上の余白には出ない
-  function clipToSides() {
-    let d = "";
-    const add = (l, t, r, b) => { if (r > l && b > t) d += `M${l} ${t}H${r}V${b}H${l}Z`; };
+  function clipRects() {
+    const rects = [];
+    const add = (l, t, r, b) => { if (r > l && b > t) rects.push([l, t, r, b]); };
     for (const side of document.querySelectorAll("#top, #bottom")) {
       const r = side.getBoundingClientRect();
       const l = r.left + side.clientLeft, t = r.top + side.clientTop;
@@ -325,13 +336,84 @@ export function createMotion() {
       const r = e.getBoundingClientRect();
       if (r.width && r.height) add(r.left, r.top, r.right, r.bottom);
     }
+    return rects;
+  }
+
+  // 描く前と後の見える所を合わせる（スタックの最後の項目が解決すると窓が消えるが、写しはその窓から動き出す）
+  function clipTo(rects) {
+    const d = rects.map(([l, t, r, b]) => `M${l} ${t}H${r}V${b}H${l}Z`).join("");
     layer.style.clipPath = d ? `path("${d}")` : "";
+  }
+
+  // スタックの項目（後から積んだものが先に解決する）: 積まれた項目は一番上へ上から差し込まれ、下の項目は1段ずつ押し下げられる。
+  // 解決した項目は一番上から光って浮き上がって抜け、残りが1段ずつ繰り上がる。forward でなければ（戻す）、抜ける項目は消えるだけ
+  // HOLD: 解決した項目が光っている間（呪文のカードはスタックに留まり、それから行き先へ飛ぶ）
+  const POP = 520, HOLD = 210, PUSH = 120;
+  function stackRows(before, after, forward, duration) {
+    const gone = [...before.rows].filter(([key]) => !after.rows.has(key)).map(([, was]) => was);
+    // 最後の項目が抜けて窓が消えるときは、空になった窓の写しを残して消していく
+    if (before.stackBox && !after.stackBox && gone.length) {
+      const g = before.stackBox.el.cloneNode(true);
+      g.hidden = false;
+      g.removeAttribute("id");
+      g.querySelector("ol").replaceChildren();
+      const r = before.stackBox.rect;
+      Object.assign(g.style, { position: "fixed", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
+        right: "auto", bottom: "auto", margin: "0", transform: "none", maxHeight: "none", boxSizing: "border-box" });
+      layer.append(g);
+      run(g, [{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], POP + duration * 0.5, () => g.remove());
+    }
+    if (!before.stackBox && after.stackBox) run(after.stackBox.el, [{ opacity: 0, scale: "0.96" }, { opacity: 1, scale: "1" }], 220);
+    for (const was of gone) {
+      const g = was.el.cloneNode(true);
+      // 呪文のカードは、カードの動きで行き先へ飛ぶので、行の写しからは外す
+      if (!was.el.classList.contains("ability")) for (const c of g.querySelectorAll("[data-ids]")) c.style.visibility = "hidden";
+      const resolved = forward && !was.el.classList.contains("pv");
+      g.classList.add("rowghost");
+      g.classList.toggle("resolving", resolved);
+      const r = was.rect;
+      Object.assign(g.style, { position: "fixed", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
+        margin: "0", boxSizing: "border-box", fontSize: was.font });
+      if (was.h) g.style.setProperty("--h", was.h);
+      layer.append(g);
+      // 光ってから抜けるのが見えるよう、動き全体の緩急（EASE: 始めが速い）は使わない
+      const a = g.animate(resolved ? [
+        { translate: "0 0", scale: "1", opacity: 1, filter: "none", easing: "ease-out" },
+        { translate: "0 0", scale: "1", opacity: 1, filter: "brightness(1.2)", offset: HOLD / POP, easing: "ease-in" },
+        { translate: "0 -40px", scale: "0.96", opacity: 0, filter: "brightness(1.4)" }]
+        : [{ opacity: 1 }, { opacity: 0 }], { duration: resolved ? POP : duration * 0.6, fill: "both" });
+      animations.push(a);
+      a.onfinish = () => { a.cancel(); g.remove(); };
+    }
+    let pushed = false;
+    for (const [key, now] of after.rows) {
+      const was = before.rows.get(key);
+      if (!was) continue;
+      const dx = was.rect.left - now.rect.left, dy = was.rect.top - now.rect.top;
+      if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) continue;
+      pushed = pushed || dy < 0;
+      // 繰り上がるのは、上の項目が光り終えて抜け始めてから
+      run(now.el, [{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], duration, null, gone.length && dy > 0 ? HOLD : 0);
+    }
+    for (const [key, now] of after.rows) {
+      if (before.rows.has(key)) continue;
+      // 差し込むのは、下の項目が退きかけてから
+      const delay = pushed ? PUSH : 0;
+      run(now.el, [
+        { translate: "0 -28px", scale: "1.05", opacity: 0 },
+        { translate: "0 3px", scale: "1", opacity: 1, offset: 0.7 },
+        { translate: "0 0", scale: "1", opacity: 1 }], duration, null, delay);
+      const r = now.rect;
+      const f = burst("stackpush", r.left, r.top, [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }],
+        { duration: duration + 240, delay: delay + duration * 0.5, easing: "ease-out" });
+      Object.assign(f.effect.target.style, { width: `${r.width}px`, height: `${r.height}px` });
+    }
   }
 
   // 描画の後に呼ぶ。before は描画の前の capture()。lead: 除去の演出を始めるまで待つ時間（解決の光が当たるまで）
   function play(before, oldView, newView, duration, lead = 0) {
-    clipToSides();
     const after = capture(true);
+    clipTo(before.clip.concat(after.clip));
     const jobs = [];
     const done = new Set();
     // 始め・終わりが窓の下に隠れているか。両方とも隠れていれば動かさない（写しが窓の上に出てしまうので）
@@ -360,6 +442,8 @@ export function createMotion() {
     };
     const doomOf = (item, hide) => {
       if (!forward || hide[0]) return null;
+      // スタックから出ていく呪文のカードは、項目が光り終わるまで留まる
+      if (item.inStack && !item.ids.some((i) => (zoneOf(newView, i) || {}).key === "stack")) return () => HOLD;
       const id = item.ids.find((i) => onField(oldView, i) && real(i) && !onField(newView, i));
       if (!id) return null;
       const fx = removalOf(id);
@@ -386,6 +470,7 @@ export function createMotion() {
       const to = destination(was.ids[0], oldView, newView, after);
       add([hidden0(was.rect, was.layer), !to || hidden1(to, -1)], (hide) => leave(was, to, duration, hide, doomOf(was, hide)));
     }
+    stackRows(before, after, forward, duration);  // カードの写しより下の段に
     if (jobs.length > MAX_JOBS) return;
     for (const job of jobs) job();
   }
