@@ -152,6 +152,7 @@ async function load() {
   ui.log = result.log;
   ui.cursor = timeline.cursor;
   if (follow) return startPlay(from);
+  if (ui.playing) return;  // 描き直すと、動いている途中の演出（解決して飛ぶカードなど）が止まって消える
   show();
 }
 
@@ -299,8 +300,7 @@ function startPlay(from = null) {
   ui.playing = true;
   $("play").textContent = t("replay.stop");
   $("play").classList.add("on");
-  // チュートリアルで更新を追いかけるときは速く（審判と相手の処理をはさむと数十件になり、普通の速さでは長く待たせる）
-  const interval = () => (from !== null && ui.tutorial ? Math.min(250, Number($("speed").value)) : Number($("speed").value));
+  const interval = () => Number($("speed").value);
   const step = () => {
     if (ui.pos >= ui.cursor) {  // 最後まで来たら止めて Live に戻る
       stopPlay();
@@ -311,7 +311,7 @@ function startPlay(from = null) {
     const before = boardKey(viewAt(from));
     do ui.pos = Math.min(nextPos(), ui.cursor);
     while (ui.pos < ui.cursor && boardKey(viewAt(ui.pos)) === before);
-    ui.deltaBase = { pos: ui.pos, from };  // 自動再生では、ライフの差を1回前に表示した位置から数える
+    ui.deltaBase = { pos: ui.pos, from };  // 自動再生では、1回前に表示した位置と比べる（宣言の吹き出しが新しく出たか）
     ui.live = false;
     ui.animate = { duration: Math.min(450, interval() * 0.7) };
     show();

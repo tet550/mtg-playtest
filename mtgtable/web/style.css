@@ -227,8 +227,12 @@ body.nosel, body.nosel * { user-select: none !important; -webkit-user-select: no
 
 /* ---- スタック: カードと、種類・文・対象 ---- */
 .stack.panel { list-style: none; padding: 8px; }
-.sitem { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--line); }
+/* 左右にも余白: 解決・積んだときの光る縁（内側の影）の内にカードが収まる */
+.sitem { display: flex; gap: 8px; align-items: flex-start; padding: 6px; border-bottom: 1px solid var(--line); }
 .sitem:last-child { border-bottom: none; }
+/* 出入りの途中（stack.js）: 抜ける行の写しは押せない。解決した行は内側の縁で光る（一覧のはみ出しで切れない） */
+.sitem.leaving { pointer-events: none; }
+.sitem.resolving { border-radius: 6px; box-shadow: inset 0 0 0 2px #ffd84a, inset 0 0 16px rgba(255, 216, 74, .45); }
 .card.instack.withart { width: auto; flex: none; }
 .card.instack .artbox, .card.instack .artbox img.art { width: 64px; height: 89px; }
 .card.instack.src .artbox { opacity: .75; }
@@ -364,13 +368,6 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 @media (min-height: 560px), (orientation: portrait) { .life { font-size: 17px; } }
 
 /* ---- ライフの増減（1件前からの差） ---- */
-.lifewrap { display: inline-flex; align-items: center; gap: 6px; }
-.ldelta { font-weight: 800; font-size: 15px; font-variant-numeric: tabular-nums; padding: 0 7px; border-radius: 6px;
-  animation: ldpop .45s ease-out; }
-.ldelta.minus { color: #fff; background: #c8414b; }
-.ldelta.plus { color: #fff; background: #3c7a3f; }
-@keyframes ldpop { from { transform: translateY(-6px) scale(1.25); opacity: 0; } to { transform: none; opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .ldelta { animation: none; } }
 
 /* ---- ライフ（調整）: 左の線をやめ（アクティブの線と紛れる）、ラベルを数の上に重ねた小さな塊に。増減は右上に重ねる ---- */
 .life { position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 0;
@@ -382,9 +379,6 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .life.low .lnum { color: var(--warn); }
 .life.dead { opacity: .6; }
 .lifewrap { position: relative; display: inline-flex; }
-.ldelta { position: absolute; right: 0; top: 0; transform: translate(55%, -45%); z-index: 2;
-  font-size: 11px; padding: 1px 5px; border-radius: 8px; line-height: 1.2; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
-@keyframes ldpop { from { transform: translate(55%, -95%) scale(1.3); opacity: 0; } to { transform: translate(55%, -45%); opacity: 1; } }
 @media (min-height: 560px), (orientation: portrait) { .life { font-size: inherit; } .life .lnum { font-size: 17px; } }
 
 /* ライフ（調整）: 見出しの行の高さに収まるよう、ラベルと数を横に並べた1行に */
@@ -392,7 +386,6 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 .life .llbl { margin-bottom: 0; font-size: 8px; }
 .life .lnum, .phead .life .lnum { font-size: 15px; line-height: 1.1; }
 .phead { align-items: center; }
-.ldelta { animation-duration: .18s; }
 
 /* 最上段は1行に収める（入らない分はターン表示を省略） */
 .bar { flex-wrap: nowrap; gap: 10px; white-space: nowrap; padding-top: 6px; padding-bottom: 6px; }
@@ -432,11 +425,6 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 /* 開いた束の一覧にもカードの高さを与える（無いと画像の大きさが 0 になって見えない） */
 .zone.opened { --h: 123px; }
 @media (min-height: 560px), (orientation: portrait) { .zone.opened { --h: min(26cqh, 123px); } }
-
-/* 増減の表示: 見出しの行（はみ出しを切る）に収まるよう、ライフの右端に縦中央で重ねる */
-.lifewrap { margin-right: 16px; }
-.ldelta { top: 50%; transform: translate(70%, -50%); }
-@keyframes ldpop { from { transform: translate(70%, -110%) scale(1.3); opacity: 0; } to { transform: translate(70%, -50%); opacity: 1; } }
 
 /* 狭い画面では再生バーを折り返さず、細かい部品（最初へ・単位・間隔・位置の文字）を隠す */
 @media (max-width: 899px) {
@@ -480,12 +468,16 @@ body.log-open .resizer:hover { background: var(--accent); }
 
 /* 既定の置き場所: 戦闘は盤面の中央、宣言は上の中央、スタックは右上、カードは右下 */
 @media (min-height: 560px), (orientation: portrait) {
-  .combatbox { right: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  .combatbox { right: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); transition: left .25s ease; }
+  /* スタックが出ている間は、戦闘の窓をスタックの左の残りの中央に置く（窓どうしを重ねない）。--stackw: スタックの幅と右の余白 */
+  .board { --stackw: 330px; }
+  .board:has(> .stackbox:not([hidden])) .combatbox { left: calc((100% - var(--stackw)) / 2); max-width: calc(100% - var(--stackw) - 16px); }
 }
 
-/* スタックは戦闘と同じく位置を固定（盤面の右・縦中央）。カードの小窓は右上から */
-.stackbox { position: absolute; z-index: 4; right: 10px; top: 50%; transform: translateY(-50%); width: 320px;
-  max-height: 60%; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+/* スタックは盤面の右に、下端で留める（一番下の項目が縦の中央あたり。積むと上へ伸び、下の項目・下端は動かない）。
+   カードの小窓は右上から */
+.stackbox { position: absolute; z-index: 4; right: 10px; bottom: calc(50% - 74px); width: 320px;
+  max-height: calc(50% + 64px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 4px 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
 .stackbox[hidden] { display: none; }
 .stackbox h3 { flex: none; }
@@ -497,7 +489,7 @@ body.log-open .resizer:hover { background: var(--accent); }
 .combatbox.min, .stackbox.min { width: auto; min-width: 120px; opacity: .85; }
 .combatbox.min h3, .stackbox.min h3 { margin: 0; }
 .stackbox .stack { overflow: auto; margin: 0; padding: 2px 0; height: auto; max-height: none; border: none; background: none; list-style: none; }
-@media (max-width: 899px) { .stackbox { position: static; transform: none; width: auto; margin: 8px 0; box-shadow: none; } }
+@media (max-width: 899px) { .stackbox { position: static; width: auto; max-height: none; margin: 8px 0; box-shadow: none; } }
 #fl-detail { top: 10px; bottom: auto; right: 10px; }
 #fl-detail { max-height: 38%; }
 
@@ -523,8 +515,9 @@ body:not(.log-open) #logClose { display: none; }
   .layout, body.log-open .layout { grid-template-columns: minmax(0, 1fr); padding: 4px; }
   .board { gap: 4px; }
   .side { padding: 3px 6px; }
-  .stackbox { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); width: min(78%, 300px);
+  .stackbox { position: absolute; bottom: calc(50% - 74px); right: 6px; width: min(78%, 300px); max-height: calc(50% + 68px);
     margin: 0; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
+  .board { --stackw: calc(min(78%, 300px) + 6px); }
   #fl-detail { width: min(82%, 300px); right: 6px; top: 6px; }
   .phead .chip.mana { max-width: 40%; }
   /* Log は横から重なる引き出しに */
@@ -538,8 +531,6 @@ body:not(.log-open) #logClose { display: none; }
   .combat { --h: min(8.5vh, 90px); flex-wrap: nowrap; overflow-x: auto; }
 }
 @media (max-width: 899px) and (orientation: portrait), (max-width: 899px) and (min-height: 560px) {
-  /* 重なりを減らす: 戦闘は中央、スタックは上寄り、宣言は下 */
-  .stackbox { top: 27%; }
   .stackbox, .float { font-size: 12px; }
 }
 
@@ -577,16 +568,19 @@ body:not(.log-open) #logClose { display: none; }
 /* カードの動き（motion.js）: 画面全体に重ねた層で写しを動かす。クリックは下に通す */
 #motionlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; overflow: visible; }
 #motionlayer > .card { will-change: transform, opacity; }
+/* ダメージ・回復（motion.js の damage）: 減った・増えた数、斬撃、回復の光の粒 */
+.dmgnum { transform: translate(-50%, -50%); font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; color: #fff;
+  -webkit-text-stroke: 1px #7a0d14; text-shadow: 0 0 2px #7a0d14, 0 2px 0 #b3202b, 0 0 12px rgba(230, 60, 60, .9); white-space: nowrap; }
+.dmgnum.heal { -webkit-text-stroke: 1px #0f5a26; text-shadow: 0 0 2px #0f5a26, 0 2px 0 #1f8a3e, 0 0 12px rgba(90, 210, 120, .9); }
+.healmote { width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 30%, #7dffa0 55%, transparent 75%); box-shadow: 0 0 6px rgba(110, 230, 140, .9); }
+.slash { width: 96px; height: 5px; margin: -2.5px 0 0 -48px; rotate: -32deg; border-radius: 3px;
+  background: linear-gradient(90deg, transparent, #fff 35%, #ff5a5a 60%, transparent); box-shadow: 0 0 10px rgba(255, 70, 70, .9); }
+/* 解決の対象の、効果が出る前の写し（motion.js の hold）。光の玉が当たるまで本物の上に重ねる */
+#holdlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; }
 /* 戦闘ダメージでカードがぶつかったところの火花（motion.js の clash） */
-/* 解決の演出（motion.js の resolve）: スタックの項目から広がる輪と、対象へ飛ぶ光の玉 */
+/* 解決の演出（motion.js の resolve）: スタックの項目から対象へ飛ぶ光の玉 */
 .fx { position: fixed; z-index: var(--z-motion); pointer-events: none; }
-/* スタックの項目の出入り（motion.js の stackRows）: 抜ける項目の写しと、積まれた項目の縁の光 */
-#motionlayer > .rowghost { list-style: none; display: flex; background: var(--panel); border-bottom: none; border-radius: 6px; }
-#motionlayer > .rowghost.resolving { box-shadow: 0 0 0 2px #ffd84a, 0 0 18px rgba(255, 216, 74, .8); }
-.stackpush { border-radius: 6px; box-shadow: 0 0 0 2px #ffd84a, 0 0 16px rgba(255, 216, 74, .75); }
-.resolvering { width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 3px solid #ffd84a;
-  box-shadow: 0 0 16px #ffd84a, inset 0 0 12px rgba(255, 216, 74, .6); }
-.resolvering.hit { width: 72px; height: 72px; margin: -36px 0 0 -36px; }
 .resolveorb { width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
   background: radial-gradient(circle, #fff 0 30%, #ffd84a 55%, transparent 72%); box-shadow: 0 0 14px 4px rgba(255, 216, 74, .7); }
 /* 戦場から除かれるカードの演出（motion.js の shatter / bounce / banish） */

@@ -1,6 +1,8 @@
 // カードの動き（タップ・移動・束への出し入れ）。描画の前後でカードの位置を比べ、写しを重ねて動かす（FLIP）。
 // 本物の要素は行や小窓のはみ出しで切られるので、画面全体に重ねた層で写しを動かし、その間は本物を隠す。
 // view（公開範囲を適用済み）に無いカードは動かさないので、見えない情報は漏れない。
+// スタックの行の出入りは stack.js が一覧の中で見せる。ここでは呪文のカードがスタックへ入る・出るのを動かす
+import { GLOW } from "./stack.js";
 
 // 追う対象: 両 Player の盤面・手札・下に差し込んだ追放と、スタックの呪文（戦闘の欄・開いた束の一覧は同じカードの写し）
 const TRACKED = "#top [data-ids], #bottom [data-ids], #stack .sitem:not(.ability) [data-ids]";
@@ -60,8 +62,13 @@ export function createMotion() {
   const layer = document.createElement("div");
   layer.id = "motionlayer";
   document.body.append(layer);
+  // 解決の対象の、効果が出る前の写し（hold）。ライフは各 Player の欄の見出しにあり、layer の切り抜きの外なので別の層に
+  const holdLayer = document.createElement("div");
+  holdLayer.id = "holdlayer";
+  document.body.append(holdLayer);
   let hidden = [];
   let animations = [];
+  let timers = [];
 
   // 今の画面のカードと束の位置。settled: 傾きが変わりかけなら行き着く先で測る（描画の後。前は今見えている傾き）
   function capture(settled = false) {
@@ -79,18 +86,7 @@ export function createMotion() {
       const rect = (e.querySelector(".pstack") || e).getBoundingClientRect();
       if (rect.width) places.set(e.dataset.zone, rect);
     }
-    // スタックの項目（行ごと。能力も）と、スタックの窓
-    const rows = new Map();
-    for (const li of document.querySelectorAll("#stack > li[data-key]")) {
-      const rect = li.getBoundingClientRect();
-      // 写しは別の層に置くので、祖先で決まる文字の大きさとカードの大きさ（--h）を取っておく
-      const cs = getComputedStyle(li);
-      if (rect.width) rows.set(li.dataset.key, { el: li, rect, font: cs.fontSize, h: cs.getPropertyValue("--h") });
-    }
-    const box = document.getElementById("fl-stack");
-    const boxRect = box && box.getBoundingClientRect();
-    const stackBox = boxRect && boxRect.width ? { el: box, rect: boxRect } : null;
-    return { cards, places, covers: coverRects(), rows, stackBox, clip: clipRects() };
+    return { cards, places, covers: coverRects(), clip: clipRects() };
   }
 
   // 動いている途中なら、すぐ終わらせる（次の描画の前に呼ぶ）
@@ -99,7 +95,10 @@ export function createMotion() {
     animations = [];
     for (const e of hidden) e.style.visibility = "";
     hidden = [];
+    for (const t of timers) clearTimeout(t);
+    timers = [];
     layer.replaceChildren();
+    holdLayer.replaceChildren();
   }
 
   // 祖先のクラスで決まる大きさ（写しは別の層に置くので、測った値で固定する）。画面から外れた要素は測れないので、
@@ -131,7 +130,7 @@ export function createMotion() {
   }
 
   // 要素の写しを、その位置に重ねる（transform は動きの keyframe で与える）
-  function ghost(e, pose, size = measure(e)) {
+  function ghost(e, pose, size = measure(e), parent = layer) {
     const g = e.cloneNode(true);
     g.classList.remove("sel");
     g.style.visibility = "";
@@ -143,7 +142,7 @@ export function createMotion() {
       const gimg = gbox.querySelector("img.art");
       if (size.img && gimg) Object.assign(gimg.style, { width: `${size.img[0]}px`, height: `${size.img[1]}px` });
     }
-    layer.append(g);
+    parent.append(g);
     return g;
   }
 
@@ -345,71 +344,6 @@ export function createMotion() {
     layer.style.clipPath = d ? `path("${d}")` : "";
   }
 
-  // スタックの項目（後から積んだものが先に解決する）: 積まれた項目は一番上へ上から差し込まれ、下の項目は1段ずつ押し下げられる。
-  // 解決した項目は一番上から光って浮き上がって抜け、残りが1段ずつ繰り上がる。forward でなければ（戻す）、抜ける項目は消えるだけ
-  // HOLD: 解決した項目が光っている間（呪文のカードはスタックに留まり、それから行き先へ飛ぶ）
-  const POP = 520, HOLD = 210, PUSH = 120;
-  function stackRows(before, after, forward, duration) {
-    const gone = [...before.rows].filter(([key]) => !after.rows.has(key)).map(([, was]) => was);
-    // 最後の項目が抜けて窓が消えるときは、空になった窓の写しを残して消していく
-    if (before.stackBox && !after.stackBox && gone.length) {
-      const g = before.stackBox.el.cloneNode(true);
-      g.hidden = false;
-      g.removeAttribute("id");
-      g.querySelector("ol").replaceChildren();
-      const r = before.stackBox.rect;
-      Object.assign(g.style, { position: "fixed", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
-        right: "auto", bottom: "auto", margin: "0", transform: "none", maxHeight: "none", boxSizing: "border-box" });
-      layer.append(g);
-      run(g, [{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], POP + duration * 0.5, () => g.remove());
-    }
-    if (!before.stackBox && after.stackBox) run(after.stackBox.el, [{ opacity: 0, scale: "0.96" }, { opacity: 1, scale: "1" }], 220);
-    for (const was of gone) {
-      const g = was.el.cloneNode(true);
-      // 呪文のカードは、カードの動きで行き先へ飛ぶので、行の写しからは外す
-      if (!was.el.classList.contains("ability")) for (const c of g.querySelectorAll("[data-ids]")) c.style.visibility = "hidden";
-      const resolved = forward && !was.el.classList.contains("pv");
-      g.classList.add("rowghost");
-      g.classList.toggle("resolving", resolved);
-      const r = was.rect;
-      Object.assign(g.style, { position: "fixed", left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px`,
-        margin: "0", boxSizing: "border-box", fontSize: was.font });
-      if (was.h) g.style.setProperty("--h", was.h);
-      layer.append(g);
-      // 光ってから抜けるのが見えるよう、動き全体の緩急（EASE: 始めが速い）は使わない
-      const a = g.animate(resolved ? [
-        { translate: "0 0", scale: "1", opacity: 1, filter: "none", easing: "ease-out" },
-        { translate: "0 0", scale: "1", opacity: 1, filter: "brightness(1.2)", offset: HOLD / POP, easing: "ease-in" },
-        { translate: "0 -40px", scale: "0.96", opacity: 0, filter: "brightness(1.4)" }]
-        : [{ opacity: 1 }, { opacity: 0 }], { duration: resolved ? POP : duration * 0.6, fill: "both" });
-      animations.push(a);
-      a.onfinish = () => { a.cancel(); g.remove(); };
-    }
-    let pushed = false;
-    for (const [key, now] of after.rows) {
-      const was = before.rows.get(key);
-      if (!was) continue;
-      const dx = was.rect.left - now.rect.left, dy = was.rect.top - now.rect.top;
-      if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) continue;
-      pushed = pushed || dy < 0;
-      // 繰り上がるのは、上の項目が光り終えて抜け始めてから
-      run(now.el, [{ translate: `${dx}px ${dy}px` }, { translate: "0 0" }], duration, null, gone.length && dy > 0 ? HOLD : 0);
-    }
-    for (const [key, now] of after.rows) {
-      if (before.rows.has(key)) continue;
-      // 差し込むのは、下の項目が退きかけてから
-      const delay = pushed ? PUSH : 0;
-      run(now.el, [
-        { translate: "0 -28px", scale: "1.05", opacity: 0 },
-        { translate: "0 3px", scale: "1", opacity: 1, offset: 0.7 },
-        { translate: "0 0", scale: "1", opacity: 1 }], duration, null, delay);
-      const r = now.rect;
-      const f = burst("stackpush", r.left, r.top, [{ opacity: 0 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }],
-        { duration: duration + 240, delay: delay + duration * 0.5, easing: "ease-out" });
-      Object.assign(f.effect.target.style, { width: `${r.width}px`, height: `${r.height}px` });
-    }
-  }
-
   // 描画の後に呼ぶ。before は描画の前の capture()。lead: 除去の演出を始めるまで待つ時間（解決の光が当たるまで）
   function play(before, oldView, newView, duration, lead = 0) {
     const after = capture(true);
@@ -442,8 +376,8 @@ export function createMotion() {
     };
     const doomOf = (item, hide) => {
       if (!forward || hide[0]) return null;
-      // スタックから出ていく呪文のカードは、項目が光り終わるまで留まる
-      if (item.inStack && !item.ids.some((i) => (zoneOf(newView, i) || {}).key === "stack")) return () => HOLD;
+      // スタックから出ていく呪文のカードは、項目が光り終わるまで留まる（stack.js の GLOW）
+      if (item.inStack && !item.ids.some((i) => (zoneOf(newView, i) || {}).key === "stack")) return () => GLOW;
       const id = item.ids.find((i) => onField(oldView, i) && real(i) && !onField(newView, i));
       if (!id) return null;
       const fx = removalOf(id);
@@ -459,6 +393,8 @@ export function createMotion() {
         else jobs.push(() => appear(now, duration));
         continue;
       }
+      // スタックに残る項目のカードは、行と一緒に動く（窓は下端で留めてあり、行は一覧の中で動く）
+      if (was.inStack && now.inStack) continue;
       const dx = Math.abs(was.pose.x - now.pose.x), dy = Math.abs(was.pose.y - now.pose.y);
       const dw = Math.abs(was.size.w - now.size.w);
       if (dx > 1 || dy > 1 || dw > 1 || was.tapped !== now.tapped || was.pose.tf !== now.pose.tf) {
@@ -470,7 +406,6 @@ export function createMotion() {
       const to = destination(was.ids[0], oldView, newView, after);
       add([hidden0(was.rect, was.layer), !to || hidden1(to, -1)], (hide) => leave(was, to, duration, hide, doomOf(was, hide)));
     }
-    stackRows(before, after, forward, duration);  // カードの写しより下の段に
     if (jobs.length > MAX_JOBS) return;
     for (const job of jobs) job();
   }
@@ -488,14 +423,16 @@ export function createMotion() {
     return a;
   }
 
+  // ぶつけ合ったら true（ダメージの演出をぶつかったときに合わせる）
+  const CLASH = 680, CLASH_HIT = 0.42;
   let clashes = [];
   function clash() {
     for (const a of clashes) a.cancel();
     clashes = [];
     for (const e of document.querySelectorAll(".clashspark")) e.remove();
     const box = document.getElementById("combatbox");
-    if (!box || box.hidden || box.classList.contains("min")) return;
-    const D = 680, HIT = 0.42;
+    if (!box || box.hidden || box.classList.contains("min")) return false;
+    const D = CLASH, HIT = CLASH_HIT;
     const has = (e, id) => e.dataset.ids.split(" ").includes(id);
     const hit = (e, dx, dy) => {
       const a = e.animate([
@@ -539,19 +476,18 @@ export function createMotion() {
       });
       spark(ax, meet);
     }
+    return true;
   }
 
-  // 呪文・能力の解決: スタックの項目の所で光の輪が広がり、対象（カード・Player）へ光の玉が飛んで当たる。
+  // 呪文・能力の解決: スタックの項目の所から、対象（カード・Player）へ光の玉が飛んで当たる。
   // items: [{ from: 解決する前の項目の位置, targets: [対象の位置] }]。ルールの判断はしない（打ち消されても同じ）
+  const D = 760, FLY = 0.2, HIT = 0.55;
   let resolves = [];
   function resolve(items) {
     for (const a of resolves) a.cancel();
     resolves = [];
-    const D = 760, FLY = 0.2, HIT = 0.55;
     for (const { from, targets, flash } of items) {
       const a = center(from);
-      resolves.push(burst("resolvering", a.x, a.y, [{ scale: "0.3", opacity: 0.9 }, { scale: "1.5", opacity: 0 }],
-        { duration: D * 0.5, easing: "cubic-bezier(.1, .7, .3, 1)" }));
       for (const to of targets) {
         const b = center(to);
         resolves.push(burst("resolveorb", a.x, a.y, [
@@ -559,8 +495,6 @@ export function createMotion() {
           { translate: "0 0", scale: "1", opacity: 1, offset: 0.25 },
           { translate: `${b.x - a.x}px ${b.y - a.y}px`, scale: "0.8", opacity: 1 }],
         { duration: D * (HIT - FLY), delay: D * FLY, easing: "cubic-bezier(.5, 0, .8, .6)" }));
-        resolves.push(burst("resolvering hit", b.x, b.y, [{ scale: "0.2", opacity: 1 }, { scale: "1.2", opacity: 0 }],
-          { duration: D * (1 - HIT), delay: D * HIT, easing: "ease-out" }));
       }
       for (const e of flash) {
         resolves.push(e.animate([{ filter: "none" }, { filter: "brightness(1.9) drop-shadow(0 0 10px #ffd84a)", offset: 0.3 }, { filter: "none" }],
@@ -569,5 +503,117 @@ export function createMotion() {
     }
   }
 
-  return { capture, stop, play, clash, resolve };
+  // 効果は、光の玉が対象に当たってから（戦闘ダメージはぶつかってから）見せる。描く前に hold(対象の要素) で今の見た目の
+  // 写しを取り、描いた後に release(held, at) で本物の上に重ねて、at ms 後に外す（そこで P/T・ダメージ・ライフが変わる）。
+  // 描き直しで動いた・消えた対象（除去など）は重ねない（カードの動きと除去の演出が見せる）。at が 0 ならすぐ外す
+  function hold(els) {
+    return els.map((e) => {
+      const rect = e.getBoundingClientRect();
+      if (!rect.width) return null;
+      const size = measure(e);
+      const p = pose(e, rect, size, false);
+      const g = ghost(e, p, size, holdLayer);
+      // 祖先から受け継いでいた文字とカードの大きさ（--h）を写しに移す
+      const cs = getComputedStyle(e);
+      Object.assign(g.style, { transform: p.tf, font: cs.font, color: cs.color });
+      for (const v of ["--h", "--ha"]) if (cs.getPropertyValue(v)) g.style.setProperty(v, cs.getPropertyValue(v));
+      g.hidden = true;  // 描き直しの後、重ねると決めてから見せる
+      return { e, rect, g };
+    }).filter(Boolean);
+  }
+
+  function release(held, at) {
+    for (const { e, rect, g } of held) {
+      const r = e.isConnected && !e.closest(".zone.opened") ? e.getBoundingClientRect() : null;
+      const same = r && Math.abs(r.left - rect.left) < 1 && Math.abs(r.top - rect.top) < 1
+        && Math.abs(r.width - rect.width) < 1 && Math.abs(r.height - rect.height) < 1;
+      if (!same || !at) { g.remove(); continue; }
+      g.hidden = false;
+      const a = g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, delay: at, fill: "both" });
+      a.onfinish = () => g.remove();
+      animations.push(a);
+      // 本物は当たるまで隠す（写しより大きくなった分（ライフの増減の札など）が、横からのぞかない）。
+      // 当たったら見せて、出たときの動き（増減の札が出る）をやり直す
+      e.style.visibility = "hidden";
+      hidden.push(e);
+      timers.push(setTimeout(() => {
+        e.style.visibility = "";
+        for (const x of e.getAnimations({ subtree: true })) if (x.animationName) x.currentTime = 0;
+      }, at));
+    }
+  }
+
+  // ダメージ: クリーチャーは赤く光って揺れ、斬撃が走り、減った数が浮き上がる。Player は欄の縁が赤く光り、
+  // アバターが揺れ、ライフが赤く光って、減った数がライフの横から浮き上がる。
+  // 回復（Player のライフが増えた）: 欄の縁とライフが緑に光り、ライフがふくらみ、光の粒が立ちのぼって、増えた数が浮き上がる。
+  // hits: [{ cards: [カードの要素], amount, at }] / [{ side, avatar, life, amount, heal, at }]。at: 始めるまでの時間
+  // （解決の光が当たる・戦闘でぶつかるときに合わせる）。揺れは translate を足し合わせる（ぶつけ合いの動きと重ねられる）
+  const shake = (e, at, px) => e.animate([
+    { translate: "0 0" }, { translate: `${-px}px 0`, offset: 0.15 }, { translate: `${px}px 1px`, offset: 0.3 },
+    { translate: `${-px * 0.6}px -1px`, offset: 0.5 }, { translate: `${px * 0.4}px 0`, offset: 0.7 }, { translate: "0 0" }],
+  { duration: 360, delay: at, composite: "add" });
+  function number(x, y, text, at, cls = "") {
+    const a = burst("dmgnum" + cls, x, y, [
+      { translate: "0 4px", scale: "0.4", opacity: 0 },
+      { translate: "0 -6px", scale: "1.25", opacity: 1, offset: 0.18 },
+      { translate: "0 -12px", scale: "1", opacity: 1, offset: 0.6 },
+      { translate: "0 -30px", scale: "1", opacity: 0 }],
+    { duration: 950, delay: at, easing: "ease-out" });
+    a.effect.target.textContent = text;
+  }
+  const RED = "rgba(230, 60, 60, ", GREEN = "rgba(90, 210, 120, ";
+  const sideGlow = (side, rgb, at) => side.animate([{ boxShadow: `inset 0 0 0 0 ${rgb}0)` },
+    { boxShadow: `inset 0 0 0 3px ${rgb}.95), inset 0 0 36px ${rgb}.45)`, offset: 0.2 },
+    { boxShadow: `inset 0 0 0 0 ${rgb}0)` }], { duration: 600, delay: at, easing: "ease-out" });
+  function heal(h) {
+    sideGlow(h.side, GREEN, h.at);
+    if (!h.life) return;
+    h.life.animate([{ filter: "none", scale: "1" },
+      { filter: "brightness(1.35) drop-shadow(0 0 8px rgba(90, 210, 120, .95))", scale: "1.15", offset: 0.3 },
+      { filter: "none", scale: "1" }], { duration: 600, delay: h.at, easing: "ease-out" });
+    const r = h.life.getBoundingClientRect();
+    for (let i = 0; i < 7; i++) {
+      const x = r.left + r.width * (0.1 + 0.8 * Math.random());
+      burst("healmote", x, r.bottom - 2, [
+        { translate: "0 0", scale: "0.4", opacity: 0 },
+        { translate: `0 ${-8 - Math.random() * 6}px`, scale: "1", opacity: 1, offset: 0.3 },
+        { translate: `${(Math.random() - 0.5) * 10}px ${-26 - Math.random() * 14}px`, scale: "0.5", opacity: 0 }],
+      { duration: 700, delay: h.at + i * 45, easing: "ease-out" });
+    }
+    number(r.right + 20, r.top + r.height / 2, `+${h.amount}`, h.at + 60, " heal");
+  }
+  function damage(hits) {
+    for (const h of hits) {
+      if (h.cards) {
+        h.cards.forEach((e, i) => {
+          const r = e.getBoundingClientRect();
+          if (!r.width) return;
+          shake(e, h.at, 4);
+          e.animate([{ filter: "none" }, { filter: "brightness(1.5) sepia(1) saturate(6) hue-rotate(-35deg)", offset: 0.2 }, { filter: "none" }],
+            { duration: 420, delay: h.at, easing: "ease-out" });
+          const c = center(r);
+          burst("slash", c.x, c.y, [{ scale: "0 1", opacity: 1 }, { scale: "1 1", opacity: 1, offset: 0.45 }, { scale: "1.1 0.4", opacity: 0 }],
+            { duration: 300, delay: h.at, easing: "cubic-bezier(.2, .8, .3, 1)" });
+          if (i === 0) number(c.x, r.top + r.height * 0.3, `−${h.amount}`, h.at + 60);  // 数は1つ（先に見つかった方）
+        });
+        continue;
+      }
+      if (h.heal) { heal(h); continue; }
+      sideGlow(h.side, RED, h.at);
+      if (h.avatar) {
+        shake(h.avatar, h.at, 5);
+        const c = center(h.avatar.getBoundingClientRect());
+        burst("slash", c.x, c.y, [{ scale: "0 1", opacity: 1 }, { scale: "0.7 1", opacity: 1, offset: 0.45 }, { scale: "0.8 0.4", opacity: 0 }],
+          { duration: 300, delay: h.at, easing: "cubic-bezier(.2, .8, .3, 1)" });
+      }
+      if (h.life) {
+        h.life.animate([{ filter: "none", scale: "1" }, { filter: "brightness(1.4) sepia(1) saturate(6) hue-rotate(-35deg)", scale: "1.12", offset: 0.2 },
+          { filter: "none", scale: "1" }], { duration: 450, delay: h.at, easing: "ease-out" });
+        const r = h.life.getBoundingClientRect();
+        number(r.right + 20, r.top + r.height / 2, `−${h.amount}`, h.at + 60);
+      }
+    }
+  }
+
+  return { capture, stop, play, clash, resolve, hold, release, damage, timing: { hit: D * HIT, clash: CLASH * CLASH_HIT } };
 }

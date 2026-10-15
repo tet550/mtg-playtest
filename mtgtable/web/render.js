@@ -1,6 +1,7 @@
 import { $, dots, el, noSelect } from "./dom.js";
 import { patch } from "./patch.js";
 import { createMotion } from "./motion.js";
+import { createStack } from "./stack.js";
 import { t as tr } from "./i18n.js";  // t はターン（v.turn）などの名前に使っているので tr
 import { createCardNames, displayName, localize } from "./cardnames.js";
 
@@ -10,6 +11,7 @@ import { createCardNames, displayName, localize } from "./cardnames.js";
 export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hooks = {} }) {
   const { imageURL, symbolURL } = source;
   const motion = createMotion();
+  const stack = createStack($("fl-stack"), $("stack"));
   // カード名の日本語（日本語の画面で、見えているカードの名前だけ聞く）。分かったら描き直す
   const cardNames = createCardNames(source, () => { render(); renderLog(); });
   // 読めなかった画像の URL。描き直しは差分で当てるので、次からは組み立ての時点で文字にする（読み直しを繰り返さない）
@@ -108,6 +110,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return box;
   }
 
+  // カードが負っているダメージ（「damage N」の Note の合計）
+  const damageOf = (c) => (c.notes || []).reduce((n, note) => {
+    const d = /^damage (\d+)/i.exec(note.text);
+    return d ? n + Number(d[1]) : n;
+  }, 0);
+
   // 戦闘中の P/T の目安: 印刷された（トークンは定義の）P/T に、±N/±N のカウンターと Note（「+2/+2」で始まるもの）を足す。
   // オーラ・常在型能力などは数えない（ルールの判断は審判）。「damage N」の Note はダメージとして横に出す
   function ptOf(c) {
@@ -124,13 +132,11 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       const m = /^([+-]\d+)\/([+-]\d+)$/.exec(k);
       if (m) add(m, n, tr("card.counter", { kind: k }));
     }
-    let damage = 0;
     for (const note of c.notes || []) {
       const m = /^([+-]\d+)\/([+-]\d+)/.exec(note.text);
       if (m) add(m, 1, note.text);
-      const d = /^damage (\d+)/i.exec(note.text);
-      if (d) damage += Number(d[1]);
     }
+    const damage = damageOf(c);
     const text = `${p ?? c.base_pt[0]}/${t ?? c.base_pt[1]}`;
     const known = p !== null && t !== null && base[0] !== null && base[1] !== null;
     const diff = known ? (p - base[0]) + (t - base[1]) : 0;
@@ -620,22 +626,14 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return box;
   }
 
-  // ライフ: 「LIFE」と数のプレート。5 以下は警告色、0 以下は敗北の色
-  // 直前の位置（1件前）からライフが変わっていれば、その差を横に出す（減ったら赤、増えたら緑）
-  function lifeBadge(p, before) {
+  // ライフ: 「LIFE」と数のプレート。5 以下は警告色、0 以下は敗北の色。増減はダメージ・回復の演出で見せる（motion.js）
+  function lifeBadge(p) {
     const level = p.life <= 0 ? " dead" : p.life <= 5 ? " low" : "";
     const box = el("span", "life" + level);
     box.title = tr("player.life.title", { life: p.life });
     box.append(el("span", "llbl", "LIFE"), el("span", "lnum", String(p.life)));
-    // 増減の欄はいつも取っておく（出た時に横の並びがずれないように）
     const wrap = el("span", "lifewrap");
     wrap.append(box);
-    const delta = before == null ? 0 : p.life - before;
-    if (!delta) return wrap;
-    const d = el("span", "ldelta " + (delta < 0 ? "minus" : "plus"), delta < 0 ? `−${-delta}` : `+${delta}`);
-    d.dataset.key = `delta:${before}:${p.life}`;  // 増減が変わったら新しい要素で（出たときの動きを出す）
-    d.title = `${before} → ${p.life}`;
-    wrap.append(d);
     return wrap;
   }
 
@@ -680,8 +678,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const p = v.players.find((x) => x.id === pid);
     const box = el("div");
     const head = el("div", "phead");
-    const before = prev && prev.players.find((x) => x.id === pid);
-    head.append(avatar(v, p), lifeBadge(p, before && before.life));
+    head.append(avatar(v, p), lifeBadge(p));
     if (hooks.player) {
       head.classList.add("clickable");
       head.onclick = (ev) => hooks.player(pid, ev);
@@ -838,17 +835,12 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   // スタック: 上から順に、呪文はそのカード、能力は発生源のカードを小さく出し、横に種類・文・対象を並べる
   const KINDS = ["spell", "activated", "triggered", "ability"];
 
-  function renderStack(v) {
-    const box = $("stack");
-    $("fl-stack").hidden = !v.stack.length;
+  // anim: 動かすときだけ { duration, forward }（積む・解決の出入りは stack.js）
+  function renderStack(v, anim) {
     foldable("fl-stack", v.stack.map((s) => s.id).join(","), v.stack.length);
-    if (!v.stack.length) {
-      patch(box, []);
-      return;
-    }
     const cards = new Map();
     for (const z of Object.values(v.zones)) for (const c of z.cards || []) cards.set(c.id, c);
-    patch(box, v.stack.map((s, i) => {
+    stack.update(v.stack.map((s, i) => {
       const li = el("li", "sitem" + (s.kind === "spell" ? "" : " ability"));
       li.dataset.key = s.id;
       const id = s.card || s.source;
@@ -887,7 +879,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       li.append(pic, body);
       li.title = s.id;
       return li;
-    }));
+    }), anim);
   }
 
   // 戦闘: 攻撃クリーチャーごとに、カード・攻撃先・ブロックしているカードを縦に並べる
@@ -1028,6 +1020,56 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
       items.push({ from, targets, flash });
     }
     if (items.length) motion.resolve(items);
+    return items.length > 0;
+  }
+
+  // 解決する項目（進めたときだけ）の対象（カード・Player の id）
+  function resolvingIds(shown, v) {
+    return new Set(shown.stack.filter((s) => !s.planned && !v.stack.some((x) => x.id === s.id))
+      .flatMap((s) => shown.links.filter((l) => l.source === s.id && l.kind === "target").flatMap((l) => l.targets)));
+  }
+  const cardEls = (id) => {
+    const q = CSS.escape(id);
+    return [...document.querySelectorAll(`#top [data-ids~="${q}"], #bottom [data-ids~="${q}"], #combatbox [data-ids~="${q}"]`)];
+  };
+
+  const slotOf = (id) => (ui.sides.top === id ? "top" : ui.sides.bottom === id ? "bottom" : null);
+
+  // 効果が出る要素: カードは盤面と戦闘の欄の写し、Player はライフ。描く前に写しを取り、効果（P/T・ダメージ・ライフ）は
+  // 光の玉が当たってから・ぶつかってから見せる（motion.hold / release）
+  const effectEls = (ids) => [...ids].flatMap((id) => {
+    const slot = slotOf(id);
+    return slot ? [$(slot).querySelector(".phead .lifewrap")].filter(Boolean) : cardEls(id);
+  });
+
+  // ダメージと回復（進めたときだけ）: 戦場のカードの負ったダメージが増えた・Player のライフが減った・増えた。
+  // id → 減った数（回復は負の数）
+  function damaged(shown, v) {
+    const field = (view) => new Map(((view.zones.battlefield || {}).cards || []).map((c) => [c.id, c]));
+    const was = field(shown);
+    const out = new Map();
+    for (const [id, c] of field(v)) {
+      const amount = was.has(id) ? damageOf(c) - damageOf(was.get(id)) : 0;
+      if (amount > 0) out.set(id, amount);
+    }
+    for (const p of v.players) {
+      const prev = shown.players.find((x) => x.id === p.id);
+      if (prev && p.life !== prev.life) out.set(p.id, prev.life - p.life);
+    }
+    return out;
+  }
+
+  // ダメージ・回復の演出（描いた後）。解決の対象なら光の玉が当たったとき、戦闘でぶつけ合ったならぶつかったとき
+  // （絆魂の回復も）、ほかはすぐ
+  function damageFx(dmg, targeted, clashed) {
+    const hits = [...dmg].map(([id, amount]) => {
+      const at = targeted.has(id) ? motion.timing.hit : clashed ? motion.timing.clash : 0;
+      const slot = slotOf(id);
+      if (!slot) return { cards: cardEls(id), amount, at };
+      const head = $(slot).querySelector(".phead");
+      return head && { side: $(slot), avatar: head.querySelector(".avatar"), life: head.querySelector(".life"), amount: Math.abs(amount), heal: amount < 0, at };
+    }).filter(Boolean);
+    if (hits.length) motion.damage(hits);
   }
 
   // 描き直しは、組み立てた木を今の DOM に差分で当てる（patch.js）。使い回した要素の状態（選んだ文字・フォーカス・
@@ -1040,11 +1082,20 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const animate = ui.animate && ui.motion ? ui.animate : null;
     ui.animate = null;
     motion.stop();
+    stack.stop();
     const before = animate && ui.shown ? motion.capture() : null;
     const shown = ui.shown;
     // 解決の演出に使う、描く前のスタックの項目の位置（項目の id → カードの絵の位置）
     const stackRects = before ? new Map([...$("stack").children].filter((li) => li.dataset.key)
       .map((li) => [li.dataset.key, (li.querySelector(".card") || li).getBoundingClientRect()])) : null;
+    const forward = before && shown && v !== shown && v.version > shown.version;
+    const targeted = forward ? resolvingIds(shown, v) : new Set();
+    const dmg = forward ? damaged(shown, v) : new Map();
+    // 戦闘ダメージに進んだら（戦闘の欄が開いていればぶつけ合う）、ダメージもぶつかってから見せる
+    const cb = $("combatbox");
+    const willClash = forward && (INTO_DAMAGE[v.turn.step] || []).includes(shown.turn.step) && !cb.hidden && !cb.classList.contains("min");
+    const heldHit = forward ? motion.hold(effectEls(targeted)) : [];
+    const heldClash = willClash ? motion.hold(effectEls([...dmg.keys()].filter((id) => !targeted.has(id)))) : [];
     ui.names = collectNames(v);
     cardNames.want(Object.values(ui.names));
     ui.attacking = new Set(v.combat.attacks.map((a) => a.attacker));
@@ -1091,7 +1142,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     // 押していた手札のカードが、この更新で手札から無くなった
     if (drag && !drag.tile.isConnected) finish(false);
 
-    renderStack(v);
+    renderStack(v, before && shown !== v ? { duration: animate.duration, forward: v.version > shown.version } : null);
 
     renderCombat(v);
 
@@ -1110,8 +1161,13 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const resolved = before && shown !== v && shown.stack.some((s) => !s.planned && !v.stack.some((x) => x.id === s.id));
     if (before && shown !== v) motion.play(before, shown, v, animate.duration, resolved ? 420 : 0);
     // 戦闘ダメージのステップに進んだら、戦闘の欄でカードをぶつけ合う（戻るときは出さない）
-    if (before && shown !== v && (INTO_DAMAGE[t.step] || []).includes(shown.turn.step)) motion.clash();
-    if (before && shown !== v && v.version > shown.version) resolveFx(shown, v, before, stackRects);
+    const clashed = before && shown !== v && (INTO_DAMAGE[t.step] || []).includes(shown.turn.step) && motion.clash();
+    if (forward) {
+      const played = resolveFx(shown, v, before, stackRects);
+      motion.release(heldHit, played ? motion.timing.hit : 0);
+      motion.release(heldClash, clashed ? motion.timing.clash : 0);
+      damageFx(dmg, played ? targeted : new Set(), clashed);
+    }
     if (hooks.after) hooks.after();
   }
 
