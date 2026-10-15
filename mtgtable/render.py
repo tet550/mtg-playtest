@@ -133,17 +133,13 @@ def _cards_block(title: str, zv: dict, indent: str = "  ") -> list:
         return lines
     known = zv.get("known", [])
     positions = zv.get("known_positions", [])
-    unordered = zv.get("known_unordered", [])
     head = "%s%s (%d)" % (indent, title, count)
-    if not known and not positions and not unordered:
+    if not known and not positions:
         return [head + ": hidden"]
     lines.append(head + ":")
     lines.extend(indent + "  " + x for x in _grouped(known))
     lines.extend(indent + "  " + _card(c) for c in positions)
-    if unordered:
-        lines.append(indent + "  known, position unknown:")
-        lines.extend(indent + "    " + x for x in _grouped(unordered))
-    rest = count - len(known) - len(positions) - len(unordered)
+    rest = count - len(known) - len(positions)
     if rest:
         lines.append(indent + "  + %d unknown" % rest)
     return lines
@@ -186,7 +182,7 @@ def render_view(view: dict) -> str:
             if zv is None:
                 continue
             if zv.get("collapsed") or (kind == "library" and not any(
-                    k in zv for k in ("known_positions", "known_unordered", "cards"))):
+                    k in zv for k in ("known_positions", "cards"))):
                 extra = ", known positions: %d" % zv["known_positions_count"] if zv.get("known_positions_count") else ""
                 out.append("  %s (%d%s)" % (kind, zv["count"], extra))
                 out.extend("    %s (known to %s)" % (_card(c), ", ".join(c["known_to"]))
@@ -222,7 +218,7 @@ def render_view(view: dict) -> str:
             out.append("  %s -> %s%s" % (a["attacker"], a["target"],
                                          "  blocked by " + ", ".join(blockers) if blockers else ""))
     # カードの行に出したもの（source がカードの Link）は繰り返さない
-    shown = {c["id"] for zv in zones.values() for key in ("cards", "known", "known_positions", "known_unordered")
+    shown = {c["id"] for zv in zones.values() for key in ("cards", "known", "known_positions")
              for c in zv.get(key, []) if c.get("links")}
     rest = [l for l in view["links"] if l["source"] not in shown]
     if rest:

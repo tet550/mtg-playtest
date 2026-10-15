@@ -6,7 +6,7 @@
 const TRACKED = "#top [data-ids], #bottom [data-ids], #stack .sitem:not(.ability) [data-ids]";
 const MAX_JOBS = 80;  // 一度にこれより多く動くときは（大きな巻き戻しなど）動かさない
 const EASE = "cubic-bezier(.2, .7, .2, 1)";
-const LISTS = ["cards", "known", "known_positions", "known_unordered"];
+const LISTS = ["cards", "known", "known_positions"];
 // 盤面の上に重なる窓（下から順）。写しは窓より上の層で動くので、窓の下に隠れたカードの写しは出さない（窓の上に飛び出さない）
 const COVERS = [".zone.opened", "#combatbox", "#fl-stack", "#fl-detail", "#fl-play", "body.log-open .logpane"];
 

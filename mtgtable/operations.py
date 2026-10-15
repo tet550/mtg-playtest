@@ -281,6 +281,10 @@ def move_card(ctx: Context, cid: str, to: str, position=None, face_down=None,
     card = s.cards[cid]
     src = s.zones[card.zone]
     dst = s.zones[to]
+    was_known = {pid for pid in s.player_order
+                 if cid in s.knowledge.get(pid, {}) or info.sees_by_rules(s, pid, cid)}
+    saw_src = {pid for pid in s.player_order if src.visibility == "public"
+               or (src.visibility == "owner" and src.owner == pid)}
     src.cards.remove(cid)
     if src.kind == "stack":
         for it in [it for it in s.stack.items if it.card == cid]:
@@ -319,10 +323,22 @@ def move_card(ctx: Context, cid: str, to: str, position=None, face_down=None,
         if dst.kind == "battlefield" and controller != card.controller and src.name == dst.name:
             card.controlled_since = s.tick()
         card.controller = controller
-    # 公開された移動なので、中身を知っている者は行き先の位置も分かる
-    for k in s.knowledge.values():
-        if cid in k:
-            k[cid]["ordered"] = True
+    for pid in s.player_order:
+        sees_dst = info.sees_by_rules(s, pid, cid)
+        if not sees_dst:
+            if src.name != dst.name and not src.ordered and pid not in saw_src:
+                # 非公開の手札などから見えない先へ動いたら、どのカードが抜けたか分からないため元の領域ごと忘れる
+                info.forget_zone(s, src.name, pid)
+                info.forget_card(s, cid, pid)
+            elif card.face_down:
+                info.forget_card(s, cid, pid)
+            elif pid in was_known:
+                info.learn(s, pid, cid)
+        elif src.name != dst.name and not src.ordered and pid not in saw_src and pid not in was_known:
+            # 非公開の手札などから未知のカードが公開領域へ出たとき、同名の既知カードが手札にあれば1枚忘れる
+            same = next((o for o in src.cards if o in s.knowledge.get(pid, {}) and s.cards[o].name == card.name), None)
+            if same:
+                info.forget_card(s, same, pid)
     ctx.event("move %s: %s -> %s%s" % (_label(s, cid), src.name, to,
                                         "" if position in (None, "top") else " @%s" % position))
 
@@ -346,11 +362,8 @@ def op_move(ctx: Context, p: dict) -> dict:
         to = resolve_zone(ctx, p["to"], ctx.state.cards[cid].owner)
         move_card(ctx, cid, to, pos, p.get("face_down"), p.get("tapped"), controller, p.get("keep", ()))
     if shuffled and len(ids) > 1:
-        # 無作為の順なので、中身を知っていても誰もどれがどこかは分からない
-        for k in ctx.state.knowledge.values():
-            for cid in ids:
-                if cid in k:
-                    k[cid]["ordered"] = False
+        # 無作為の順なので、動かしたカードの記憶を消す
+        info.forget_cards(ctx.state, ids)
         ctx.event("placed in random order: %s" % _labels(ctx.state, placed))
     if p.get("as"):
         ctx.aliases[p["as"]] = ids
@@ -376,11 +389,11 @@ def op_draw(ctx: Context, p: dict) -> dict:
 
 
 def op_shuffle(ctx: Context, p: dict) -> dict:
-    """領域をシャッフルする（既定は操作者のライブラリー）。全員、その中の位置の記憶を失う。"""
+    """領域をシャッフルする（既定は操作者のライブラリー）。全員、その中のカードの記憶を失う。"""
     zn = resolve_zone(ctx, p.get("zone", "library"), p.get("owner"))
     zone = ctx.state.zones[zn]
     ctx.rng.shuffle(zone.cards)
-    info.forget_positions(ctx.state, zn)
+    info.forget_zone(ctx.state, zn)
     ctx.event("shuffle %s" % zn)
     return {}
 
@@ -400,6 +413,10 @@ def _set_flags(ctx: Context, p: dict, **fixed) -> dict:
                 c.controlled_since = ctx.state.tick()  # コントロールが変わると召喚酔いからやり直し
         if p.get("name"):
             c.name = p["name"]
+        if c.face_down:
+            for pid in ctx.state.player_order:
+                if not info.sees_by_rules(ctx.state, pid, cid):
+                    info.forget_card(ctx.state, cid, pid)
         ctx.event("set %s %s" % (_label(ctx.state, cid),
                                  {k: v for k, v in {**p, **fixed}.items() if k not in ("card", "cards", "as")}))
     if p.get("as"):
@@ -531,25 +548,24 @@ def op_search(ctx: Context, p: dict) -> dict:
         raise OperationError("found %d of %s in %s (need %d)" % (len(hits), names, zn, n))
     to = resolve_zone(ctx, p["to"], s.cards[hits[0]].owner) if hits else None
     do_shuffle = p.get("shuffle", True)
+    info.forget_zone(s, zn) if do_shuffle else info.forget_cards(s, hits)
     if do_shuffle and to == zn:
         for cid in hits:
             s.zones[zn].cards.remove(cid)
         ctx.rng.shuffle(s.zones[zn].cards)
-        info.forget_positions(s, zn)
         s.zones[zn].cards.extend(hits)  # 一時的に置いてから、指定の位置へ動かし直す
     placed = list(reversed(hits)) if p.get("position") in (None, "top") else hits
     for cid in placed:
         move_card(ctx, cid, to, p.get("position"), p.get("face_down"), p.get("tapped"), None, ())
-        info.learn(s, pid, cid, True)
+        info.learn(s, pid, cid)
     ctx.event("%s searches %s for %s: %s" % (pid, zn, " / ".join("<%s>" % x for x in names), _labels(s, hits)))
     if p.get("reveal"):
         for viewer in s.player_order:
             for cid in hits:
-                info.learn(s, viewer, cid, True)
+                info.learn(s, viewer, cid)
         ctx.event("reveal %s to all" % _labels(s, hits))
     if do_shuffle and to != zn:
         ctx.rng.shuffle(s.zones[zn].cards)
-        info.forget_positions(s, zn)
         ctx.event("shuffle %s" % zn)
     if p.get("as"):
         ctx.aliases[p["as"]] = hits

@@ -304,12 +304,11 @@ MTG の基本ルールの要点は [references/rules.md](plugins/mtgtable/skills
 
 ## 情報公開
 
-- **PlayerView**: その Player が知り得る情報だけ。相手の手札は枚数と既知のカード、
-  ライブラリーは枚数と既知のカード（位置が分かるものは `known_positions`、
-  シャッフル後などで位置が分からないものは `known_unordered`）。
+- **PlayerView**: その Player が知り得る情報だけ。相手の手札は枚数と既知のカード（`known`）、
+  ライブラリーは枚数と既知の位置のカード（`known_positions`）。
   知らない非公開カードは id も出さない。公開領域の裏向きカードは id だけ出す（紙でも追跡できるため）。
-- **KnownInformation**: 見えたカード・`reveal`・`look` で知ったカードは覚えておき、
-  非公開領域へ移っても知ったまま。シャッフルで位置の記憶だけが消える。
+- **KnownInformation**: 見えたカード・`reveal`・`look` で知ったカードは覚えておくが、
+  シャッフル・無作為移動・非公開移動・未知の同名カードの移動など非確定操作があれば公開情報を一律リセットする。
 - **InformationPolicy**（`new --policy`）: `normal` / `own_library` / `all_libraries` / `omniscient`。
 
 ## オラクルのキャッシュ

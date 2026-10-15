@@ -294,9 +294,10 @@ Player として操作するとき、中身を知らない非公開カードは 
 
 ## 情報公開
 
-- **Player View**: 相手の手札は枚数と既知のカード。ライブラリーは既知のカードを、位置が分かるもの
-  （`known_positions`）と分からないもの（`known_unordered`）に分けて出す。知らない非公開カードは id も出さない
-- **KnownInformation**: 見えた・公開された・`look` で見たカードは覚える。シャッフルで位置の記憶だけ消える
+- **Player View**: 相手の手札は枚数と既知のカード。ライブラリーは位置と中身が分かっている既知のカード
+  （`known_positions`）だけを出す。知らない非公開カードは id も出さない
+- **KnownInformation**: 見えた・公開された・`look` で見たカードは覚える。非確定操作（シャッフル・無作為の順での移動・
+  非公開の手札からの非公開移動など）でその領域やカードの記憶はリセットされる
 - **InformationPolicy**: `normal` / `own_library` / `all_libraries` / `omniscient`（一人回し・テスト用）
 - カード名は表示では `<Name>` で囲む（view・ids・oracle・log --events。JSON の値には付けない）
 - 表示の整理: 同じ状態のオブジェクトは `#t4..#t11 <Name> ×8` の1行、同じ内容の Note は `×N` にまとめる。

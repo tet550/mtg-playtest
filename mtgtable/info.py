@@ -3,7 +3,8 @@
 GameState そのものと、各 Player から見える情報を分ける。
 
 - 実際に見えている情報: 領域の公開範囲・表裏・Information Policy から毎回計算する
-- 知っている情報 (KnownInformation): 一度見たカードの記憶。GameState.knowledge に残る
+- 知っている情報 (KnownInformation): 一度見たカードの記憶。GameState.knowledge に残るが、
+  非確定操作（シャッフル・無作為移動・非公開の手札からの非公開移動など）でリセットされる
 
 非公開領域の「知らないカード」は id も出さない。id を出すとシャッフル後も
 同じカードを追跡できてしまい、紙では得られない情報になるため。
@@ -61,11 +62,8 @@ def knows_identity(state: GameState, viewer: Optional[str], card_id: str) -> boo
 
 
 def knows_position(state: GameState, viewer: Optional[str], card_id: str) -> bool:
-    """順序付き非公開領域で、viewer がカードの位置まで知っているか。"""
-    if viewer is None or sees_by_rules(state, viewer, card_id) or sees_by_policy(state, viewer, card_id):
-        return True
-    k = state.knowledge.get(viewer, {}).get(card_id)
-    return bool(k and k.get("ordered"))
+    """viewer がカードの位置を知っているか（位置不明の追跡は行わないため knows_identity と同じ）。"""
+    return knows_identity(state, viewer, card_id)
 
 
 def can_reference(state: GameState, viewer: Optional[str], card_id: str) -> bool:
@@ -79,8 +77,7 @@ def can_reference(state: GameState, viewer: Optional[str], card_id: str) -> bool
     zone = state.zones[state.cards[card_id].zone]
     if zone.visibility == "public":
         return True
-    return knows_identity(state, viewer, card_id) and (
-        not zone.ordered or knows_position(state, viewer, card_id))
+    return knows_identity(state, viewer, card_id)
 
 
 def known_set(state: GameState, viewer: Optional[str]) -> set:
@@ -96,9 +93,7 @@ def id_sort_key(oid: str):
 # ---------------------------------------------------------------- knowledge
 
 def learn(state: GameState, viewer: str, card_id: str, ordered: bool = True) -> None:
-    k = state.knowledge.setdefault(viewer, {})
-    entry = k.setdefault(card_id, {"ordered": ordered})
-    entry["ordered"] = entry["ordered"] or ordered
+    state.knowledge.setdefault(viewer, {})[card_id] = {"ordered": True}
 
 
 def refresh_knowledge(state: GameState) -> None:
@@ -106,21 +101,30 @@ def refresh_knowledge(state: GameState) -> None:
     for pid in state.player_order:
         for cid in state.cards:
             if sees_by_rules(state, pid, cid):
-                learn(state, pid, cid, True)
+                learn(state, pid, cid)
 
 
-def forget_positions(state: GameState, zone_name: str) -> None:
-    """シャッフル後。中身の記憶は残すが、どこにあるかは分からなくなる。"""
-    cards = set(state.zones[zone_name].cards)
-    for k in state.knowledge.values():
-        for cid in cards:
-            if cid in k:
-                k[cid]["ordered"] = False
+def forget_zone(state: GameState, zone_name: str, viewer: Optional[str] = None) -> None:
+    """指定領域のカードの記憶を消す（viewer 省略で全員）。"""
+    targets = [state.knowledge.get(viewer, {})] if viewer else state.knowledge.values()
+    for k in targets:
+        for cid in state.zones[zone_name].cards:
+            k.pop(cid, None)
 
 
-def forget_card(state: GameState, card_id: str) -> None:
-    for k in state.knowledge.values():
-        k.pop(card_id, None)
+forget_positions = forget_zone
+
+
+def forget_cards(state: GameState, card_ids, viewer: Optional[str] = None) -> None:
+    """指定カード群の記憶を消す（viewer 省略で全員）。"""
+    targets = [state.knowledge.get(viewer, {})] if viewer else state.knowledge.values()
+    for k in targets:
+        for cid in card_ids:
+            k.pop(cid, None)
+
+
+def forget_card(state: GameState, card_id: str, viewer: Optional[str] = None) -> None:
+    forget_cards(state, (card_id,), viewer)
 
 
 def set_policy(state: GameState, player: str, policy: str) -> None:
@@ -315,38 +319,26 @@ def player_view(state: GameState, viewer: Optional[str], sideboard: bool = False
         if zone.kind in COLLAPSED_BY_DEFAULT and not expand[zone.kind]:
             zv["collapsed"] = True
             if zone.visibility != "public":
-                n = sum(1 for cid in zone.cards if knows_identity(state, viewer, cid)
-                        and knows_position(state, viewer, cid))
+                n = sum(1 for cid in zone.cards if knows_identity(state, viewer, cid))
                 if n:
                     zv["known_positions_count"] = n
                 if viewer is None and zone.kind == "library":
-                    # 審判には、Player が位置まで知っているカード（公開した一番上など）を出す。探索や占術の続きを処理するため
+                    # 審判には、Player が知っているカード（公開した一番上など）を出す。探索や占術の続きを処理するため
                     seen = [(i, cid) for i, cid in enumerate(zone.cards)
-                            if any(k.get(cid, {}).get("ordered") for k in state.knowledge.values())]
+                            if any(cid in k for k in state.knowledge.values())]
                     if seen:
                         zv["known_positions"] = [dict(cv(cid, True), index=i, known_to=sorted(
-                            pid for pid, k in state.knowledge.items() if k.get(cid, {}).get("ordered")))
+                            pid for pid, k in state.knowledge.items() if cid in k))
                             for i, cid in seen]
             view["zones"][zname] = zv
             continue
         if zone.visibility == "public":
             zv["cards"] = [cv(cid, knows_identity(state, viewer, cid)) for cid in zone.cards]
         elif zone.ordered:
-            positions, unordered = [], []
-            for i, cid in enumerate(zone.cards):
-                if not knows_identity(state, viewer, cid):
-                    continue
-                c = cv(cid, True)
-                if knows_position(state, viewer, cid):
-                    c["index"] = i
-                    positions.append(c)
-                else:
-                    unordered.append(c)
+            positions = [dict(cv(cid, True), index=i) for i, cid in enumerate(zone.cards)
+                         if knows_identity(state, viewer, cid)]
             if positions:
                 zv["known_positions"] = positions
-            if unordered:
-                # 位置を知らないカードは id 順に並べる（領域の並び順で出すと位置が漏れる）
-                zv["known_unordered"] = sorted(unordered, key=lambda c: id_sort_key(c["id"]))
         else:
             known = [cid for cid in zone.cards if knows_identity(state, viewer, cid)]
             if len(known) == len(zone.cards):

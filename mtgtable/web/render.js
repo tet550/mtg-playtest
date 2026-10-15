@@ -43,7 +43,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   function collectNames(v) {
     const names = {};
     for (const z of Object.values(v.zones)) {
-      for (const key of ["cards", "known", "known_positions", "known_unordered"]) {
+      for (const key of ["cards", "known", "known_positions"]) {
         for (const c of z[key] || []) if (c.name) names[c.id] = c.name;
       }
     }
@@ -382,9 +382,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
   }
 
   function libraryCards(lib) {
-    const known = (lib.known_positions || []).map((c) => ({ ...c, pos: tr("opened.fromTop", { n: c.index + 1 }) }));
-    const unordered = (lib.known_unordered || []).map((c) => ({ ...c, pos: tr("opened.unknownPosition") }));
-    return [...known, ...unordered];
+    return (lib.known_positions || []).map((c) => ({ ...c, pos: tr("opened.fromTop", { n: c.index + 1 }) }));
   }
 
   // 手札の並びは画面の上だけで持つ（ui.handOrder: pid → id の並び。卓の状態は変えない）。

@@ -80,7 +80,7 @@ export function myAsk(v, pid) {
 // カードがどの領域にあるか（view の中で）
 export function zoneOf(v, id) {
   for (const [key, z] of Object.entries(v.zones)) {
-    for (const part of ["cards", "known", "known_positions", "known_unordered"]) {
+    for (const part of ["cards", "known", "known_positions"]) {
       if ((z[part] || []).some((c) => c.id === id)) return key;
     }
   }
@@ -89,7 +89,7 @@ export function zoneOf(v, id) {
 
 export function findCard(v, id) {
   for (const z of Object.values(v.zones)) {
-    for (const part of ["cards", "known", "known_positions", "known_unordered"]) {
+    for (const part of ["cards", "known", "known_positions"]) {
       const c = (z[part] || []).find((x) => x.id === id);
       if (c) return c;
     }

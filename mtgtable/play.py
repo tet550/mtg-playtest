@@ -582,7 +582,7 @@ def card_kinds(view: dict, state: GameState) -> dict:
     for key, z in view["zones"].items():
         if key == "battlefield":
             continue
-        for part in ("cards", "known", "known_positions", "known_unordered"):
+        for part in ("cards", "known", "known_positions"):
             for c in z.get(part) or []:
                 card = state.cards.get(c.get("id")) if isinstance(c, dict) and c.get("name") else None
                 if card is None or not card.type_line or card.face_down:

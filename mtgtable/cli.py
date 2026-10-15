@@ -78,7 +78,7 @@ def _view(state, actor, as_json, oracle=False, names=True, **zones):
     if oracle and names:
         names = set()
         for zv in v["zones"].values():
-            for key in ("cards", "known", "known_positions", "known_unordered"):
+            for key in ("cards", "known", "known_positions"):
                 names.update(c["name"] for c in zv.get(key, []) if "name" in c)
         v["oracle"] = {}
         for n in sorted(names):

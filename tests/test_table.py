@@ -58,12 +58,21 @@ class TableTest(unittest.TestCase):
         self.assertIn("not known", r.error)  # 知らないカードは id で指せない
         r = e.apply_act("p1", {"pre": [{"zone": "p2.library", "top": [secret]}], "act": [{"op": "draw"}]})
         self.assertEqual(r.status, "precondition_failed")  # 前提で中身を探ることもできない
-        # 見たカードは覚えている。シャッフルで位置だけを忘れる
+        # 見たカードは覚えるが、非確定操作（シャッフル・非公開移動・未知の同名カード移動）で一律リセットする
         e.apply_act("p1", {"act": [{"op": "look", "cards": {"zone": "library", "top": 1}}]})
         top = e.state.zones["p1.library"].cards[0]
+        self.assertEqual([c["id"] for c in player_view(e.state, "p1", library=True)["zones"]["p1.library"]["known_positions"]], [top])
         e.apply_act("p1", {"act": [{"op": "shuffle", "zone": "library"}]})
-        lib = player_view(e.state, "p1", library=True)["zones"]["p1.library"]
-        self.assertEqual(([c["id"] for c in lib["known_unordered"]], "known_positions" in lib), ([top], False))
+        self.assertNotIn("known_positions", player_view(e.state, "p1", library=True)["zones"]["p1.library"])
+        h0, h1 = next((a, b) for i, a in enumerate(hand(e, "p1")) for b in hand(e, "p1")[i + 1:]
+                      if e.state.cards[a].name == e.state.cards[b].name)
+        e.apply_act("p1", {"act": [{"op": "reveal", "cards": [h0]}]})
+        self.assertEqual([c["id"] for c in player_view(e.state, "p2")["zones"]["p1.hand"]["known"]], [h0])
+        e.apply_act("p1", {"act": [{"op": "move", "card": h1, "to": "battlefield"}]})  # 未知の同名カードが出たら既知枠を消す
+        self.assertEqual(player_view(e.state, "p2")["zones"]["p1.hand"]["known"], [])
+        e.apply_act("p1", {"act": [{"op": "reveal", "cards": [h0]}]})
+        e.apply_act("p1", {"act": [{"op": "move", "card": hand(e, "p1")[-1], "to": "library", "pos": "top"}]})  # 非公開移動で手札の公開情報を一律リセット
+        self.assertEqual(player_view(e.state, "p2")["zones"]["p1.hand"]["known"], [])
 
     def test_concurrent_writers_with_the_same_expect(self):
         with tempfile.TemporaryDirectory() as tmp:
