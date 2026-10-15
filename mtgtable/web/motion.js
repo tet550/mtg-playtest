@@ -151,9 +151,11 @@ export function createMotion() {
     run(g, frames, duration, () => { g.remove(); now.el.style.visibility = ""; }, doom ? doom(g) : 0);
   }
 
-  // 戦場から除かれるカード: その場で赤く光って震え、砕けた破片が飛び散ってから、行き先へ動く。
-  // 写し（transform で動く）に translate と filter を重ねるので、動きとは別に当てられる。戻す時間（ms）を返す。
+  // 戦場から除かれるカード: 行き先（墓地・追放・手札／ライブラリー）に応じた演出をしてから動かす。
+  // 写し（transform で動く）に translate / scale / rotate / filter を重ねるので、動きとは別に当てられる。戻す時間（ms）を返す。
   // lead: 先に見せたい演出（解決の光が対象に当たるまで）の分だけ待つ
+
+  // 破壊・墓地送り: その場で赤く光って震え、砕けた破片が飛び散る
   const SHAKE = 380;
   function shatter(g, at, lead) {
     animations.push(g.animate([
@@ -174,6 +176,61 @@ export function createMotion() {
     burst("shatterring", at.x, at.y, [{ scale: "0.3", opacity: 0.9 }, { scale: "1.4", opacity: 0 }],
       { duration: 420, delay: lead + SHAKE * 0.85, easing: "ease-out" });
     return lead + SHAKE;
+  }
+
+  // バウンス（手札・ライブラリーへ戻す）: 風の輪とともにふわっと浮き上がってから戻る
+  const LIFT = 280;
+  function bounce(g, at, lead) {
+    animations.push(g.animate([
+      { translate: "0 0", scale: "1", rotate: "0deg", filter: "none" },
+      { translate: "0 -12px", scale: "1.07", rotate: "-3deg",
+        filter: "brightness(1.25) drop-shadow(0 8px 14px rgba(80, 195, 255, .8))", offset: 0.55 },
+      { translate: "0 -4px", scale: "1.02", rotate: "0deg",
+        filter: "brightness(1.1) drop-shadow(0 4px 8px rgba(80, 195, 255, .4))", offset: 0.85 },
+      { translate: "0 0", scale: "1", rotate: "0deg", filter: "none" }],
+    { duration: LIFT, delay: lead, easing: "cubic-bezier(.2, .8, .3, 1)", fill: "both" }));
+    for (let i = 0; i < 2; i++) {
+      burst("bouncering", at.x, at.y + 8, [
+        { translate: "0 6px", scale: "0.35 0.2", opacity: 0.9 },
+        { translate: "0 -18px", scale: "1.35 0.75", opacity: 0 }],
+      { duration: 380, delay: lead + i * 90, easing: "ease-out" });
+    }
+    for (let i = 0; i < 6; i++) {
+      const dx = (i - 2.5) * 14 + (Math.random() - 0.5) * 8;
+      burst("gust", at.x + dx, at.y + (Math.random() - 0.5) * 20, [
+        { translate: "0 12px", scale: "0.7 1", opacity: 0 },
+        { translate: "0 -4px", scale: "1 1.1", opacity: 0.9, offset: 0.3 },
+        { translate: `${dx * 0.3}px ${-32 - Math.random() * 20}px`, scale: "0.5 0.6", opacity: 0 }],
+      { duration: 360, delay: lead + 30 + i * 25, easing: "cubic-bezier(.2, .8, .3, 1)" });
+    }
+    return lead + LIFT;
+  }
+
+  // 追放・一時追放: 白紫の光に包まれ、収束する輪と光の粒とともに別次元へ吸い込まれる
+  const BANISH = 360;
+  function banish(g, at, lead) {
+    animations.push(g.animate([
+      { scale: "1", filter: "none" },
+      { scale: "1.05", filter: "brightness(1.6) saturate(.2) contrast(1.2) drop-shadow(0 0 14px rgba(195, 155, 255, .95))", offset: 0.35 },
+      { scale: "0.88", filter: "brightness(2) grayscale(.8) sepia(.4) hue-rotate(220deg) saturate(3) drop-shadow(0 0 18px rgba(180, 130, 255, 1))", offset: 0.75 },
+      { scale: "1", filter: "grayscale(.4) brightness(.85)" }],
+    { duration: BANISH, delay: lead, easing: "ease-in-out", fill: "both" }));
+    burst("banishring", at.x, at.y, [
+      { scale: "1.35", rotate: "0deg", opacity: 0 },
+      { scale: "1.1", opacity: 0.95, offset: 0.25 },
+      { scale: "0.15", rotate: "120deg", opacity: 0 }],
+    { duration: 420, delay: lead + 40, easing: "cubic-bezier(.4, 0, .2, 1)" });
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2 + Math.random() * 0.4;
+      const dist = 38 + Math.random() * 22;
+      const x0 = Math.cos(angle) * dist, y0 = Math.sin(angle) * dist;
+      burst("banishmote", at.x, at.y, [
+        { translate: `${x0}px ${y0}px`, scale: "0.5", opacity: 0 },
+        { translate: `${x0 * 0.65}px ${y0 * 0.65}px`, scale: "1.1", opacity: 1, offset: 0.35 },
+        { translate: `${x0 * 0.1}px ${y0 * 0.1 - 10}px`, scale: "0.2", opacity: 0 }],
+      { duration: 400, delay: lead + 20 + i * 20, easing: "cubic-bezier(.3, 0, .2, 1)" });
+    }
+    return lead + BANISH;
   }
 
   // 前の位置・向きから今の位置へ（タップは 90° 回す）。hide: 始め・終わりが窓の下に隠れているか（隠れている側は透明にする）
@@ -281,11 +338,33 @@ export function createMotion() {
     const hidden0 = (rect, layer) => covered(rect, layer, before.covers);
     const hidden1 = (rect, layer) => covered(rect, layer, after.covers);
     const add = (hide, job) => { if (!(hide[0] && hide[1])) jobs.push(() => job(hide)); };
-    // 戦場から除かれた（戦場にあって、今は戦場に無い）カードは、砕けてから動く。進めたときだけ
+    // 戦場から除かれた（戦場にあって、今は戦場に無い）カードは、行き先に応じた演出をしてから動く。進めたときだけ。
+    // 下書き・送った依頼で仮に戦場に置いたカード（planned）は、仮の盤面が消えただけなので除かない
     const forward = newView.version > oldView.version;
     const onField = (view, id) => (zoneOf(view, id) || {}).key === "battlefield";
-    const doomOf = (item, hide) => (forward && !hide[0] && item.ids.some((id) => onField(oldView, id) && !onField(newView, id))
-      ? (g) => shatter(g, center(item.rect), lead) : null);
+    const real = (id) => !zoneOf(oldView, id).card.planned;
+    const removalOf = (id) => {
+      const now = zoneOf(newView, id);
+      if (now) {
+        if (now.key === "exile") return banish;
+        if (/\.(hand|library)$/.test(now.key)) return bounce;
+        return shatter;
+      }
+      const was = zoneOf(oldView, id);
+      const owner = was && (was.card.owner || was.card.controller);
+      if (owner && ["library", "hand"].some((z) => {
+        const key = `${owner}.${z}`;
+        return oldView.zones[key] && newView.zones[key] && oldView.zones[key].count < newView.zones[key].count;
+      })) return bounce;
+      return shatter;
+    };
+    const doomOf = (item, hide) => {
+      if (!forward || hide[0]) return null;
+      const id = item.ids.find((i) => onField(oldView, i) && real(i) && !onField(newView, i));
+      if (!id) return null;
+      const fx = removalOf(id);
+      return (g) => fx(g, center(item.rect), lead);
+    };
     for (const now of after.cards.values()) {
       if (done.has(now)) continue;
       done.add(now);

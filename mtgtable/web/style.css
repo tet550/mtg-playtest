@@ -583,11 +583,20 @@ body:not(.log-open) #logClose { display: none; }
 .resolvering.hit { width: 72px; height: 72px; margin: -36px 0 0 -36px; }
 .resolveorb { width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%;
   background: radial-gradient(circle, #fff 0 30%, #ffd84a 55%, transparent 72%); box-shadow: 0 0 14px 4px rgba(255, 216, 74, .7); }
-/* 戦場から除かれるカードの破片と輪（motion.js の shatter） */
+/* 戦場から除かれるカードの演出（motion.js の shatter / bounce / banish） */
 .shard { width: 9px; height: 13px; margin: -6px 0 0 -4px; background: linear-gradient(135deg, #f3e3c0, #c0392b 60%, #3a1c16);
   clip-path: polygon(50% 0, 100% 40%, 70% 100%, 0 70%); }
 .shatterring { width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid rgba(231, 76, 60, .9);
   box-shadow: 0 0 18px rgba(231, 76, 60, .7); }
+.bouncering { width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 2px solid rgba(110, 215, 255, .95);
+  box-shadow: 0 0 14px rgba(80, 195, 255, .75), inset 0 0 10px rgba(180, 238, 255, .5); }
+.gust { width: 6px; height: 22px; margin: -11px 0 0 -3px; border-radius: 999px;
+  background: linear-gradient(to top, transparent, rgba(120, 215, 255, .9) 45%, #fff); box-shadow: 0 0 8px rgba(80, 195, 255, .8); }
+.banishring { width: 104px; height: 104px; margin: -52px 0 0 -52px; border-radius: 50%; border: 2px dashed rgba(215, 180, 255, .95);
+  box-shadow: 0 0 18px rgba(175, 120, 255, .85), inset 0 0 16px rgba(130, 80, 220, .6); }
+.banishmote { width: 10px; height: 10px; margin: -5px 0 0 -5px;
+  background: radial-gradient(circle, #fff 0 35%, #c99eff 65%, transparent 75%);
+  clip-path: polygon(50% 0, 68% 32%, 100% 50%, 68% 68%, 50% 100%, 32% 68%, 0 50%, 32% 32%); }
 .clashspark { width: 56px; height: 56px; margin: -28px 0 0 -28px;
   background: radial-gradient(circle, #fff 0 14%, #ffd84a 26%, rgba(255, 120, 40, .7) 46%, transparent 68%);
   clip-path: polygon(50% 0, 60% 36%, 100% 22%, 66% 52%, 92% 92%, 52% 68%, 18% 100%, 34% 58%, 0 40%, 40% 36%); }
