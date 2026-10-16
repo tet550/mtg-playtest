@@ -63,6 +63,21 @@ mtgtable 本体（Python）は、プラグインの `mtgtable` コマンドが�
 **更新**: `claude plugin marketplace update tcg-table` の後 `claude plugin update mtgtable@tcg-table`。新しい mtgtable は、次に
 `mtgtable` を使ったときに入ります。
 
+**消す**: Claude Code にこう頼みます。
+
+```text
+プラグイン mtgtable@tcg-table とマーケットプレイス tcg-table を消して。mtgtable のデータ用フォルダも消して
+```
+
+自分で消すときは、プラグインとデータで方法が違います。
+
+- **プラグイン**: 登録は Claude Code の設定ファイル（`~/.claude/settings.json`・`~/.claude/plugins/`）の中にあるので、ファイルを
+  手で消さず、ターミナルで `claude plugin uninstall mtgtable@tcg-table` の後 `claude plugin marketplace remove tcg-table` を実行します
+- **データ**: プラグインを外しても残ります。次のフォルダを手で消せます
+  - データ用フォルダ: Windows `%APPDATA%\mtgtable`、macOS `~/Library/Application Support/mtgtable`、Linux `~/.local/share/mtgtable`。
+    版ごとに入れた mtgtable 本体（`runtime/`）、カード情報と画像のキャッシュ（`cards/`）、登録したデッキと対局の記録（`data/`）
+  - チャットで対戦テストをしたフォルダの `playtest/`（その対局の記録）
+
 ## 使い方
 
 ふだんは Claude Code に言葉で頼むだけです。コマンドを覚える必要はありません。

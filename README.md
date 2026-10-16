@@ -63,6 +63,22 @@ On first use, the plugin's `mtgtable` command installs the matching version of m
 **Update**: `claude plugin marketplace update tcg-table`, then `claude plugin update mtgtable@tcg-table`. The new mtgtable is
 installed the next time `mtgtable` runs.
 
+**Uninstall**: ask Claude Code:
+
+```text
+Remove the plugin mtgtable@tcg-table and the marketplace tcg-table, and delete mtgtable's data folder
+```
+
+To do it yourself, the plugin and the data are removed differently.
+
+- **The plugin** is registered inside Claude Code's settings (`~/.claude/settings.json`, `~/.claude/plugins/`), so don't delete
+  files by hand. Run `claude plugin uninstall mtgtable@tcg-table`, then `claude plugin marketplace remove tcg-table` in a terminal
+- **The data** stays after the plugin is removed. You can delete these folders by hand
+  - The data folder: `%APPDATA%\mtgtable` on Windows, `~/Library/Application Support/mtgtable` on macOS, `~/.local/share/mtgtable`
+    on Linux. It holds the installed mtgtable for each version (`runtime/`), the card data and image cache (`cards/`), and your
+    registered decks and game records (`data/`)
+  - `playtest/` in any folder where you ran playtests in chat (the records of those games)
+
 ## Usage
 
 Just ask Claude Code in plain words. There are no commands to learn.
