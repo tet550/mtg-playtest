@@ -637,7 +637,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     return wrap;
   }
 
-  // 宣言は、その Player の名前の横に吹き出しで出す。今のターン・フェイズ・ステップでの最後の宣言だけ。
+  // 宣言は、その Player の名前の横に吹き出しで出す。今のターン・フェイズ・ステップでの最後の宣言だけ（審判への依頼は Live のときだけ）。
   // パスは優先権が続けてパスされている間だけ（スタックが変わる・ステップが進むと消える。turn.passed と同じ）
   const DECLS = ["pass", "keep", "mulligan", "no_block", "concede", "intent", "ask", "answer", "ruled"];
   // 出現のアニメーションは、その位置で新しく出た宣言だけ（続いている宣言を描き直すたびに動かさない）
@@ -650,6 +650,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     const d = v.declarations.filter((x) => x.player === pid && x.turn === t.turn && x.step === t.step
       && (!x.phase || x.phase === t.phase)).pop();
     if (!d || (d.kind === "pass" && !t.passed.includes(pid))) return null;
+    if (d.kind === "intent" && !ui.live) return null;  // 審判への依頼は、過去の盤面（履歴の再生）では出さない
     const freshHere = !prev || !prev.declarations.some((x) => x.seq === d.seq);
     let ruledAge = null;
     if (d.kind === "ruled") {

@@ -70,8 +70,22 @@ export function createMotion() {
   let animations = [];
   let timers = [];
 
-  // 今の画面のカードと束の位置。settled: 傾きが変わりかけなら行き着く先で測る（描画の後。前は今見えている傾き）
+  // 今の画面のカードと束の位置。settled: 傾きが変わりかけなら行き着く先で測る（描画の後。前は今見えている傾き）。
+  // スタックの窓も、行の出入り（stack.js）が終わった後の形で測る（積んだ呪文のカードは、開き終えた行の置き場所へ飛ぶ）
   function capture(settled = false) {
+    if (!settled) return measureAll(false);
+    const box = document.getElementById("fl-stack");
+    const anims = document.getAnimations().filter((a) => a.effect && a.effect.target instanceof Element && box.contains(a.effect.target));
+    const at = anims.map((a) => a.currentTime);
+    for (const a of anims) a.currentTime = a.effect.getComputedTiming().endTime;
+    try {
+      return measureAll(true);
+    } finally {
+      anims.forEach((a, i) => { a.currentTime = at[i]; });
+    }
+  }
+
+  function measureAll(settled) {
     const cards = new Map();
     for (const e of document.querySelectorAll(TRACKED)) {
       if (e.closest(".zone.opened")) continue;
@@ -320,16 +334,23 @@ export function createMotion() {
   }
 
   // 写しを見せるのは、本物のカードが見える所（各 Player の欄の枠の内側のうち見出し（名前・ライフ）より下と、
-  // 盤面の上の小窓）だけ。手札のように欄の端で切れているカードの写しも、枠・見出し・その上の余白には出ない
+  // 盤面の上の小窓）と、2つの欄の間（上の欄の下の端から下の欄の見出しまで）だけ。手札は欄の外側の端で切れているので、
+  // その写しは外側の枠・上の欄の見出し・その上の余白には出ない。欄の間は、上と下を行き来するカードが途切れないように見せる
   function clipRects() {
     const rects = [];
     const add = (l, t, r, b) => { if (r > l && b > t) rects.push([l, t, r, b]); };
+    const inner = [];
     for (const side of document.querySelectorAll("#top, #bottom")) {
       const r = side.getBoundingClientRect();
       const l = r.left + side.clientLeft, t = r.top + side.clientTop;
       const head = side.querySelector(".phead");
       const below = head ? Math.max(t, head.getBoundingClientRect().bottom) : t;
       add(l, below, l + side.clientWidth, t + side.clientHeight);
+      inner.push({ l, r: l + side.clientWidth, b: t + side.clientHeight, below });
+    }
+    if (inner.length === 2) {
+      const [top, bottom] = inner;
+      add(Math.min(top.l, bottom.l), top.b, Math.max(top.r, bottom.r), bottom.below);
     }
     for (const e of document.querySelectorAll("#combatbox, #fl-stack, #fl-detail")) {
       const r = e.getBoundingClientRect();

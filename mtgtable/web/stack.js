@@ -9,7 +9,9 @@ import { patch } from "./patch.js";
 export const GLOW = 420;
 const EASE = "cubic-bezier(.2, .7, .2, 1)";
 const SHOW = 250;  // 空だった窓が出てくる（戦闘の窓が左へ退く間。CSS の .combatbox の transition と同じ長さ）
-const PUSHED = 520;  // 積まれた行の縁が光る
+const OPEN = 0.55;  // 積まれた行の場所が開く（動きの長さに対する割合。呪文のカードはその後、開いた場所に収まる）
+const LAND = 320;  // 呪文のカードが収まって弾む
+const SWEEP = "linear-gradient(105deg, transparent 38%, rgba(200, 235, 255, .22) 50%, transparent 62%)";  // 収まったときに行をなでる光
 
 // box: 窓（#fl-stack）、list: 一覧（#stack）
 export function createStack(box, list) {
@@ -76,14 +78,27 @@ export function createStack(box, list) {
         run(g.copy, [{ marginTop: "0px", opacity: 1 }, off], { duration: anim.duration * 0.7, easing: EASE }, () => g.copy.remove());
       }
     }
-    // 積まれた行は開いていく（呪文のカードは手札などから飛んできて、この行の置き場所に収まる）。開いたら縁が光る
+    // 積まれた行: 解決（光って上の縁へ閉じる）とは違う見せ方。行の場所が先に開き、手札などから飛んできた呪文のカード
+    // （motion.js。開き終えた行の置き場所を狙う）が収まると、カードが弾んで白く光り、文が横から出て、行を光がなでる
     for (const li of [...list.children]) {
       if (known.has(li.dataset.key) || li.classList.contains("leaving")) continue;
-      run(li, [{ marginTop: `${-space(li)}px`, opacity: 0 }, { marginTop: "0px", opacity: 1, offset: 0.8 }, { marginTop: "0px", opacity: 1 }],
-        { duration: anim.duration, easing: EASE }, () => run(li, [
-          { boxShadow: "inset 0 0 0 2px rgba(255, 216, 74, 0)" },
-          { boxShadow: "inset 0 0 0 2px rgba(255, 216, 74, .95)", offset: 0.3 },
-          { boxShadow: "inset 0 0 0 2px rgba(255, 216, 74, 0)" }], { duration: PUSHED, easing: "ease-out" }));
+      const d = anim.duration;
+      run(li, [{ marginTop: `${-space(li)}px` }, { marginTop: "0px" }], { duration: d * OPEN, easing: EASE });
+      const body = li.querySelector(".sbody");
+      if (body) run(body, [{ opacity: 0, translate: "-10px 0" }, { opacity: 1, translate: "0 0" }],
+        { duration: d * (1 - OPEN) + LAND * 0.5, delay: d * OPEN, easing: "ease-out" });
+      const pic = li.querySelector(":scope > .card");
+      // 能力の発生源のカードは飛んでこないので、行が開いてから現れる
+      if (pic && li.classList.contains("ability")) run(pic, [{ opacity: 0, scale: ".7" }, { opacity: 1, scale: "1" }],
+        { duration: d * (1 - OPEN), delay: d * OPEN, easing: EASE });
+      if (pic) run(pic, [
+        { scale: "1.14", filter: "brightness(1.7) drop-shadow(0 0 8px rgba(200, 235, 255, .95))" },
+        { scale: ".97", filter: "brightness(1.2) drop-shadow(0 0 4px rgba(200, 235, 255, .6))", offset: 0.45 },
+        { scale: "1", filter: "none" }],
+      { duration: LAND, delay: d, easing: "ease-out", fill: "forwards" });
+      run(li, [{ backgroundImage: SWEEP, backgroundSize: "300% 100%", backgroundPosition: "100% 0" },
+        { backgroundImage: SWEEP, backgroundSize: "300% 100%", backgroundPosition: "0% 0" }],
+      { duration: LAND * 1.6, delay: d, easing: "ease-in-out", fill: "none" });
     }
     // 最後の項目が抜けたら、閉じ終えてから窓を隠す
     if (!rows.length) afterAll = () => { if (!list.querySelector(":scope > li:not(.leaving)")) box.hidden = true; };

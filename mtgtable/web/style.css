@@ -227,7 +227,7 @@ body.nosel, body.nosel * { user-select: none !important; -webkit-user-select: no
 
 /* ---- スタック: カードと、種類・文・対象 ---- */
 .stack.panel { list-style: none; padding: 8px; }
-/* 左右にも余白: 解決・積んだときの光る縁（内側の影）の内にカードが収まる */
+/* 左右にも余白: 解決のときの光る縁（内側の影）の内にカードが収まる */
 .sitem { display: flex; gap: 8px; align-items: flex-start; padding: 6px; border-bottom: 1px solid var(--line); }
 .sitem:last-child { border-bottom: none; }
 /* 出入りの途中（stack.js）: 抜ける行の写しは押せない。解決した行は内側の縁で光る（一覧のはみ出しで切れない） */
