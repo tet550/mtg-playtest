@@ -1,6 +1,6 @@
 # decklists の規約
 
-`decklists/*.txt` が**人が書く正本**。対局はこのファイルを直接読んで始める（`mtgtable`、[README](../README.md)）。
+`decklists/*.txt` が**人が書く正本**。対局はこのファイルを直接読んで始める（`mtgtable`、[README](../README.ja.md)）。
 
 ```bash
 python -m mtgtable new playtest/g1 --deck p1=decklists/piza.txt --deck p2=decklists/jund-sacrifice.txt
