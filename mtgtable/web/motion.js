@@ -59,13 +59,21 @@ function placeKey(key, card) {
 }
 
 export function createMotion() {
-  const layer = document.createElement("div");
-  layer.id = "motionlayer";
-  document.body.append(layer);
-  // 解決の対象の、効果が出る前の写し（hold）。ライフは各 Player の欄の見出しにあり、layer の切り抜きの外なので別の層に
-  const holdLayer = document.createElement("div");
-  holdLayer.id = "holdlayer";
-  document.body.append(holdLayer);
+  // 写しの層は2つ。スタックへ入る・出るカードは盤面の小窓より上の層（layer）で、それ以外（盤面の中だけで動くカード）は
+  // 盤面の中の、各 Player の欄より上で小窓より下の層（under）で動かす（戦闘・スタックの窓の上に重ならない）
+  const board = document.querySelector(".board") || document.body;
+  const addLayer = (id, parent) => {
+    const e = document.createElement("div");
+    e.id = id;
+    parent.append(e);
+    return e;
+  };
+  const layer = addLayer("motionlayer", document.body);
+  const under = addLayer("motionunder", board);
+  // 解決の対象の、効果が出る前の写し（hold）。ライフは各 Player の欄の見出しにあり、layer の切り抜きの外なので別の層に。
+  // 盤面のカード・ライフは小窓より下（holdUnder）、小窓の中のカード（戦闘の欄）は小窓より上（holdLayer）に重ねる
+  const holdLayer = addLayer("holdlayer", document.body);
+  const holdUnder = addLayer("holdunder", board);
   let hidden = [];
   let animations = [];
   let timers = [];
@@ -111,8 +119,7 @@ export function createMotion() {
     hidden = [];
     for (const t of timers) clearTimeout(t);
     timers = [];
-    layer.replaceChildren();
-    holdLayer.replaceChildren();
+    for (const e of [layer, under, holdLayer, holdUnder]) e.replaceChildren();
   }
 
   // 祖先のクラスで決まる大きさ（写しは別の層に置くので、測った値で固定する）。画面から外れた要素は測れないので、
@@ -167,9 +174,10 @@ export function createMotion() {
     return a;
   }
 
-  // 本物を隠して写しを動かし、終わったら本物に戻す。doom: 戦場から除かれるカードの演出（その間は動き出さない）
-  function fly(now, frames, duration, doom) {
-    const g = ghost(now.el, now.pose, now.size);
+  // 本物を隠して写しを動かし、終わったら本物に戻す。doom: 戦場から除かれるカードの演出（その間は動き出さない）。
+  // over: スタックへ入る・出るカード（小窓より上の層で動かす）
+  function fly(now, frames, duration, doom, over) {
+    const g = ghost(now.el, now.pose, now.size, over ? layer : under);
     now.el.style.visibility = "hidden";
     hidden.push(now.el);
     run(g, frames, duration, () => { g.remove(); now.el.style.visibility = ""; }, doom ? doom(g) : 0);
@@ -269,7 +277,7 @@ export function createMotion() {
       ? [was.size.h / now.size.w, was.size.w / now.size.h]
       : [was.size.w / now.size.w, was.size.h / now.size.h];
     fly(now, [{ transform: pos(a.x - b.x, a.y - b.y, turn, sx, sy, a.tf), opacity: hide[0] ? 0 : 1 },
-      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration, doom);
+      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration, doom, was.inStack || now.inStack);
   }
 
   // 束（ライブラリーなど）から出てくる
@@ -277,7 +285,7 @@ export function createMotion() {
     const a = center(from), b = now.pose;
     const s = Math.min(from.width / now.size.w, from.height / now.size.h);
     fly(now, [{ transform: pos(a.x - b.x, a.y - b.y, 0, s, s, STILL), opacity: hide[0] ? 0 : 0.4 },
-      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration);
+      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration, null, now.inStack);
   }
 
   // どこからか分からないもの（トークンなど）は、その場に現れる
@@ -287,7 +295,7 @@ export function createMotion() {
 
   // 画面から消えるカードは、写しを行き先の束まで飛ばす（行き先が見えなければ、その場で消える）
   function leave(was, to, duration, hide, doom) {
-    const g = ghost(was.el, was.pose, was.size);  // was.el は描き直しで画面から外れている
+    const g = ghost(was.el, was.pose, was.size, was.inStack ? layer : under);  // was.el は描き直しで画面から外れている
     const a = was.pose;
     const s = to ? Math.min(to.width / was.size.w, to.height / was.size.h) : 0.8;
     const end = to ? pos(center(to).x - a.x, center(to).y - a.y, 0, s, s, STILL) : pos(0, 0, 0, s, s, a.tf);
@@ -362,7 +370,7 @@ export function createMotion() {
   // 描く前と後の見える所を合わせる（スタックの最後の項目が解決すると窓が消えるが、写しはその窓から動き出す）
   function clipTo(rects) {
     const d = rects.map(([l, t, r, b]) => `M${l} ${t}H${r}V${b}H${l}Z`).join("");
-    layer.style.clipPath = d ? `path("${d}")` : "";
+    for (const e of [layer, under]) e.style.clipPath = d ? `path("${d}")` : "";
   }
 
   // 描画の後に呼ぶ。before は描画の前の capture()。lead: 除去の演出を始めるまで待つ時間（解決の光が当たるまで）
@@ -533,7 +541,7 @@ export function createMotion() {
       if (!rect.width) return null;
       const size = measure(e);
       const p = pose(e, rect, size, false);
-      const g = ghost(e, p, size, holdLayer);
+      const g = ghost(e, p, size, layerOf(e) > 0 ? holdLayer : holdUnder);
       // 祖先から受け継いでいた文字とカードの大きさ（--h）を写しに移す
       const cs = getComputedStyle(e);
       Object.assign(g.style, { transform: p.tf, font: cs.font, color: cs.color });

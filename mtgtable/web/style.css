@@ -5,7 +5,7 @@
   --guide: #d4860f;  /* チュートリアルの次に押す所。自分の番（--ok）・待ち（--accent）・対象（--warn）と分ける */
   /* 画面全体の重なり順（下から）。盤面（.board）は isolation で1枚の層にまとめ、中の小窓（戦闘・スタック・カード）の
      z-index は盤面の中だけで効く。<dialog>（showModal）はブラウザの最上層なので、これらすべての上に出る */
-  --z-motion: 20;   /* 動いているカードの写し: 盤面の小窓より上（スタックへ入る・出るのが見える） */
+  --z-motion: 20;   /* スタックへ入る・出るカードの写し: 盤面の小窓より上（盤面の中だけで動くカードは盤面の中の #motionunder） */
   --z-play: 30;     /* GUI の対局の操作パネル */
   --z-drawer: 40;   /* スマホの縦画面の Log の引き出し */
   --z-menu: 50;     /* 右クリック・長押しのメニュー */
@@ -329,7 +329,8 @@ img.ms { width: 1.05em; height: 1.05em; vertical-align: -0.15em; margin: 0 1px; 
 
 /* ---- 戦闘は盤面の上に重ねる小窓、宣言は右の列へ ---- */
 .board { position: relative; isolation: isolate; }
-/* 盤面の中の重なり順: 各 Player の領域（中の手札・開いた束の一覧・吹き出しの z-index はその中だけ）< 戦闘 < スタック < カードの小窓 */
+/* 盤面の中の重なり順: 各 Player の領域（中の手札・開いた束の一覧・吹き出しの z-index はその中だけ）< 盤面の中で動くカードの写し
+   < 戦闘 < スタック < カードの小窓 */
 .side { isolation: isolate; }
 .combatbox { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 4px 8px; }
 .combatbox[hidden] { display: none; }
@@ -578,6 +579,10 @@ body:not(.log-open) #logClose { display: none; }
   background: linear-gradient(90deg, transparent, #fff 35%, #ff5a5a 60%, transparent); box-shadow: 0 0 10px rgba(255, 70, 70, .9); }
 /* 解決の対象の、効果が出る前の写し（motion.js の hold）。光の玉が当たるまで本物の上に重ねる */
 #holdlayer { position: fixed; inset: 0; z-index: var(--z-motion); pointer-events: none; }
+/* 盤面の中だけで動くカードの写しと、盤面のカード・ライフの hold: 各 Player の欄より上、戦闘・スタック・カードの小窓
+   （z-index 3〜5）より下。盤面（.board）の中に置く（fixed でも、盤面の重なりの中で順が決まる） */
+#motionunder, #holdunder { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+#motionunder > .card { will-change: transform, opacity; }
 /* 戦闘ダメージでカードがぶつかったところの火花（motion.js の clash） */
 /* 解決の演出（motion.js の resolve）: スタックの項目から対象へ飛ぶ光の玉 */
 .fx { position: fixed; z-index: var(--z-motion); pointer-events: none; }
