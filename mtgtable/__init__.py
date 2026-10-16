@@ -2,7 +2,7 @@
 
 設計: design/basic_design.md
 """
-__version__ = "0.1.10"  # 配布物の版（pyproject.toml はここを読む）。下の import より前に置く（carddb が読む）
+__version__ = "0.1.11"  # 配布物の版（pyproject.toml はここを読む）。下の import より前に置く（carddb が読む）
 
 from .engine import Engine, normalize_batch, public_result
 from .info import player_view
