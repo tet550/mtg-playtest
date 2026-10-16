@@ -10,12 +10,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/media/hero-ja.png" alt="mtgtable の卓。攻撃中の <灰色熊> に相手が <稲妻> を唱え、スタックと戦闘の窓が開いている" width="860">
+  <img src="docs/media/hero.png" alt="mtgtable の卓。攻撃中の <Grizzly Bears> を対象にした <Lightning Bolt> に、<Giant Growth> で対応している" width="689">
 </p>
 
 <p align="center">
-  <img src="docs/media/demo-ja.gif" alt="10秒の紹介: チュートリアルを始め、土地を出して呪文を唱え、相手のターンを経て攻撃し、相手の呪文に対応する" width="720"><br>
-  <sub>10秒の紹介（チュートリアルの1局）· <a href="docs/media/demo-ja.mp4">MP4 で見る</a></sub>
+  <img src="docs/media/demo.gif" alt="10秒の紹介（対局の再生）: 呪文と誘発型能力がスタックに積まれて解決し、クリーチャーが攻撃してダメージが入る" width="480"><br>
+  <sub>10秒の紹介（対局の再生を2倍速で）· <a href="docs/media/demo.mp4">MP4 で見る</a></sub>
 </p>
 
 mtgtable は、紙の Magic: The Gathering をそのまま卓に載せたものです。カード・カウンター・メモ・宣言といった卓上の道具だけを

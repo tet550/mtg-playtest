@@ -10,12 +10,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/media/hero-en.png" alt="The mtgtable board: the opponent casts Lightning Bolt at an attacking Grizzly Bears, with the stack and combat windows open" width="860">
+  <img src="docs/media/hero.png" alt="The mtgtable board: Giant Growth on the stack in response to Lightning Bolt, both targeting an attacking Grizzly Bears" width="689">
 </p>
 
 <p align="center">
-  <img src="docs/media/demo-en.gif" alt="10-second tour: start the tutorial, play a land and cast a spell, the opponent's turn, attack, and respond to the opponent's spell" width="720"><br>
-  <sub>A 10-second tour (the tutorial game) · <a href="docs/media/demo-en.mp4">Watch as MP4</a></sub>
+  <img src="docs/media/demo.gif" alt="10-second tour of a game replay: spells and triggered abilities go on the stack and resolve, creatures attack, and damage is dealt" width="480"><br>
+  <sub>A 10-second tour (replay of a game, 2× speed) · <a href="docs/media/demo.mp4">Watch as MP4</a></sub>
 </p>
 
 mtgtable puts paper Magic: The Gathering on a digital table. It provides only the things on a real table (cards, counters,
