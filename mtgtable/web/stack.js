@@ -42,6 +42,8 @@ export function createStack(box, list) {
   const space = (li) => li.offsetHeight + parseFloat(getComputedStyle(li).marginBottom);
 
   // rows: 新しく組み立てた行（li[data-key]、一番上から）。motion: 動かすときだけ { duration, forward }
+  // 積まれた行が開き始めるまで待つ時間（ms）を返す。同じ更新で解決した項目があれば、それが光って閉じ終わってから積む
+  // （解決してから積んだ順に見せる。motion.js はスタックへ入るカードをこの分だけ待たせる）
   function update(rows, motion) {
     stop();
     const keys = new Set(rows.map((li) => li.dataset.key));
@@ -55,9 +57,10 @@ export function createStack(box, list) {
     const known = new Set(was.map((li) => li.dataset.key));
     patch(list, rows);
     box.hidden = !rows.length && !gone.length;
-    if (!anim || box.hidden) return;
+    if (!anim || box.hidden) return 0;
     if (!shown) run(box, [{ opacity: 0 }, { opacity: 1 }], { duration: SHOW, easing: "ease-in" });  // 退きかけの戦闘の窓と重なって見えない
 
+    const wait = anim.forward && gone.some((g) => !g.pv) ? GLOW + anim.duration : 0;
     for (const g of gone) {
       const next = g.next && [...list.children].find((x) => x.dataset.key === g.next);
       list.insertBefore(g.copy, next || null);
@@ -83,25 +86,26 @@ export function createStack(box, list) {
     for (const li of [...list.children]) {
       if (known.has(li.dataset.key) || li.classList.contains("leaving")) continue;
       const d = anim.duration;
-      run(li, [{ marginTop: `${-space(li)}px` }, { marginTop: "0px" }], { duration: d * OPEN, easing: EASE });
+      run(li, [{ marginTop: `${-space(li)}px` }, { marginTop: "0px" }], { duration: d * OPEN, delay: wait, easing: EASE });
       const body = li.querySelector(".sbody");
       if (body) run(body, [{ opacity: 0, translate: "-10px 0" }, { opacity: 1, translate: "0 0" }],
-        { duration: d * (1 - OPEN) + LAND * 0.5, delay: d * OPEN, easing: "ease-out" });
+        { duration: d * (1 - OPEN) + LAND * 0.5, delay: wait + d * OPEN, easing: "ease-out" });
       const pic = li.querySelector(":scope > .card");
       // 能力の発生源のカードは飛んでこないので、行が開いてから現れる
       if (pic && li.classList.contains("ability")) run(pic, [{ opacity: 0, scale: ".7" }, { opacity: 1, scale: "1" }],
-        { duration: d * (1 - OPEN), delay: d * OPEN, easing: EASE });
+        { duration: d * (1 - OPEN), delay: wait + d * OPEN, easing: EASE });
       if (pic) run(pic, [
         { scale: "1.14", filter: "brightness(1.7) drop-shadow(0 0 8px rgba(200, 235, 255, .95))" },
         { scale: ".97", filter: "brightness(1.2) drop-shadow(0 0 4px rgba(200, 235, 255, .6))", offset: 0.45 },
         { scale: "1", filter: "none" }],
-      { duration: LAND, delay: d, easing: "ease-out", fill: "forwards" });
+      { duration: LAND, delay: wait + d, easing: "ease-out", fill: "forwards" });
       run(li, [{ backgroundImage: SWEEP, backgroundSize: "300% 100%", backgroundPosition: "100% 0" },
         { backgroundImage: SWEEP, backgroundSize: "300% 100%", backgroundPosition: "0% 0" }],
-      { duration: LAND * 1.6, delay: d, easing: "ease-in-out", fill: "none" });
+      { duration: LAND * 1.6, delay: wait + d, easing: "ease-in-out", fill: "none" });
     }
     // 最後の項目が抜けたら、閉じ終えてから窓を隠す
     if (!rows.length) afterAll = () => { if (!list.querySelector(":scope > li:not(.leaving)")) box.hidden = true; };
+    return wait;
   }
 
   // 抜ける行の写し: 押せない・カードとして数えない（data-ids を外す）。呪文のカードはカードの動きが運ぶので隠す

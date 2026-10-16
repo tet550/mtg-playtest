@@ -841,7 +841,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     foldable("fl-stack", v.stack.map((s) => s.id).join(","), v.stack.length);
     const cards = new Map();
     for (const z of Object.values(v.zones)) for (const c of z.cards || []) cards.set(c.id, c);
-    stack.update(v.stack.map((s, i) => {
+    return stack.update(v.stack.map((s, i) => {
       const li = el("li", "sitem" + (s.kind === "spell" ? "" : " ability"));
       li.dataset.key = s.id;
       const id = s.card || s.source;
@@ -1143,7 +1143,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     // 押していた手札のカードが、この更新で手札から無くなった
     if (drag && !drag.tile.isConnected) finish(false);
 
-    renderStack(v, before && shown !== v ? { duration: animate.duration, forward: v.version > shown.version } : null);
+    const stackWait = renderStack(v, before && shown !== v ? { duration: animate.duration, forward: v.version > shown.version } : null) || 0;
 
     renderCombat(v);
 
@@ -1160,7 +1160,7 @@ export function createRenderer(ui, { source, viewAt, onLogSeek, clampFloats, hoo
     ui.shown = v;
     // 同じ更新で呪文・能力が解決したら、除去の演出は解決の光が対象に当たってから
     const resolved = before && shown !== v && shown.stack.some((s) => !s.planned && !v.stack.some((x) => x.id === s.id));
-    if (before && shown !== v) motion.play(before, shown, v, animate.duration, resolved ? 420 : 0);
+    if (before && shown !== v) motion.play(before, shown, v, animate.duration, resolved ? 420 : 0, stackWait);
     // 戦闘ダメージのステップに進んだら、戦闘の欄でカードをぶつけ合う（戻るときは出さない）
     const clashed = before && shown !== v && (INTO_DAMAGE[t.step] || []).includes(shown.turn.step) && motion.clash();
     if (forward) {

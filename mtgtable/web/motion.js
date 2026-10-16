@@ -12,6 +12,11 @@ const LISTS = ["cards", "known", "known_positions"];
 // 盤面の上に重なる窓（下から順）。写しは窓より上の層で動くので、窓の下に隠れたカードの写しは出さない（窓の上に飛び出さない）
 const COVERS = [".zone.opened", "#combatbox", "#fl-stack", "#fl-detail", "#fl-play", "body.log-open .logpane"];
 
+// 2つの箱が重なっているか（縁が触れるくらいは重ならないとみなす）
+function overlaps(a, b, gap = 4) {
+  return a.left < b.right - gap && b.left < a.right - gap && a.top < b.bottom - gap && b.top < a.bottom - gap;
+}
+
 function center(r) {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 }
@@ -270,7 +275,12 @@ export function createMotion() {
   const pos = (x, y, turn, sx, sy, tf) => `translate(${x}px, ${y}px) rotate(${turn}deg) scale(${sx}, ${sy}) ${tf}`;
   const STILL = "matrix(1, 0, 0, 1, 0, 0)";
 
+  // 窓に隠れる所で写しを消すのは、窓より上の層で動く写し（スタックへ入る・出るカード）だけ。盤面の中だけで動く写しは
+  // 窓より下の層で動くので、窓がそのまま覆う（消すと、窓の外に見えている部分まで一瞬消える）
+  const fades = (hide, over) => (over ? hide : [false, false]);
+
   function move(was, now, duration, hide, doom) {
+    hide = fades(hide, was.inStack || now.inStack);
     const a = was.pose, b = now.pose;
     const turn = was.tapped === now.tapped ? 0 : now.tapped ? -90 : 90;
     const [sx, sy] = turn
@@ -281,11 +291,12 @@ export function createMotion() {
   }
 
   // 束（ライブラリーなど）から出てくる
-  function enter(now, from, duration, hide) {
+  function enter(now, from, duration, hide, wait = 0) {
+    hide = fades(hide, now.inStack);
     const a = center(from), b = now.pose;
     const s = Math.min(from.width / now.size.w, from.height / now.size.h);
     fly(now, [{ transform: pos(a.x - b.x, a.y - b.y, 0, s, s, STILL), opacity: hide[0] ? 0 : 0.4 },
-      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration, null, now.inStack);
+      { transform: pos(0, 0, 0, 1, 1, b.tf), opacity: hide[1] ? 0 : 1 }], duration, wait ? () => wait : null, now.inStack);
   }
 
   // どこからか分からないもの（トークンなど）は、その場に現れる
@@ -295,6 +306,7 @@ export function createMotion() {
 
   // 画面から消えるカードは、写しを行き先の束まで飛ばす（行き先が見えなければ、その場で消える）
   function leave(was, to, duration, hide, doom) {
+    hide = fades(hide, was.inStack);
     const g = ghost(was.el, was.pose, was.size, was.inStack ? layer : under);  // was.el は描き直しで画面から外れている
     const a = was.pose;
     const s = to ? Math.min(to.width / was.size.w, to.height / was.size.h) : 0.8;
@@ -373,8 +385,9 @@ export function createMotion() {
     for (const e of [layer, under]) e.style.clipPath = d ? `path("${d}")` : "";
   }
 
-  // 描画の後に呼ぶ。before は描画の前の capture()。lead: 除去の演出を始めるまで待つ時間（解決の光が当たるまで）
-  function play(before, oldView, newView, duration, lead = 0) {
+  // 描画の後に呼ぶ。before は描画の前の capture()。lead: 除去の演出を始めるまで待つ時間（解決の光が当たるまで）。
+  // wait: スタックへ入るカードが飛び出すまで待つ時間（stack.js の update が返す。解決した行が閉じ終わってから積む）
+  function play(before, oldView, newView, duration, lead = 0, wait = 0) {
     const after = capture(true);
     clipTo(before.clip.concat(after.clip));
     const jobs = [];
@@ -383,6 +396,11 @@ export function createMotion() {
     const hidden0 = (rect, layer) => covered(rect, layer, before.covers);
     const hidden1 = (rect, layer) => covered(rect, layer, after.covers);
     const add = (hide, job) => { if (!(hide[0] && hide[1])) jobs.push(() => job(hide)); };
+    // 除去の演出の場所へ動いてくるカードは、演出が終わるまで待つ（詰めてきたカードが演出に重ならないように）。
+    // landing: 動き終わる場所、from: 動き出す場所（待っている間ここに留まるので、ここへ動いてくるカードも待つ）
+    const later = [];
+    let hold = 0;  // 除去の演出が終わるまでの時間（演出を始めたときに分かる）
+    const addLater = (hide, landing, from, job) => { if (!(hide[0] && hide[1])) later.push({ landing, from, job: (d) => job(hide, d) }); };
     // 戦場から除かれた（戦場にあって、今は戦場に無い）カードは、行き先に応じた演出をしてから動く。進めたときだけ。
     // 下書き・送った依頼で仮に戦場に置いたカード（planned）は、仮の盤面が消えただけなので除かない
     const forward = newView.version > oldView.version;
@@ -410,24 +428,43 @@ export function createMotion() {
       const id = item.ids.find((i) => onField(oldView, i) && real(i) && !onField(newView, i));
       if (!id) return null;
       const fx = removalOf(id);
-      return (g) => fx(g, center(item.rect), lead);
+      return (g) => {
+        const t = fx(g, center(item.rect), lead);
+        hold = Math.max(hold, t);
+        return t;
+      };
     };
+    // 除去の演出をする場所（戦場から除かれたカードの、描く前の位置）
+    const doomed = forward ? [...new Set(before.cards.values())]
+      .filter((item) => !item.inStack && item.ids.some((i) => onField(oldView, i) && real(i) && !onField(newView, i)))
+      .map((item) => item.rect) : [];
     for (const now of after.cards.values()) {
       if (done.has(now)) continue;
       done.add(now);
       const was = now.ids.map((id) => before.cards.get(id)).find(Boolean);
       if (!was) {
         const from = origin(now.ids[0], oldView, newView, before);
-        if (from) add([hidden0(from, -1), hidden1(now.rect, now.layer)], (hide) => enter(now, from, duration, hide));
+        if (from && !now.inStack && doomed.length) addLater([hidden0(from, -1), hidden1(now.rect, now.layer)], now.rect, null, (hide, d) => enter(now, from, duration, hide, d));
+        else if (from) add([hidden0(from, -1), hidden1(now.rect, now.layer)], (hide) => enter(now, from, duration, hide, now.inStack ? wait : 0));
         else jobs.push(() => appear(now, duration));
         continue;
+      }
+      // 束ねたタイル（同じパーマネントを1枚にまとめたもの）に、別の所から加わったカードは、
+      // 元の場所の写しをタイルまで飛ばして重ねる（タイル自体は動かさない。スタックからなら解決の光を待つ）
+      for (const other of new Set(now.ids.map((id) => before.cards.get(id)).filter((x) => x && x !== was))) {
+        add([hidden0(other.rect, other.layer), hidden1(now.rect, now.layer)],
+          (hide) => leave(other, now.rect, duration, hide, doomOf(other, hide)));
       }
       // スタックに残る項目のカードは、行と一緒に動く（窓は下端で留めてあり、行は一覧の中で動く）
       if (was.inStack && now.inStack) continue;
       const dx = Math.abs(was.pose.x - now.pose.x), dy = Math.abs(was.pose.y - now.pose.y);
       const dw = Math.abs(was.size.w - now.size.w);
       if (dx > 1 || dy > 1 || dw > 1 || was.tapped !== now.tapped || was.pose.tf !== now.pose.tf) {
-        add([hidden0(was.rect, was.layer), hidden1(now.rect, now.layer)], (hide) => move(was, now, duration, hide, doomOf(was, hide)));
+        const into = now.inStack && !was.inStack && wait;
+        const hide = [hidden0(was.rect, was.layer), hidden1(now.rect, now.layer)];
+        if (doomed.length && !was.inStack && !now.inStack && !doomed.includes(was.rect)) {
+          addLater(hide, now.rect, was.rect, (h, d) => move(was, now, duration, h, d ? () => d : null));
+        } else add(hide, (h) => move(was, now, duration, h, doomOf(was, h) || (into ? () => wait : null)));
       }
     }
     for (const was of new Set(before.cards.values())) {
@@ -435,8 +472,21 @@ export function createMotion() {
       const to = destination(was.ids[0], oldView, newView, after);
       add([hidden0(was.rect, was.layer), !to || hidden1(to, -1)], (hide) => leave(was, to, duration, hide, doomOf(was, hide)));
     }
-    if (jobs.length > MAX_JOBS) return;
+    if (jobs.length + later.length > MAX_JOBS) return;
     for (const job of jobs) job();
+    // 演出の場所（と、そこで待つカードの元の場所）へ動いてくるカードを、重ならなくなるまで順に待たせる
+    const blocked = [...doomed];
+    const waits = new Set();
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const l of later) {
+        if (waits.has(l) || !blocked.some((r) => overlaps(l.landing, r))) continue;
+        waits.add(l);
+        if (l.from) blocked.push(l.from);
+        grew = true;
+      }
+    }
+    for (const l of later) l.job(waits.has(l) ? hold : 0);
   }
 
   // 戦闘ダメージに入ったとき、戦闘の欄で攻撃クリーチャーとブロックしているカードがぶつかり合う。
