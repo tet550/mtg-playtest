@@ -1,34 +1,35 @@
-# boros-dwarves — ボロスドワーフ（装備品アグロ）
-# 出典: ユーザー提供画像から転記
+# boros-dwarves — ボロスドワーフ（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
 
 Deck
 4 Dwarven Mauler
-2 Dwalin, Weaponmaster
+1 Dwalin, Weaponmaster
 4 Dáin's Company
+1 Giott, King of the Dwarves
 4 Kíli the Resourceful
-1 Raubahn, Bull of Ala Mhigo
 1 Dáin Ironfoot
-2 Thorin, Mountain-king
+4 Thorin, Mountain-king
 
 3 Doc Ock's Tentacles
-3 Ghostfire Blade
+3 Dragonfire Blade
 4 Lavaspur Boots
 2 Skateboard
-3 Samurai's Katana
+2 Samurai's Katana
 4 Leyline Axe
 
-4 Cavern of Souls
+3 Cavern of Souls
 4 Inspiring Vantage
 3 Mountain
+1 Plains
 4 Sacred Foundry
 4 Sunbillow Verge
 4 The Lonely Mountain
 
 Sideboard
-2 Burst Lightning
+2 Shattered Acolyte
+
 1 Abrade
+3 Chainsaw
 3 Dawn's Truce
-2 Disenchant
-2 Exorcise
 2 Rest in Peace
-3 Sheltered by Ghosts
+4 Sheltered by Ghosts

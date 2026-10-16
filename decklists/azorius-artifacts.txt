@@ -1,0 +1,41 @@
+# azorius-artifacts — アゾリウスアーティファクト（スタンダード）
+# 出典: https://www.mtggoldfish.com/archetype/standard-azorius-artifacts-woe（MTGGoldfish の代表リスト: Shouta Tsuruoka, Magic Spotlight: Secrets 2026-05-29）
+
+Deck
+1 Dauntless Scrapbot
+3 Krang, Master Mind
+1 Krang, Utrom Warlord
+
+3 The Enigma Jewel
+4 Clay-Fired Bricks
+3 Cryogen Relic
+4 Spring-Loaded Sawblades
+2 Braided Net
+1 Pinnacle Starcage
+3 Repurposing Bay
+4 Simulacrum Synthesizer
+1 Worldwalker Helm
+4 Day of Judgment
+4 United Battlefront
+
+1 Agna Qel'a
+4 Floodfarm Verge
+2 Fomori Vault
+4 Island
+6 Plains
+2 Temple of Enlightenment
+3 Uthros, Titanic Godcore
+
+Sideboard
+2 Astelli Reclaimer
+
+1 Basilisk Collar
+1 Hide on the Ceiling
+2 Seam Rip
+1 Exorcise
+4 High Noon
+1 Rest in Peace
+1 The Ooze
+1 Pyrrhic Strike
+
+1 Mistrise Village

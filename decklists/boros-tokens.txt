@@ -1,33 +1,34 @@
-# boros-tokens — ボロストークン
-# 出典: サイド15枚は 2026-09-03 時点の完成リストを採用
+# boros-tokens — ボロストークン（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
 
 Deck
-4 Hired Claw
 4 Stadium Headliner
 4 Belladonna Took
 4 Voice of Victory
-3 Anim Pakal, Thousandth Moon
+1 Suki, Courageous Rescuer
 
-2 Erode
 4 Political Triumph
-3 Song of Totentanz
+2 Seam Rip
+4 Song of Totentanz
+3 Torch the Tower
 4 Frontline Rush
 4 Warleader's Call
 4 The Last Ronin's Technique
 
 2 Dalkovan Encampment
+1 Fountainport
 4 Inspiring Vantage
-3 Mountain
-2 Multiversal Passage
+5 Mountain
+1 Multiversal Passage
 1 Plains
 4 Sacred Foundry
 4 Sunbillow Verge
 
 Sideboard
-3 The Queen of Dale
+3 Sunspine Lynx
 
-2 Erode
-2 Requisition Raid
-3 Dawn's Truce
-3 Rest in Peace
-2 Elspeth, Storm Slayer
+2 Seam Rip
+1 Torch the Tower
+3 Bilbo's Gambit
+4 Rest in Peace
+2 Pyrrhic Strike

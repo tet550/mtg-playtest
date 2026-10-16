@@ -1,19 +1,37 @@
-4 Iridescent Vinelasher
+# rakdos-lizard — ラクドストカゲ（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
+
+Deck
 4 Hired Claw
-4 Stingerquill Voxmancer // Vicious Verse
-3 Burst Lightning
-2 Requiting Hex
-4 Master of Barbs
+4 Iridescent Vinelasher
 4 Flamecache Gecko
-3 Gev, Scaled Scorch
-2 Stingerquill Charm
+4 Gev, Scaled Scorch
+4 Master of Barbs
 4 Ingris Stingerquill
-3 Ojer Axonil, Deepest Might // Temple of Power
+3 Thought-Stalker Warlock
+4 Valley Flamecaller
+
+4 Burst Lightning
+2 Scales of Shale
+
 4 Blazemire Verge
-1 Multiversal Passage
 4 Blood Crypt
-3 Mountain
-3 Starting Town
-3 Swamp
+2 Haunted Ridge
+2 Mountain
+3 Multiversal Passage
 1 Restless Vents
-4 Haunted Ridge
+1 Rockface Village
+4 Starting Town
+2 Swamp
+
+Sideboard
+4 Magebane Lizard
+1 Thought-Stalker Warlock
+1 Ojer Axonil, Deepest Might
+
+2 Duress
+2 Ghost Vacuum
+2 Requiting Hex
+1 Bitter Triumph
+1 Ral Zarek, Guest Lecturer
+1 Scales of Shale

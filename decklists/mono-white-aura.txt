@@ -1,0 +1,27 @@
+# mono-white-aura — 白単オーラ（スタンダード）
+# 出典: https://mtg.cardsrealm.com/en-us/articles/standard-mono-white-auras-deck-tech-sideboard-guide（2026-05-21 のデッキ解説・サイドボードガイド）
+
+Deck
+4 Optimistic Scavenger
+4 Ruin-Lurker Bat
+4 Skyward Spider
+4 Voice of Victory
+
+4 Ethereal Armor
+4 Seam Rip
+4 Shardmage's Rescue
+4 Feather of Flight
+4 Origin of Spider-Man
+4 Sheltered by Ghosts
+
+2 Abandoned Air Temple
+18 Plains
+
+Sideboard
+2 Doorkeeper Thrull
+3 Knight of Grace
+
+3 Authority of the Consuls
+2 Erode
+3 Rest in Peace
+2 Spectacular Tactics

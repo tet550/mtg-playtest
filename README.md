@@ -88,8 +88,10 @@ On the **Decks** page, paste a decklist (`4 Lightning Bolt` lines; an MTG Arena 
 against Scryfall, along with deck size, copy limits and format legality, and only decks that pass are saved. An optional
 play plan is read by the AI that pilots the deck.
 
-Bundled decks are ready to use: `piza`, `jund-sacrifice`, `boros-dwarves`, `boros-tokens`, `azorius-jace`,
-`mono-green-landfall`, `orzhov-lifegain`, `rakdos-lizard`, `sultai-reanimator` ([decklists/](decklists/)).
+Bundled decks are ready to use: `piza`, `sultai-reanimator`, `mono-white-aura`, `azorius-artifacts`, `mono-green-landfall`,
+`izzet-elementals`, `orzhov-lifegain`, `azorius-control`, `boros-dwarves`, `dimir-midrange-kaito`,
+`dimir-midrange-superior`, `boros-tokens`, `tablet-control`, `rakdos-lizard`, `izzet-prowess`,
+`boros-dragons`, `jund-sacrifice`, `mono-blue-budget`, `mono-white-budget` ([decklists/](decklists/)).
 
 ### 3. Play an AI
 

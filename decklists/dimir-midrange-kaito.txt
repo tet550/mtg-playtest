@@ -1,0 +1,38 @@
+# dimir-midrange-kaito — 青黒ミッドレンジ（アグロ寄り）魁渡型（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
+
+Deck
+2 Cecil, Dark Knight
+4 Dream Beavers
+3 Spyglass Siren
+2 Yuriko, Hope from the Shadows
+3 Floodpits Drowner
+2 The Wondrous Wasp
+1 Preacher of the Schism
+4 Enduring Curiosity
+
+3 Requiting Hex
+2 Spell Snare
+3 Bitter Triumph
+2 Theorix Charm
+1 We Say Thee Nay!
+4 Kaito, Bane of Nightmares
+
+4 Gloomlake Verge
+3 Hidden Lair
+4 Island
+3 Restless Reef
+2 Soulstone Sanctuary
+4 Swamp
+4 Watery Grave
+
+Sideboard
+2 Raven Eagle
+
+3 Duress
+2 Day of Black Sun
+2 Disdainful Stroke
+2 Flashfreeze
+1 Negate
+2 Strategic Betrayal
+1 Ancient Vendetta

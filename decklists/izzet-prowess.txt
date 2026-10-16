@@ -1,0 +1,38 @@
+# izzet-prowess — イゼット果敢（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
+
+Deck
+4 Elusive Otter
+4 Pompous Battlemage
+4 Slickshot Show-Off
+3 Eddymurk Crab
+
+4 Burst Lightning
+2 Impractical Joke
+2 Into the Flood Maw
+4 Opt
+2 Secret Identity
+4 Sleight of Hand
+1 Spell Pierce
+1 Wild Ride
+4 Flow State
+1 Stock Up
+
+4 Island
+1 Mountain
+2 Multiversal Passage
+4 Riverpyre Verge
+4 Spirebluff Canal
+1 Starting Town
+4 Steam Vents
+
+Sideboard
+2 Sunspine Lynx
+
+2 Annul
+2 Fire Magic
+2 Ghost Vacuum
+1 Disdainful Stroke
+2 Flashfreeze
+2 Broadside Barrage
+2 Ral, Crackling Wit

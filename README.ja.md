@@ -88,8 +88,11 @@ mtgtable 本体（Python）は、プラグインの `mtgtable` コマンドが�
 カード名は Scryfall で確かめ、枚数・同名カードの上限・フォーマットで使えるかを検査し、通ったものだけを保存します。
 プレイ方針（任意）を書いておくと、そのデッキを使う AI がそれを読んで回します。
 
-同梱のデッキもすぐ使えます: `piza`・`jund-sacrifice`・`boros-dwarves`・`boros-tokens`・`azorius-jace`・`mono-green-landfall`・
-`orzhov-lifegain`・`rakdos-lizard`・`sultai-reanimator`（[decklists/](decklists/)）。
+同梱のデッキもすぐ使えます: `piza`・`sultai-reanimator`・`mono-white-aura`・`azorius-artifacts`・`mono-green-landfall`・
+`izzet-elementals`・`orzhov-lifegain`・`azorius-control`・`boros-dwarves`・
+`dimir-midrange-kaito`・`dimir-midrange-superior`・`boros-tokens`・`tablet-control`・
+`rakdos-lizard`・`izzet-prowess`・`boros-dragons`・`jund-sacrifice`・`mono-blue-budget`・
+`mono-white-budget`（[decklists/](decklists/)）。
 
 ### 3. AI と対戦する
 

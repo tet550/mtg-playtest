@@ -1,0 +1,17 @@
+# mono-blue-budget — 青単（レア0枚構築）（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
+
+Deck
+4 Eddymurk Crab
+4 Tolarian Terror
+
+4 Bounce Off
+4 Into the Flood Maw
+4 Opt
+4 Sleight of Hand
+4 Flow State
+4 Get Out
+4 Amazing Acrobatics
+4 Stock Up
+
+20 Island

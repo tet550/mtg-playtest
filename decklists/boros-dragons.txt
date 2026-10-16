@@ -1,0 +1,36 @@
+# boros-dragons — ボロスドラゴン（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
+
+Deck
+4 Momo, Friendly Flier
+4 Sarkhan, Dragon Ascendant
+4 Voice of Victory
+4 Clarion Conqueror
+3 Magmatic Hellkite
+4 Smaug the Magnificent
+1 Bonehoard Dracosaur
+4 Nova Hellkite
+1 Twinmaw Stormbrood
+
+4 Burst Lightning
+3 Get Lost
+
+3 Cavern of Souls
+4 Inspiring Vantage
+2 Maelstrom of the Spirit Dragon
+3 Mountain
+2 Multiversal Passage
+1 Plains
+4 Sacred Foundry
+4 Sunbillow Verge
+1 Sundown Pass
+
+Sideboard
+3 Seam Rip
+1 Abrade
+2 Dawn's Truce
+1 Murdock's Crusade
+3 Pyroclasm
+3 Rest in Peace
+1 Sheltered by Ghosts
+1 The Legend of Roku

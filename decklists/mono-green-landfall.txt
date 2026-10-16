@@ -1,36 +1,32 @@
-# mono-green-landfall — 緑単上陸
-# 出典: FunkiMunki / MOショーケースチャレンジ（スタンダード）2026-08-21 優勝
-#       https://www.izzetmtgnews.com/archives/147306
+# mono-green-landfall — 緑単上陸（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
 
 Deck
 4 Llanowar Elves
 4 Sazh's Chocobo
-1 Surrak, Elusive Hunter
+3 Mossborn Hydra
 4 Icetill Explorer
 4 Mightform Harmonizer
 
 1 Meltstrider's Resolve
-3 Esper Origins // Summon: Esper Maduin
-3 Glimpse the Core
+4 Esper Origins
+3 Shared Roots
 4 Earthbender Ascension
-1 Lumbering Worldwagon
-4 Sapling Nursery
+3 Sapling Nursery
 
 3 Ba Sing Se
 1 Demolition Field
-2 Elven Passage
-2 Escape Tunnel
+4 Escape Tunnel
 4 Fabled Passage
 14 Forest
-1 Promising Vein
 
 Sideboard
-1 Keen-Eyed Curator
-4 Mossborn Hydra
-1 Surrak, Elusive Hunter
+2 Keen-Eyed Curator
+1 Mossborn Hydra
+3 Surrak, Elusive Hunter
 1 Leatherhead, Swamp Stalker
-1 Gigantic Big Bear
 
 3 Meltstrider's Resolve
 2 Torpor Orb
 2 Warg Tactics
+1 Sapling Nursery

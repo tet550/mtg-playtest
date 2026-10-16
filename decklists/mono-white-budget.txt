@@ -1,0 +1,17 @@
+# mono-white-budget — 白単アグロ（レア0枚構築）（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
+
+Deck
+4 Flowerfoot Swordmaster
+4 Optimistic Scavenger
+4 Iron Hills Blacksmith
+4 Skyward Spider
+
+4 Ethereal Armor
+3 Evershrike's Gift
+4 Seam Rip
+4 Shardmage's Rescue
+4 Feather of Flight
+4 Sheltered by Ghosts
+
+21 Plains

@@ -1,21 +1,37 @@
+# orzhov-lifegain — オルゾフライフゲイン（スタンダード）
+# 出典: https://mtgfans.jp/articles/f388d2df-d727-45a1-b551-6404d1c8d1b7（2026-10-15）
+
 Deck
-12 Plains
-7 Swamp
-2 Godless Shrine
-2 Authority of the Consuls
-2 Deep-Cavern Bat
-3 Amalia Benavides Aguirre
-3 Essence Channeler
-3 Starscape Cleric
-3 Sheltered by Ghosts
+1 Aunt May
 4 Hinterland Sanctifier
-2 Starting Town
-3 Haliya, Guided by Light
-1 Multiversal Passage
-1 Moseo, Vein's New Dean
-1 Cloak and Dagger, Entwined
-1 Enlightened Confidant
-3 Unflinching Hortimancer
-2 Sanctum Lurker
-3 Ajani Resolute
 2 Liliana the Faultless
+3 Amalia Benavides Aguirre
+4 Enlightened Confidant
+4 Starscape Cleric
+4 Haliya, Guided by Light
+2 Moseo, Vein's New Dean
+
+4 Case of the Uneaten Feast
+2 Erode
+3 Ajani Resolute
+1 Get Lost
+3 Lunar Convocation
+
+4 Bleachbone Verge
+4 Concealed Courtyard
+1 Dalkovan Encampment
+4 Godless Shrine
+2 Multiversal Passage
+3 Plains
+4 Starting Town
+1 Swamp
+
+Sideboard
+3 Curious Farm Animals
+
+1 Ghost Vacuum
+2 Requisition Raid
+2 Strategic Betrayal
+3 Terminal Criticism
+2 Ancient Vendetta
+2 Settle the Wreckage
