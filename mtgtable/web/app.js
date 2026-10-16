@@ -367,28 +367,56 @@ function setupFloat(panel) {
     const right = nx + w / 2 > b.width / 2, bottom = ny + h / 2 > b.height / 2;
     return { x: right ? b.width - w - nx : nx, y: bottom ? b.height - ny : ny, right, bottom };
   };
-  floatClamps.push(place);
+  const settle = () => { place(); avoidPlayPanel(); };
+  floatClamps.push(settle);
   // 中身が変わって小窓の大きさが変わったとき・盤面の大きさが変わったときも詰め直す
   if (typeof ResizeObserver === "function") {
-    const ro = new ResizeObserver(() => place());
+    const ro = new ResizeObserver(settle);
     ro.observe(panel);
     ro.observe(board);
   }
   const save = () => remember(key, JSON.stringify({ ...(want || {}), min: panel.classList.contains("min") }));
-  panel.querySelector(".fmin").onclick = () => { panel.classList.toggle("min"); save(); };
+  panel.querySelector(".fmin").onclick = () => { panel.classList.toggle("min"); save(); settle(); };
   const close = panel.querySelector(".fclose");
   if (close) close.onclick = () => { panel.hidden = true; };
   panel.querySelector(".fhead").addEventListener("pointerdown", (e) => {
     if (e.target.closest("button") || docked()) return;
     const pb = panel.getBoundingClientRect(), bb = area();
     const start = { x: e.clientX, y: e.clientY, left: pb.left - bb.left, top: pb.top - bb.top };
-    const move = (ev) => { want = anchor(start.left + ev.clientX - start.x, start.top + ev.clientY - start.y); place(); };
+    const move = (ev) => { want = anchor(start.left + ev.clientX - start.x, start.top + ev.clientY - start.y); settle(); };
     const up = () => { removeEventListener("pointermove", move); removeEventListener("pointerup", up); noSelect(false); save(); };
     noSelect(true);
     addEventListener("pointermove", move);
     addEventListener("pointerup", up);
     e.preventDefault();
   });
+}
+// 操作パネル（画面に固定）が盤面の右の帯（スタックの置き場所）に重なるときは、スタックをよける。
+// パネルの上に十分な高さがあれば、スタックの下端をパネルのすぐ上に上げる（--stackb・--stackmaxh。戦闘の窓は動かない）。
+// 無ければ、重なる幅（--panelw）だけスタックと戦闘の窓を左へ寄せる。畳んで見出しだけなら下に収まるので、どちらもしない
+const STACK_BAND = 340;  // スタックの幅と右の余白（style.css の .stackbox）
+const STACK_MIN_H = 150;  // パネルの上に置くのに要る高さ（1項目と見出し）
+function avoidPlayPanel() {
+  const panel = $("fl-play"), board = document.querySelector(".board");
+  if (!panel || !board) return;
+  const vars = { "--panelw": null, "--stackb": null, "--stackmaxh": null };
+  if (!panel.hidden && getComputedStyle(panel).getPropertyValue("--docked").trim() !== "1") {
+    const p = panel.getBoundingClientRect(), b = board.getBoundingClientRect();
+    const stackBottom = b.bottom - (b.height / 2 - 74);  // 既定のスタックの下端（.stackbox の bottom）
+    if (p.width && p.left < b.right && p.right > b.right - STACK_BAND && p.top < stackBottom && p.bottom > b.top) {
+      const above = p.top - b.top - 16;
+      const gap = b.right - p.left + 6;
+      if (above >= STACK_MIN_H) {
+        vars["--stackb"] = `${Math.round(b.bottom - p.top + 8)}px`;
+        vars["--stackmaxh"] = `${Math.round(above)}px`;
+      } else if (gap <= b.width - STACK_BAND - 40) {  // 寄せても入らない（パネルを盤面の真ん中へ動かした）ときは寄せない
+        vars["--panelw"] = `${Math.round(gap)}px`;
+      }
+    }
+  }
+  for (const [k, v] of Object.entries(vars)) {
+    if (v) board.style.setProperty(k, v); else board.style.removeProperty(k);
+  }
 }
 document.querySelectorAll(".float").forEach(setupFloat);
 

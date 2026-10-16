@@ -469,16 +469,18 @@ body.log-open .resizer:hover { background: var(--accent); }
 
 /* 既定の置き場所: 戦闘は盤面の中央、宣言は上の中央、スタックは右上、カードは右下 */
 @media (min-height: 560px), (orientation: portrait) {
-  .combatbox { right: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); transition: left .25s ease; }
+  /* 戦闘の窓は、右の操作パネルに重なる分（--panelw。app.js の avoidPlayPanel）を除いた残りの中央 */
+  .combatbox { right: auto; left: calc((100% - var(--panelw, 0px)) / 2); top: 50%; transform: translate(-50%, -50%); transition: left .25s ease; }
   /* スタックが出ている間は、戦闘の窓をスタックの左の残りの中央に置く（窓どうしを重ねない）。--stackw: スタックの幅と右の余白 */
   .board { --stackw: 330px; }
-  .board:has(> .stackbox:not([hidden])) .combatbox { left: calc((100% - var(--stackw)) / 2); max-width: calc(100% - var(--stackw) - 16px); }
+  .board:has(> .stackbox:not([hidden])) .combatbox { left: calc((100% - var(--stackw) - var(--panelw, 0px)) / 2);
+    max-width: calc(100% - var(--stackw) - var(--panelw, 0px) - 16px); }
 }
 
-/* スタックは盤面の右に、下端で留める（一番下の項目が縦の中央あたり。積むと上へ伸び、下の項目・下端は動かない）。
+/* スタックは盤面の右に、下端で留める（操作パネルが重なるなら、パネルの上か左へ。app.js の avoidPlayPanel）（一番下の項目が縦の中央あたり。積むと上へ伸び、下の項目・下端は動かない）。
    カードの小窓は右上から */
-.stackbox { position: absolute; z-index: 4; right: 10px; bottom: calc(50% - 74px); width: 320px;
-  max-height: calc(50% + 64px); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
+.stackbox { position: absolute; z-index: 4; right: calc(10px + var(--panelw, 0px)); bottom: var(--stackb, calc(50% - 74px)); width: 320px;
+  max-height: var(--stackmaxh, calc(50% + 64px)); display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 4px 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, .35); }
 .stackbox[hidden] { display: none; }
 .stackbox h3 { flex: none; }
@@ -626,6 +628,7 @@ body:not(.log-open) #logClose { display: none; }
 .chip.playing { background: var(--ok); }
 #fl-play { position: fixed; z-index: var(--z-play); right: 12px; bottom: 12px; width: 330px; max-height: 70vh; }
 #fl-play .fbody { padding: 6px 8px; display: flex; flex-direction: column; gap: 5px; }
+#fl-play.min .fbody { display: none; }  /* 上の display: flex が .float.min より強いので、畳んだときをここで消す */
 .pstatus { font-weight: 700; color: var(--muted); }
 .pstatus.mine { color: var(--ok); }
 .prow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
