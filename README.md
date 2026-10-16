@@ -190,7 +190,7 @@ python -m mtgtable new playtest/g1 --deck p1=piza --deck p2=jund-sacrifice --see
   claude plugin marketplace remove tcg-table && claude plugin marketplace add ./ && claude plugin install mtgtable@tcg-table
   ```
 
-- **CLI only, without the plugin**: `uvx --from git+https://github.com/tet550/tcg-table@v0.1.11 mtgtable --help`
+- **CLI only, without the plugin**: `uvx --from git+https://github.com/tet550/tcg-table@v0.1.12 mtgtable --help`
 - **Where files go**: the card cache and the site DB sit at the repository root (`cards/`, `data/`) when run from the repository,
   or in the OS data folder when installed as a package. Set `MTGTABLE_HOME` to move them all
 - **Windows**: use `py -3` if `python` isn't available. In PowerShell, set `$env:PYTHONIOENCODING = 'utf-8'` first

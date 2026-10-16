@@ -189,7 +189,7 @@ python -m mtgtable new playtest/g1 --deck p1=piza --deck p2=jund-sacrifice --see
   claude plugin marketplace remove tcg-table && claude plugin marketplace add ./ && claude plugin install mtgtable@tcg-table
   ```
 
-- **プラグインを使わずに CLI だけ使う**: `uvx --from git+https://github.com/tet550/tcg-table@v0.1.11 mtgtable --help`
+- **プラグインを使わずに CLI だけ使う**: `uvx --from git+https://github.com/tet550/tcg-table@v0.1.12 mtgtable --help`
 - **置き場所**: カードのキャッシュとサイトの DB は、リポジトリからならリポジトリ直下（`cards/`・`data/`）、パッケージとして入れたなら
   OS のデータ用フォルダ。`MTGTABLE_HOME` でまとめて変えられます
 - **Windows**: `python` が無ければ `py -3` に読み替えます。PowerShell では `$env:PYTHONIOENCODING = 'utf-8'` を設定してから実行します
